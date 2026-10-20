@@ -1,10 +1,15 @@
 import { mount, shallowMount } from '@vue/test-utils'
 import { NSelect, NTooltip } from 'naive-ui'
 import type { SelectProps } from 'naive-ui'
-import { h } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { h, nextTick } from 'vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import AppSelect from './AppSelect.vue'
+import { APP_OVERLAY_HOST_ID, APP_OVERLAY_HOST_SELECTOR } from './overlay-host'
+
+afterEach(() => {
+  document.getElementById(APP_OVERLAY_HOST_ID)?.remove()
+})
 
 describe('AppSelect', () => {
   it('forwards multiple selection and collapsed tag settings', () => {
@@ -44,15 +49,58 @@ describe('AppSelect', () => {
     expect(wrapper.emitted('update:values')).toBeUndefined()
   })
 
-  it('can keep a popup inside an existing overlay host', () => {
+  it('defaults to the application overlay host when the shell provides it', async () => {
+    const host = document.createElement('div')
+    host.id = APP_OVERLAY_HOST_ID
+    document.body.append(host)
+    const wrapper = shallowMount(AppSelect, {
+      props: { options: [{ label: 'One', value: 'one' }] },
+    })
+
+    await nextTick()
+    expect(wrapper.findComponent(NSelect).props('to')).toBe(
+      APP_OVERLAY_HOST_SELECTOR,
+    )
+  })
+
+  it('falls back to the fullscreen target when a layout has no overlay host', async () => {
+    const wrapper = shallowMount(AppSelect, {
+      props: { options: [{ label: 'One', value: 'one' }] },
+    })
+
+    await nextTick()
+    expect(wrapper.findComponent(NSelect).props('to')).toBe(true)
+  })
+
+  it.each([
+    ['selector', '#custom-overlay'],
+    ['fullscreen', true],
+    ['inline', false],
+  ] as const)('preserves an explicit %s target', async (_label, to) => {
     const wrapper = shallowMount(AppSelect, {
       props: {
         options: [{ label: 'One', value: 'one' }],
-        to: '#app-overlay-host',
+        to,
       },
     })
 
-    expect(wrapper.findComponent(NSelect).props('to')).toBe('#app-overlay-host')
+    await nextTick()
+    expect(wrapper.findComponent(NSelect).props('to')).toBe(to)
+  })
+
+  it('preserves an explicit element target', async () => {
+    const target = document.createElement('section')
+    document.body.append(target)
+    const wrapper = shallowMount(AppSelect, {
+      props: {
+        options: [{ label: 'One', value: 'one' }],
+        to: target,
+      },
+    })
+
+    await nextTick()
+    expect(wrapper.findComponent(NSelect).props('to')).toBe(target)
+    target.remove()
   })
 
   it('keeps label tooltips opt-in and custom renderers unchanged by default', () => {

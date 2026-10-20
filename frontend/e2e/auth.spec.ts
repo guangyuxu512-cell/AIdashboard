@@ -71,7 +71,20 @@ test('requires first team selection and supports later team switching', async ({
   ).toHaveCount(0)
 
   await page.locator('.login-card .n-base-selection').click()
-  await page.getByText('运营团队', { exact: true }).click()
+  const teamMenu = page.locator('.app-select-menu--viewport-safe:visible')
+  await expect(teamMenu.getByText('运营团队', { exact: true })).toBeVisible()
+  expect(
+    await teamMenu.evaluate(
+      (element) =>
+        !element.closest('#app-overlay-host') &&
+        !element.closest('.login-card'),
+    ),
+  ).toBe(true)
+  await page.keyboard.press('ArrowDown')
+  await page.keyboard.press('Enter')
+  await expect(page.locator('.login-card .n-base-selection')).toContainText(
+    '运营团队',
+  )
   await page.getByRole('button', { name: '进入中控台' }).click()
   await expect(page).toHaveURL(/#\/shops$/)
 

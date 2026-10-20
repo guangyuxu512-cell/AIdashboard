@@ -161,6 +161,8 @@ Electron Windows 窗口使用原生 Window Controls Overlay 覆盖现有 54px To
 
 所有 Drawer、Modal 与动态 Dialog 统一 Teleport 到 AppShell 内的 `AppOverlayHost`。该 Host 从 `--layout-topbar-height` 以下覆盖 Workspace，并建立 Fixed Position Containing Block；业务 Overlay 因而不会进入 Custom Title Bar 或 Window Controls Overlay。业务 Drawer 禁止用单页 `top`、`margin-top` 或固定像素修补。
 
+Dialog／Drawer 内的 `AppSelect` 菜单也必须脱离可滚动、可裁切的 Overlay Body：应用壳存在时由共享组件挂到 `AppOverlayHost`，登录等无应用壳布局挂到全屏层。不得移除 Host 的视口裁切／Fixed Containing Block，也不得在业务页用 `overflow: visible`、局部 `z-index` 或 `to="body"` 修补单一页面。
+
 ## Overlay / Dialog 滚动
 
 `AppDialog` 是普通 Dialog/Modal 的唯一视口约束入口。默认最大高度由
