@@ -36,7 +36,24 @@ ca97已由DBAdmin通道创建独立可重建Feature库
 `assets`、`task_assets`、`material_group_assets`、`generation_jobs`、`generation_item_assets`均0。
 本分配不得借用或改写0047，不得连接Integration/Main smoke/生产实施Feature。
 
-当前活跃 Migration Slot：无。
+当前唯一活跃 Migration Slot：`20261020_0049_mobile_product_collection_integration_v1`。
+
+2026-10-20 `feat/mobile-product-collection-integration-v1` / Owner 81a1 的最小契约与九表
+Schema 申请经 ca97 两轮独立审查后接受。正式 revision 为 `20261020_0049`，down
+`20261019_0048`；只允许新增 Team 商品库、人员采集请求、可靠网关派发、Capture Attempt、Raw
+Upload Receipt、不可变商品版本和 Persist Receipt，并为既有 Candidate 增加
+`(candidate_id, team_id)` 唯一键。0047/0048 字节、事实和队列语义保持不变，不得改造成手机
+claim 队列。独立 Feature DB 计划为
+`control_center_feat_mobile_product_collection_integration`，Owner 为既有最小角色
+`control_center_dev_user`，Backend 预留 `127.0.0.1:8101`，首轮 Gateway 使用进程内 fake。
+数据库仍待既有 DBAdmin 通道创建并交付受保护连接；在 ca97 实连确认前不得编写或应用 DDL。
+Migration 必须显式固化 finished_at、两个 active partial unique 谓词、命名后置复合 FK 与反向
+downgrade 顺序；跨表 persisted/Persist Receipt 关系由同事务 Service 与 PostgreSQL 测试保证，
+不得伪装成单表 CHECK。真实 APK、NAS、配对或手机任务仍需另行取得一台一条隔离授权。
+
+| Feature / Owner | Slot 状态 | 变更摘要 | 依赖 | Migration 标识 | 验证与回滚 |
+| --- | --- | --- | --- | --- | --- |
+| `feat/mobile-product-collection-integration-v1` / 81a1 | `active`（Schema 已审，Feature DB 待 DBAdmin 创建） | 九张新表承载 Team 商品库、请求/Item、可靠派发、设备批次 fence、Raw/Persist 双回执和不可变 UU 版本；Candidate 仅追加同 Team 复合引用目标；不复制手机 claim 队列 | 精确 Green `65ecf3f72a6ae9ea3114d7404841ad9aae876565`；down `20261019_0048` | `20261020_0049_mobile_product_collection_integration_v1.py`，revision `20261020_0049` | 仅独立可重建 Feature PG 实施；空表可按命名 FK 反向降级，存在任一业务事实/外部 Job 引用即 fail-closed；共享环境回滚关闭入口/派发/Inbox，保留 Schema、Raw、Version、Receipt 与审计。 |
 
 2026-10-20 Shared Select Overlay Boundary Fix 为纯前端公共组件修复；无 Backend、Schema、数据库
 或 Migration，不分配 Slot。后续商品采集任务＋商品库前端仅在其独立 Gate 2 通过后正常消费，不能
