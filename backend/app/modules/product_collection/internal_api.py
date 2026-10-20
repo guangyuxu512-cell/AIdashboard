@@ -6,7 +6,7 @@ import hmac
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, status
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -93,6 +93,7 @@ def require_ingest_credential(
 )
 def register_product_collection_attempt(
     registration: GatewayAttemptRegistrationV1,
+    response: Response,
     service: Annotated[ProductCollectionIngestService, Depends(get_ingest_service)],
     settings: Annotated[Settings, Depends(get_settings)],
     idempotency_key: Annotated[str, Header(alias="Idempotency-Key")],
@@ -119,6 +120,7 @@ def register_product_collection_attempt(
         token_ttl_seconds=settings.product_collection_ingest_token_ttl_seconds,
         accept_grace_seconds=settings.product_collection_accept_grace_seconds,
     )
+    response.headers["Cache-Control"] = "no-store"
     return GatewayAttemptRegistrationResponseV1(controlIngest=control)
 
 
@@ -130,6 +132,7 @@ def register_product_collection_attempt(
 def refresh_product_collection_credential(
     attempt_id: UUID,
     command: GatewayCredentialRefreshV1,
+    response: Response,
     service: Annotated[ProductCollectionIngestService, Depends(get_ingest_service)],
     settings: Annotated[Settings, Depends(get_settings)],
 ) -> GatewayAttemptRegistrationResponseV1:
@@ -144,6 +147,7 @@ def refresh_product_collection_credential(
         public_base_url=public_base_url,
         token_ttl_seconds=settings.product_collection_ingest_token_ttl_seconds,
     )
+    response.headers["Cache-Control"] = "no-store"
     return GatewayAttemptRegistrationResponseV1(controlIngest=control)
 
 

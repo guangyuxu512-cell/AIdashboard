@@ -4,6 +4,8 @@ from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 import json
 from uuid import UUID, uuid4
+from urllib.parse import urlsplit
+from unittest.mock import Mock
 
 from fastapi.testclient import TestClient
 import httpx
@@ -20,7 +22,9 @@ from app.modules.access.enums import DataScope
 from app.modules.access.models import Team, TeamModuleAccess
 from app.modules.access.module_access import ModuleCode
 from app.modules.product_collection.api import get_product_library_actor
-from app.modules.product_collection.contracts import GatewayAttemptRegistrationV1, canonical_sha256
+from app.modules.product_collection.contracts import (
+    GatewayAttemptRegistrationV1, SourcePlatform, canonical_sha256,
+)
 from app.modules.product_collection.exceptions import ProductCollectionGatewayUnavailableError
 from app.modules.product_collection.executor import ProductCollectionExecutor
 from app.modules.product_collection.gateway import HttpProductCollectionGateway
@@ -28,7 +32,10 @@ from app.modules.product_collection.ingest_service import ProductCollectionInges
 from app.modules.product_collection.models import (
     ProductCollectionDispatch as Dispatch, ProductCollectionItem as Item,
     ProductCollectionRequest as CollectionRequest, ProductCollectionUploadReceipt as UploadReceipt,
+    ProductCollectionPersistReceipt as PersistReceipt,
+    ProductLibraryProductVersion as ProductVersion,
 )
+from app.modules.product_collection.ports import CleanedProductPackage, ProductPackageCleaner
 from app.modules.users.models import User
 from tests.test_product_collection_media_urls import _body, COMMENTS, IMAGE_URL
 
@@ -231,3 +238,126 @@ def test_v2_signed_media_api_receipt_preserves_hash_and_rejects_credentials(isol
         assert receipt.raw_payload == body and receipt.raw_format_version == 2
         assert receipt.content_sha256 == canonical_sha256(body)
         assert session.scalar(select(func.count()).select_from(UploadReceipt)) == 1
+
+
+@pytest.mark.parametrize("cleaning_succeeds", [True, False])
+def test_direct_phone_original_package_receipt_persistence_and_status_only_outbox(
+    isolated_collection, cleaning_succeeds,
+):
+    """Synthetic phone/HTTP peers; real services/PG, not a real device/NAS proof."""
+    application, client, sessions = isolated_collection
+    settings = _settings(1).model_copy(update={
+        "product_collection_service_token": SecretStr("synthetic-service-token"),
+        "product_collection_ingest_hmac_key": SecretStr("synthetic-hmac-at-least-32-bytes-long"),
+        "product_collection_public_base_url": "https://central.example.test",
+        "product_collection_processing_enabled": True,
+        "product_collection_settlement_enabled": True,
+    })
+    application.dependency_overrides[get_settings] = lambda: settings
+    request_id = _submit(client)
+    gateway, dispatches = _gateway()
+    cleaner = Mock(spec=ProductPackageCleaner)
+    executor = ProductCollectionExecutor(
+        session_factory=sessions, settings=settings, gateway=gateway, cleaner=cleaner,
+    )
+    assert executor.dispatch_once()
+    with sessions() as session:
+        item = session.scalar(select(Item).where(Item.request_id == request_id))
+        dispatch = session.get(Dispatch, item.current_dispatch_id)
+        registration = {
+            "schemaVersion": 1, "dispatchId": str(dispatch.dispatch_id),
+            "gatewayId": dispatch.gateway_id, "externalJobId": dispatch.external_job_id,
+            "gatewayJobId": dispatch.gateway_job_id, "deviceId": "synthetic-device",
+            "captureBatchId": "synthetic-batch", "sourcePlatform": "douyin",
+            "sourceProductId": item.source_product_id,
+            "leaseExpiresAt": (datetime.now(UTC) + timedelta(minutes=15)).isoformat(),
+        }
+    registered = client.post("/internal/mobile-collection/v1/attempts/register", json=registration,
+        headers={"Authorization": "Bearer synthetic-service-token", "Idempotency-Key":
+            f"{registration['gatewayId']}:{registration['gatewayJobId']}:{registration['captureBatchId']}"})
+    assert registered.status_code == 201 and registered.headers["cache-control"] == "no-store"
+    # The NAS peer would hand this existing descriptor to the assigned phone.
+    # That external handoff is simulated here, never claimed as implemented NAS behavior.
+    control = registered.json()["controlIngest"]
+    route = urlsplit(control["uploadUrl"]).path
+    assert route == f"/api/v1/mobile-collection/ingest/{control['attemptId']}"
+    body = _body(f"{COMMENTS}.comment_medias_arr.*.media_image_src", IMAGE_URL)
+    body["taskContext"]["jobId"] = registration["gatewayJobId"]
+    raw = json.dumps(body, ensure_ascii=False).encode()
+    headers = {"Authorization": f"Bearer {control['credential']}", "Content-Type": "application/json"}
+    received = client.post(route, content=raw, headers=headers)
+    assert received.status_code == 202 and received.json()["receipt"]["status"] == "received"
+    receipt_id = UUID(received.json()["receipt"]["receiptId"])
+    with sessions() as session:
+        receipt = session.get(UploadReceipt, receipt_id)
+        assert receipt.raw_payload == body and receipt.content_sha256 == canonical_sha256(body)
+        assert receipt.state == "received" and receipt.gateway_settlement_state is None
+        assert session.scalar(select(func.count()).select_from(PersistReceipt)) == 0
+    assert len(dispatches) == 1  # Original package never goes through a NAS HTTP call.
+
+    if cleaning_succeeds:
+        cleaner.convert.return_value = CleanedProductPackage(
+            source_platform=SourcePlatform.DOUYIN, source_product_id=body["productId"],
+            captured_at=datetime.now(UTC), source_format_version=2, cleaner_version="synthetic-cleaner",
+            title="合成直传样本", source_url=None, primary_image_url=None, merchant_snapshot=None,
+            category_path=None, current_sale_price_cent=None, currency=None,
+            uu_snapshot={"productId": body["productId"], "skus": [{"skuId": "9000000000000000001"}]},
+            price_evidence={"state": "unknown"},
+        )
+    else:
+        cleaner.convert.side_effect = ValueError("synthetic cleaner failure")
+    assert executor.process_once()
+    cleaner.convert.assert_called_once_with(body)
+    with sessions() as session:
+        receipt = session.get(UploadReceipt, receipt_id)
+        assert receipt.state == ("persisted" if cleaning_succeeds else "failed")
+        assert receipt.gateway_settlement_state == "pending"
+        assert session.scalar(select(func.count()).select_from(PersistReceipt)) == int(cleaning_succeeds)
+        assert session.scalar(select(func.count()).select_from(ProductVersion)) == int(cleaning_succeeds)
+
+    # A lost 202 is retried with identical bytes, even after processing. No recapture.
+    replay = client.post(route, content=raw, headers=headers)
+    assert replay.status_code == 202
+    assert replay.json()["receipt"]["status"] == "duplicate"
+    assert replay.json()["receipt"]["receiptId"] == str(receipt_id)
+    changed = {**body, "detailBody": {"different": True}}
+    conflict = client.post(route, content=json.dumps(changed).encode(), headers=headers)
+    assert conflict.status_code == 409 and conflict.json()["code"] == "PRODUCT_COLLECTION_UPLOAD_CONFLICT"
+    assert client.post(route, content=raw, headers={**headers, "Authorization": "Bearer synthetic-wrong"}).status_code == 401
+
+    statuses = []
+
+    def status_peer(request):
+        assert request.url.path == "/api/v1/control/collection-settlements"
+        payload = json.loads(request.content)
+        assert set(payload) == {"schemaVersion", "dispatchId", "gatewayId", "externalJobId",
+            "gatewayJobId", "captureBatchId", "deviceId", "sourcePlatform", "sourceProductId",
+            "attemptId", "receiptId", "status", "errorCode", "errorMessage", "productVersionId",
+            "uuSha256", "persistedAt"}
+        assert payload["gatewayJobId"] == registration["gatewayJobId"]
+        assert payload["captureBatchId"] == registration["captureBatchId"]
+        assert payload["receiptId"] == str(receipt_id)
+        assert payload["status"] == ("succeeded" if cleaning_succeeds else "failed")
+        statuses.append(payload)
+        return httpx.Response(200, json={"ok": True, "settlement": {
+            "status": "applied", "gatewayJobId": payload["gatewayJobId"],
+            "captureBatchId": payload["captureBatchId"],
+            "jobStatus": "completed" if cleaning_succeeds else "failed",
+        }})
+
+    # Only a contract peer: this does not prove the production NAS has this route.
+    executor.gateway = HttpProductCollectionGateway(
+        base_url="https://gateway.example.test", gateway_id="synthetic-gateway",
+        control_token=None, callback_token=SecretStr("synthetic-status-token"), timeout_seconds=1,
+        client=httpx.Client(transport=httpx.MockTransport(status_peer)),
+    )
+    assert executor.settle_once()
+    assert len(statuses) == 1 and not executor.settle_once()
+    assert not executor.process_once()
+    with sessions() as session:
+        receipt = session.get(UploadReceipt, receipt_id)
+        assert receipt.gateway_settlement_state == "settled" and receipt.raw_payload == body
+        assert session.scalar(select(func.count()).select_from(UploadReceipt)) == 1
+    result = client.get(f"/api/v1/product-collection/requests/{request_id}")
+    assert result.status_code == 200
+    assert result.json()["status"] == ("succeeded" if cleaning_succeeds else "failed")
