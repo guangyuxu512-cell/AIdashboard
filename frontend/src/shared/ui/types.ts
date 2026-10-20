@@ -2,7 +2,7 @@ export type FieldWidth = 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'full'
 
 export type OverlaySize = 'sm' | 'md' | 'lg'
 
-export type DialogSize = OverlaySize | 'xl' | 'wide'
+export type DialogSize = OverlaySize | 'xl' | 'workspace'
 
 export type AppOptionValue = string | number
 

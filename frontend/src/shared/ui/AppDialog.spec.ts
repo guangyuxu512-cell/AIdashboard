@@ -23,15 +23,20 @@ describe('AppDialog', () => {
     expect(modal.vm.$attrs.class).toContain('app-dialog')
   })
 
-  it('offers an opt-in extra-large width without changing the default', () => {
+  it('offers opt-in extra-large and workspace layouts without changing the default', () => {
     const regular = mount(AppDialog, {
       props: { show: false, title: '普通弹窗' },
     })
     const extraLarge = mount(AppDialog, {
       props: { show: false, title: '资料预览', size: 'xl' },
     })
-    const wide = mount(AppDialog, {
-      props: { show: false, title: '商品编辑', size: 'wide' },
+    const workspace = mount(AppDialog, {
+      props: {
+        show: false,
+        title: '商品编辑',
+        size: 'workspace',
+        contentScrollable: false,
+      },
     })
 
     expect(regular.findComponent(NModal).vm.$attrs.style).toMatchObject({
@@ -41,10 +46,15 @@ describe('AppDialog', () => {
       width: 'var(--dialog-width-xl)',
       maxWidth: 'calc(100vw - var(--space-8))',
     })
-    expect(wide.findComponent(NModal).vm.$attrs.style).toMatchObject({
-      width: 'var(--dialog-width-wide)',
-      maxWidth: 'calc(100vw - var(--space-8))',
+    const workspaceModal = workspace.findComponent(NModal)
+    expect(workspaceModal.vm.$attrs.style).toMatchObject({
+      width: 'var(--dialog-width-workspace)',
+      maxWidth: 'var(--dialog-width-workspace)',
+      height: 'var(--dialog-height-workspace)',
+      maxHeight: 'var(--dialog-height-workspace)',
     })
+    expect(workspaceModal.props('contentScrollable')).toBe(false)
+    expect(workspaceModal.vm.$attrs.class).toContain('app-dialog--workspace')
   })
 
   it('explains why the positive action is disabled', async () => {

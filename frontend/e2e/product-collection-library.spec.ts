@@ -437,10 +437,11 @@ test('product navigation stays inside the current filtered page', async ({
 
 test('product navigation remains reachable after deep editor scrolling', async ({
   page,
-}) => {
+}, testInfo) => {
   for (const viewport of [
-    { width: 1920, height: 900 },
+    { width: 1920, height: 1080 },
     { width: 1366, height: 768 },
+    { width: 1024, height: 640 },
   ]) {
     await page.setViewportSize(viewport)
     await page.goto('/#/products')
@@ -449,18 +450,87 @@ test('product navigation remains reachable after deep editor scrolling', async (
       .first()
       .click()
     const dialog = page.locator('.app-dialog')
+    await expect(dialog).not.toHaveClass(/transition-enter-active/)
     const navigator = dialog.getByRole('complementary', {
       name: '当前范围商品列表',
     })
-    const scrollContainer = dialog.locator(
-      '.n-card__content-scrollbar > .n-scrollbar-container',
+    const contentScroll = dialog.locator('.product-preview__content')
+    const navigatorList = dialog.locator('.product-preview__navigator-list')
+    await expect(contentScroll).toHaveCount(1)
+    await expect(navigatorList).toHaveCount(1)
+
+    const overlayHost = page.locator('#app-overlay-host')
+    const [hostBox, dialogBox, contentBox, navigatorBox] = await Promise.all([
+      overlayHost.boundingBox(),
+      dialog.boundingBox(),
+      contentScroll.boundingBox(),
+      navigator.boundingBox(),
+    ])
+    expect(hostBox).not.toBeNull()
+    expect(dialogBox).not.toBeNull()
+    expect(contentBox).not.toBeNull()
+    expect(navigatorBox).not.toBeNull()
+    expect(dialogBox!.width).toBeGreaterThanOrEqual(hostBox!.width - 32)
+    expect(dialogBox!.height).toBeGreaterThanOrEqual(hostBox!.height - 32)
+    expect(navigatorBox!.width).toBeGreaterThanOrEqual(300)
+    expect(contentBox!.x + contentBox!.width).toBeLessThanOrEqual(
+      navigatorBox!.x,
     )
-    await expect(scrollContainer).toHaveCount(1)
-    await scrollContainer.evaluate((element) => {
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `04-商品编辑-${viewport.width}x${viewport.height}-顶部.png`,
+      ),
+      animations: 'disabled',
+    })
+
+    const contentMetrics = await contentScroll.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }))
+    const navigatorMetrics = await navigatorList.evaluate((element) => ({
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }))
+    expect(contentMetrics.scrollHeight).toBeGreaterThan(
+      contentMetrics.clientHeight,
+    )
+    expect(navigatorMetrics.scrollHeight).toBeGreaterThan(
+      navigatorMetrics.clientHeight,
+    )
+
+    await contentScroll.evaluate((element) => {
       element.scrollTop = element.scrollHeight
       element.dispatchEvent(new Event('scroll'))
     })
     await expect(navigator).toBeInViewport({ ratio: 1 })
+    await expect(dialog.getByRole('button', { name: '保存编辑' })).toBeVisible()
+    await expect(
+      dialog.getByRole('button', { name: '关闭', exact: true }),
+    ).toBeVisible()
+    const skuTableScroller = dialog
+      .locator(
+        '.product-preview__tabs .n-data-table-base-table-body .n-scrollbar-container',
+      )
+      .first()
+    await expect(skuTableScroller).toBeVisible()
+    await skuTableScroller.evaluate((element) => {
+      element.scrollLeft = element.scrollWidth
+      element.dispatchEvent(new Event('scroll'))
+    })
+    const priceInput = dialog.getByLabel(/当前价格/).first()
+    await expect(priceInput).toBeVisible()
+    const priceBox = await priceInput.boundingBox()
+    expect(priceBox).not.toBeNull()
+    expect(priceBox!.x).toBeGreaterThanOrEqual(contentBox!.x)
+    expect(priceBox!.x + priceBox!.width).toBeLessThanOrEqual(
+      contentBox!.x + contentBox!.width,
+    )
+    await page.screenshot({
+      path: testInfo.outputPath(
+        `05-商品编辑-${viewport.width}x${viewport.height}-深滚.png`,
+      ),
+      animations: 'disabled',
+    })
     const secondProduct = navigator.getByRole('button', {
       name: /^演示商品资料 2 拼多多 · 测试款$/,
     })
@@ -495,7 +565,7 @@ test('product library renders fixed views and editable SKU state', async ({
     dialog.getByRole('complementary', { name: '当前范围商品列表' }),
   ).toBeVisible()
   await page.screenshot({
-    path: testInfo.outputPath('02-商品编辑图片区与范围导航.png'),
+    path: testInfo.outputPath('02-近全视口商品编辑与整列导航.png'),
     animations: 'disabled',
   })
 
@@ -588,8 +658,12 @@ test('product workspaces remain usable in four themes and narrow viewport', asyn
       page.getByText('编辑商品', { exact: true }).last(),
     ).toBeVisible()
     const dialog = page.locator('.app-dialog')
+    await expect(dialog).not.toHaveClass(/transition-enter-active/)
+    const hostBox = await page.locator('#app-overlay-host').boundingBox()
     const box = await dialog.boundingBox()
-    expect(box?.width).toBeLessThanOrEqual(928)
+    expect(hostBox).not.toBeNull()
+    expect(box?.width).toBeGreaterThanOrEqual(hostBox!.width - 32)
+    expect(box?.width).toBeLessThanOrEqual(hostBox!.width)
     await page.screenshot({
       path: testInfo.outputPath(`${theme}-商品预览.png`),
       animations: 'disabled',

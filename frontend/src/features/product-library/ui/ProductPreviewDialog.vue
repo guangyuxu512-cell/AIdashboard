@@ -39,6 +39,7 @@ const props = withDefaults(
       id: string
       title: string
       subtitle: string
+      imageUrl: string | null
     }>
   }>(),
   {
@@ -505,12 +506,23 @@ const allText = computed(() => {
   <AppDialog
     :show="show"
     title="编辑商品"
-    size="wide"
+    size="workspace"
+    :content-scrollable="false"
     positive-text="关闭"
     :show-negative="false"
     @update:show="!$event && requestClose()"
     @confirm="requestClose"
   >
+    <template #footer-start>
+      <div v-if="editing" class="product-preview__footer-actions">
+        <AppButton :disabled="saving" @click="cancelEditing">
+          取消编辑
+        </AppButton>
+        <AppButton tone="primary" :loading="saving" @click="saveEditing">
+          保存编辑
+        </AppButton>
+      </div>
+    </template>
     <template v-if="product">
       <div class="product-preview__layout">
         <div class="product-preview__content">
@@ -546,20 +558,8 @@ const allText = computed(() => {
                   />
                 </div>
               </div>
-              <div class="product-preview__heading-actions">
-                <div v-if="editing" class="product-preview__copy-actions">
-                  <AppButton :disabled="saving" @click="cancelEditing">
-                    取消编辑
-                  </AppButton>
-                  <AppButton
-                    tone="primary"
-                    :loading="saving"
-                    @click="saveEditing"
-                  >
-                    保存编辑
-                  </AppButton>
-                </div>
-                <div v-else class="product-preview__copy-actions">
+              <div v-if="!editing" class="product-preview__heading-actions">
+                <div class="product-preview__copy-actions">
                   <AppButton @click="startEditing">编辑商品资料</AppButton>
                   <AppButton
                     size="small"
@@ -817,17 +817,29 @@ const allText = computed(() => {
               :aria-current="item.id === product.id ? 'true' : undefined"
               @click="requestNavigateTo(item.id)"
             >
-              <span class="product-preview__navigator-copy">
-                <NTooltip>
-                  <template #trigger>
-                    <span class="product-preview__navigator-title">
-                      {{ item.title }}
-                    </span>
-                  </template>
-                  {{ item.title }}
-                </NTooltip>
-                <span class="product-preview__navigator-subtitle">
-                  {{ item.subtitle }}
+              <span class="product-preview__navigator-row">
+                <span
+                  class="product-preview__navigator-thumbnail"
+                  aria-hidden="true"
+                >
+                  <ProductImage
+                    :src="item.imageUrl"
+                    :title="item.title"
+                    size="thumbnail"
+                  />
+                </span>
+                <span class="product-preview__navigator-copy">
+                  <NTooltip>
+                    <template #trigger>
+                      <span class="product-preview__navigator-title">
+                        {{ item.title }}
+                      </span>
+                    </template>
+                    {{ item.title }}
+                  </NTooltip>
+                  <span class="product-preview__navigator-subtitle">
+                    {{ item.subtitle }}
+                  </span>
                 </span>
               </span>
             </AppButton>
@@ -857,12 +869,20 @@ const allText = computed(() => {
 <style scoped>
 .product-preview__layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 220px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 22vw, 360px);
+  align-items: stretch;
   gap: var(--space-4);
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
 }
 .product-preview__content {
   min-width: 0;
+  min-height: 0;
+  padding-right: var(--space-1);
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .product-preview__summary {
   display: grid;
@@ -889,13 +909,14 @@ const allText = computed(() => {
   gap: var(--space-2);
 }
 .product-preview__navigator {
-  position: sticky;
-  top: var(--space-6);
-  bottom: 0;
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   gap: var(--space-2);
   padding: var(--space-3);
+  overflow: hidden;
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-card);
   background: var(--bg-surface);
@@ -907,19 +928,41 @@ const allText = computed(() => {
 }
 .product-preview__navigator-list {
   display: grid;
+  align-content: start;
   gap: var(--space-1);
-  max-height: calc(var(--table-list-row-slot-height) * 5);
+  min-height: 0;
+  padding-right: var(--space-1);
   overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 .product-preview__navigator-item {
   min-width: 0;
   height: auto;
+  min-height: 72px;
   padding: var(--space-2);
   border: 1px solid transparent;
 }
 .product-preview__navigator-item--active {
   border-color: var(--border-default);
   background: var(--color-primary-soft);
+}
+.product-preview__navigator-row {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr);
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  gap: var(--space-3);
+}
+.product-preview__navigator-thumbnail {
+  display: block;
+  width: 48px;
+  height: 48px;
+}
+.product-preview__navigator-thumbnail :deep(.product-image) {
+  --product-image-size: 48px;
+  width: 48px;
+  height: 48px;
 }
 .product-preview__navigator-copy {
   display: grid;
@@ -932,14 +975,20 @@ const allText = computed(() => {
 .product-preview__navigator-subtitle {
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 .product-preview__navigator-title {
+  display: -webkit-box;
   color: var(--text-primary);
+  line-height: var(--line-height-body);
+  text-align: left;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .product-preview__navigator-subtitle {
   color: var(--text-secondary);
   font-size: var(--font-size-secondary);
+  text-align: left;
+  white-space: nowrap;
 }
 .product-preview__navigation {
   display: flex;
@@ -948,6 +997,7 @@ const allText = computed(() => {
   gap: var(--space-2);
 }
 .product-preview__copy-actions,
+.product-preview__footer-actions,
 .product-preview__inline-value {
   display: flex;
   align-items: center;
@@ -1077,9 +1127,10 @@ const allText = computed(() => {
 @media (max-width: 820px) {
   .product-preview__layout {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) 220px;
   }
   .product-preview__navigator {
-    position: static;
+    height: 220px;
   }
   .product-preview__summary-heading {
     flex-direction: column;
@@ -1093,11 +1144,6 @@ const allText = computed(() => {
   }
   .product-preview__sku {
     grid-template-columns: 64px minmax(140px, 1fr);
-  }
-}
-@media (max-height: 820px) and (min-width: 821px) {
-  .product-preview__navigator-list {
-    max-height: calc(var(--table-list-row-slot-height) * 3);
   }
 }
 </style>

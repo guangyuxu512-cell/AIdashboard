@@ -290,6 +290,7 @@ const previewNavigationItems = computed(() =>
     id: item.id,
     title: item.title,
     subtitle: `${getPlatformDefinition(item.platform)?.label ?? item.platform} · ${item.groupName ?? '未分组'}`,
+    imageUrl: item.mainImageUrl,
   })),
 )
 

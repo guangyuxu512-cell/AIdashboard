@@ -170,9 +170,10 @@ Dialog／Drawer 内的 `AppSelect` 菜单也必须脱离可滚动、可裁切的
 `--dialog-max-height` 计算，安全留白统一使用 `--overlay-viewport-safe-gap`；业务组件不得复制
 `100dvh - x` 或自定义另一套安全间距。
 
-数据密集型商品编辑器可显式使用 `AppDialog size="wide"`：桌面目标宽度由
-`--dialog-width-wide`（1440px）统一控制，并继续受 AppDialog 的视口安全 `maxWidth` 约束。
-该选项不改变 `sm/md/lg/xl` 既有消费者，也不得用于普通确认弹窗扩宽。
+数据密集型商品编辑器可显式使用 `AppDialog size="workspace"`：宽度占据
+`AppOverlayHost` 可用宽度并保留 8px 外边距，高度占据 Topbar 以下可用高度并保留 8px
+外边距。该模式由 `--dialog-width-workspace`／`--dialog-height-workspace` 统一控制，不进入
+系统全屏，不改变 `sm/md/lg/xl` 既有消费者，也不得用于普通确认弹窗扩宽。
 
 标准结构固定为：
 
@@ -186,8 +187,10 @@ Footer（固定）
 
 内容较少时 Dialog 保持自然高度且不显示无意义滚动条；内容超过可用视口时只收缩并滚动
 Body，标题和操作区始终可见。背景 Page 不参与弹层内容滚动。一个 Overlay 默认只能有一个
-主纵向滚动容器；日志、代码等确有独立滚动语义的区域由 Feature 明确设计。Drawer 保持
-现有 `AppDrawer` / `NDrawerContent` 布局，不套用 Dialog 内部结构。
+主纵向滚动容器；日志、代码等确有独立滚动语义的区域由 Feature 明确设计。商品编辑
+`workspace` 是显式例外：外层 Body 不滚动，左侧编辑区与右侧当前范围列表各自只有一个内部
+纵向滚动区，Header 和 Footer 保持固定；不得再嵌套第三个主滚动区。Drawer 保持现有
+`AppDrawer` / `NDrawerContent` 布局，不套用 Dialog 内部结构。
 
 ## Compact Management Fill 链路
 

@@ -10,7 +10,22 @@ const dialogWidths: Record<DialogSize, string> = {
   md: 'var(--dialog-width-md)',
   lg: 'var(--dialog-width-lg)',
   xl: 'var(--dialog-width-xl)',
-  wide: 'var(--dialog-width-wide)',
+  workspace: 'var(--dialog-width-workspace)',
+}
+
+function dialogStyle(size: DialogSize) {
+  if (size === 'workspace')
+    return {
+      width: dialogWidths[size],
+      maxWidth: 'var(--dialog-width-workspace)',
+      height: 'var(--dialog-height-workspace)',
+      maxHeight: 'var(--dialog-height-workspace)',
+    }
+  return {
+    width: dialogWidths[size],
+    maxWidth: 'calc(100vw - var(--space-8))',
+    maxHeight: 'var(--dialog-max-height)',
+  }
 }
 
 withDefaults(
@@ -24,6 +39,7 @@ withDefaults(
     loading?: boolean
     positiveDisabled?: boolean
     positiveDisabledReason?: string | null
+    contentScrollable?: boolean
     to?: string | HTMLElement
   }>(),
   {
@@ -34,6 +50,7 @@ withDefaults(
     loading: false,
     positiveDisabled: false,
     positiveDisabledReason: null,
+    contentScrollable: true,
     to: APP_OVERLAY_HOST_SELECTOR,
   },
 )
@@ -54,13 +71,9 @@ function cancel(): void {
   <NModal
     :show="show"
     preset="card"
-    class="app-dialog"
-    content-scrollable
-    :style="{
-      width: dialogWidths[size],
-      maxWidth: 'calc(100vw - var(--space-8))',
-      maxHeight: 'var(--dialog-max-height)',
-    }"
+    :class="['app-dialog', { 'app-dialog--workspace': size === 'workspace' }]"
+    :content-scrollable="contentScrollable"
+    :style="dialogStyle(size)"
     :bordered="true"
     :mask-closable="false"
     :to="to"
@@ -127,9 +140,14 @@ function cancel(): void {
   flex: 0 0 auto;
 }
 
-.app-dialog > .n-card__content-scrollbar {
+.app-dialog > .n-card__content-scrollbar,
+.app-dialog > .n-card-content {
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.app-dialog--workspace > .n-card-content {
+  overflow: hidden;
 }
 
 .app-dialog__heading {
