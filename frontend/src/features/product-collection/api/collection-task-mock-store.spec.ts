@@ -26,7 +26,7 @@ describe('collection task mock boundary', () => {
     const page = await service.list({
       keyword: '998877665544332211',
       platform: 'douyin',
-      status: 'queued',
+      status: 'pending',
       page: 1,
       pageSize: 20,
     })

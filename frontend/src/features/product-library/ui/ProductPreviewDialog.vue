@@ -35,6 +35,9 @@ const props = withDefaults(
     canPrevious?: boolean
     canNext?: boolean
     positionLabel?: string
+    editable?: boolean
+    exportable?: boolean
+    groupable?: boolean
     navigationItems?: ReadonlyArray<{
       id: string
       title: string
@@ -47,6 +50,9 @@ const props = withDefaults(
     canPrevious: false,
     canNext: false,
     positionLabel: '',
+    editable: true,
+    exportable: true,
+    groupable: true,
     navigationItems: () => [],
   },
 )
@@ -119,7 +125,7 @@ watch(
     const next = draftFromProduct(product)
     editDraft.value = cloneDraft(next)
     editBaseline.value = next
-    editing.value = true
+    editing.value = props.editable
     validationMessage.value = null
     detailTab.value = 'sku'
   },
@@ -133,7 +139,7 @@ const hasUnsavedChanges = computed(
 )
 
 function startEditing() {
-  if (!props.product) return
+  if (!props.product || !props.editable) return
   const next = draftFromProduct(props.product)
   editDraft.value = cloneDraft(next)
   editBaseline.value = next
@@ -505,7 +511,7 @@ const allText = computed(() => {
 <template>
   <AppDialog
     :show="show"
-    title="编辑商品"
+    :title="editable ? '编辑商品' : '商品详情'"
     size="workspace"
     :content-scrollable="false"
     positive-text="关闭"
@@ -514,7 +520,7 @@ const allText = computed(() => {
     @confirm="requestClose"
   >
     <template #footer-start>
-      <div v-if="editing" class="product-preview__footer-actions">
+      <div v-if="editing && editable" class="product-preview__footer-actions">
         <AppButton :disabled="saving" @click="cancelEditing">
           取消编辑
         </AppButton>
@@ -529,7 +535,10 @@ const allText = computed(() => {
           <section class="product-preview__summary">
             <div class="product-preview__summary-heading">
               <div class="product-preview__summary-title">
-                <NForm v-if="editing && editDraft" label-placement="top">
+                <NForm
+                  v-if="editing && editable && editDraft"
+                  label-placement="top"
+                >
                   <NFormItem label="商品标题" required>
                     <AppInput
                       v-model="editDraft.title"
@@ -547,7 +556,10 @@ const allText = computed(() => {
                     {{
                       product.currentPrice === null
                         ? '—'
-                        : `¥${product.currentPrice}`
+                        : product.currency &&
+                            !['CNY', 'RMB'].includes(product.currency)
+                          ? `${product.currency} ${product.currentPrice}`
+                          : `¥${product.currentPrice}`
                     }}
                   </span>
                   <span>分组 {{ product.groupName ?? '未分组' }}</span>
@@ -560,7 +572,9 @@ const allText = computed(() => {
               </div>
               <div v-if="!editing" class="product-preview__heading-actions">
                 <div class="product-preview__copy-actions">
-                  <AppButton @click="startEditing">编辑商品资料</AppButton>
+                  <AppButton v-if="editable" @click="startEditing"
+                    >编辑商品资料</AppButton
+                  >
                   <AppButton
                     size="small"
                     @click="copy(product.title, '商品标题')"
@@ -569,12 +583,18 @@ const allText = computed(() => {
                   <AppButton size="small" @click="copy(basicText, '基础信息')"
                     >复制基础信息</AppButton
                   >
-                  <AppButton size="small" @click="$emit('group', product)"
+                  <AppButton
+                    size="small"
+                    :disabled="!groupable"
+                    :title="groupable ? undefined : '正式分组写入尚未接入'"
+                    @click="$emit('group', product)"
                     >移动分组</AppButton
                   >
                   <AppButton
                     tone="primary"
                     size="small"
+                    :disabled="!exportable"
+                    :title="exportable ? undefined : '正式导出尚未接入'"
                     @click="$emit('export', product)"
                   >
                     导出 TXT
@@ -596,6 +616,12 @@ const allText = computed(() => {
               </NDescriptionsItem>
               <NDescriptionsItem label="来源链接">
                 {{ product.sourceUrl ? '已记录' : '—' }}
+              </NDescriptionsItem>
+              <NDescriptionsItem label="最近采集状态">
+                {{ product.latestCollectionState ?? '—' }}
+              </NDescriptionsItem>
+              <NDescriptionsItem label="最近采集错误" :span="2">
+                {{ product.latestCollectionErrorCode ?? '—' }}
               </NDescriptionsItem>
             </NDescriptions>
           </section>
@@ -639,7 +665,7 @@ const allText = computed(() => {
                     </template>
                     {{ image.caption }}
                   </NTooltip>
-                  <div class="product-preview__image-actions">
+                  <div v-if="editable" class="product-preview__image-actions">
                     <AppButton size="small" @click="replaceImage"
                       >替换</AppButton
                     >
@@ -675,7 +701,7 @@ const allText = computed(() => {
             class="product-preview__tabs"
           >
             <NTabPane name="sku" tab="SKU">
-              <template v-if="editing && editDraft">
+              <template v-if="editing && editable && editDraft">
                 <div class="product-preview__detail-actions">
                   <AppButton size="small" @click="addSku">新增 SKU</AppButton>
                 </div>
@@ -736,11 +762,12 @@ const allText = computed(() => {
                     </div>
                   </NListItem>
                 </NList>
+                <NText v-if="!product.skus.length" depth="3">—</NText>
               </template>
             </NTabPane>
             <NTabPane name="attributes" tab="商品属性">
               <AppTable
-                v-if="editing && editDraft"
+                v-if="editing && editable && editDraft"
                 :columns="attributeEditColumns"
                 :data="editDraft.attributes"
                 bordered
@@ -754,6 +781,7 @@ const allText = computed(() => {
                   {{ item.value }}
                 </NDescriptionsItem>
               </NDescriptions>
+              <NText v-if="!product.attributes.length" depth="3">—</NText>
             </NTabPane>
             <NTabPane name="package" tab="资料包">
               <NAlert v-if="product.mockEditedAt" type="info">
@@ -768,6 +796,7 @@ const allText = computed(() => {
                   <template #suffix><StatusTag :label="file.kind" /></template>
                 </NListItem>
               </NList>
+              <NText v-if="!product.packageFiles.length" depth="3">—</NText>
             </NTabPane>
             <NTabPane name="history" tab="采集历史">
               <NList bordered>
@@ -793,6 +822,7 @@ const allText = computed(() => {
                   </template>
                 </NListItem>
               </NList>
+              <NText v-if="!product.history.length" depth="3">—</NText>
             </NTabPane>
           </AppTabs>
         </div>

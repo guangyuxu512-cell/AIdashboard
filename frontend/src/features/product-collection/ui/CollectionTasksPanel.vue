@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, shallowRef, watch } from 'vue'
+import { computed, h, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import {
   NEllipsis,
@@ -56,44 +56,87 @@ const detail = ref<CollectionTask | null>(null)
 const platform = ref<PlatformCode>('douyin')
 const inputMode = ref<CollectionInputMode>('product')
 const draft = ref('')
+const pendingSubmission = ref<{ signature: string; key: string } | null>(null)
 const keyword = ref('')
 const filterPlatform = ref<PlatformCode | null>(null)
 const status = ref<CollectionTaskStatus | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
 let revision = 0
+let pollTimer: ReturnType<typeof setTimeout> | null = null
 
-const platformItems = (['douyin', 'pdd', 'taobao'] as PlatformCode[]).map(
-  (code) => ({ key: code, label: getPlatformDefinition(code)?.label ?? code }),
+function clearPoll() {
+  if (pollTimer !== null) clearTimeout(pollTimer)
+  pollTimer = null
+}
+
+function schedulePoll() {
+  clearPoll()
+  if (
+    service.value?.mode !== 'real' ||
+    !pageData.value?.items.some((item) =>
+      ['pending', 'running'].includes(item.status),
+    )
+  )
+    return
+  pollTimer = setTimeout(() => void fetchList(true), 2000)
+}
+
+onBeforeUnmount(clearPoll)
+
+const platformItems = computed(() =>
+  (service.value?.mode === 'real'
+    ? (['douyin'] as PlatformCode[])
+    : (['douyin', 'pdd', 'taobao'] as PlatformCode[])
+  ).map((code) => ({
+    key: code,
+    label: getPlatformDefinition(code)?.label ?? code,
+  })),
 )
-const platformOptions = [
+const platformOptions = computed(() => [
   { label: '全部平台', value: 'all' },
-  ...platformItems.map((item) => ({ label: item.label, value: item.key })),
-]
-const inputModeOptions = [
+  ...platformItems.value.map((item) => ({
+    label: item.label,
+    value: item.key,
+  })),
+])
+const inputModeOptions = computed(() => [
   { label: '商品 ID／链接', value: 'product' },
-  { label: '店铺口令', value: 'shop-code' },
-]
+  ...(service.value?.supportsShopCode
+    ? [{ label: '店铺口令', value: 'shop-code' }]
+    : []),
+])
 const statusLabels: Record<CollectionTaskStatus, string> = {
-  queued: '排队中',
-  processing: '处理中',
-  completed: '已完成',
+  pending: '排队中',
+  running: '处理中',
+  partial: '部分完成',
+  succeeded: '已完成',
   failed: '失败',
-  cancelled: '已取消',
+  canceled: '已取消',
 }
 const statusTones = {
-  queued: 'neutral',
-  processing: 'info',
-  completed: 'success',
+  pending: 'neutral',
+  running: 'info',
+  partial: 'warning',
+  succeeded: 'success',
   failed: 'error',
-  cancelled: 'neutral',
+  canceled: 'neutral',
 } as const
 const statusItems = computed(() => {
+  if (!service.value?.supportsListFilters)
+    return [{ key: 'all', label: '全部任务' }]
   const counts = pageData.value?.counts
   return [
     { key: 'all', label: `全部 ${counts?.all ?? 0}` },
     ...(
-      ['queued', 'processing', 'completed', 'failed', 'cancelled'] as const
+      [
+        'pending',
+        'running',
+        'partial',
+        'succeeded',
+        'failed',
+        'canceled',
+      ] as const
     ).map((key) => ({
       key,
       label: `${statusLabels[key]} ${counts?.[key] ?? 0}`,
@@ -102,19 +145,29 @@ const statusItems = computed(() => {
 })
 
 async function loadService() {
+  clearPoll()
   const current = ++revision
   service.value = null
   loadError.value = null
   try {
     const resolved = await createCollectionTaskService(apiMode)
-    if (current === revision) service.value = resolved
+    if (current === revision) {
+      service.value = resolved
+      if (!resolved.supportsListFilters) {
+        keyword.value = ''
+        filterPlatform.value = null
+        status.value = null
+      }
+      if (!resolved.supportsShopCode) inputMode.value = 'product'
+      if (resolved.mode === 'real') platform.value = 'douyin'
+    }
   } catch (error) {
     if (current === revision)
       loadError.value = error instanceof Error ? error.message : '加载失败'
   }
 }
 
-async function fetchList() {
+async function fetchList(preserveSelection = false) {
   if (!service.value?.available) return
   loading.value = true
   listError.value = null
@@ -127,13 +180,20 @@ async function fetchList() {
       pageSize: pageSize.value,
     })
     pageData.value = result
+    if (detail.value && service.value.mode === 'real')
+      try {
+        detail.value = await service.value.detail(detail.value.id)
+      } catch {
+        // Keep the last visible detail while the list remains refreshable.
+      }
     page.value = result.page
-    selected.value = []
+    if (!preserveSelection) selected.value = []
   } catch (error) {
     listError.value =
       error instanceof Error ? error.message : '任务列表加载失败'
   } finally {
     loading.value = false
+    schedulePoll()
   }
 }
 
@@ -145,12 +205,16 @@ watch(
   },
   { immediate: true },
 )
-watch([status, filterPlatform, page, pageSize], fetchList)
+watch([status, filterPlatform, page, pageSize], () => void fetchList())
 
 function setPlatform(key: string) {
   platform.value = key as PlatformCode
   inputMode.value = 'product'
 }
+
+watch([draft, platform, inputMode], () => {
+  pendingSubmission.value = null
+})
 
 function setStatus(key: string) {
   status.value = key === 'all' ? null : (key as CollectionTaskStatus)
@@ -184,6 +248,7 @@ function validate(values: string[]): string | null {
   if (!values.length) return '请输入至少一个商品 ID、链接或店铺口令'
   if (new Set(values).size !== values.length)
     return '输入中存在重复项，请检查后再创建'
+  if (values.length > 100) return '每次最多提交 100 个商品'
   if (inputMode.value === 'shop-code') return null
   const invalid = values.find(
     (value) => !/^\d{8,}$/.test(value) && !/^https?:\/\/\S+$/i.test(value),
@@ -201,17 +266,38 @@ async function createTasks() {
   }
   busy.value = true
   try {
-    const result = await service.value.create({
+    const signature = JSON.stringify({
       platform: platform.value,
       inputMode: inputMode.value,
       values,
     })
-    if (result.created.length)
-      message.info(
-        `已演示创建 ${result.created.length} 个采集任务；未向手机派发`,
+    if (pendingSubmission.value?.signature !== signature)
+      pendingSubmission.value = { signature, key: crypto.randomUUID() }
+    const result = await service.value.create({
+      platform: platform.value,
+      inputMode: inputMode.value,
+      values,
+      submissionKey: pendingSubmission.value.key,
+    })
+    if (result.created.length) {
+      const itemCount = result.created.reduce(
+        (total, task) => total + task.itemCount,
+        0,
       )
-    if (result.duplicates.length)
-      message.warning(`已跳过 ${result.duplicates.length} 个重复任务`)
+      message.success(
+        result.created[0]?.reused
+          ? '相同提交已存在，已复用原采集任务'
+          : service.value.mode === 'mock'
+            ? `已演示创建 ${result.created.length} 个采集任务；未向手机派发`
+            : `已提交 ${itemCount} 个商品资料采集任务`,
+      )
+    }
+    if (result.duplicates.length && !result.created[0]?.reused)
+      message.info(
+        service.value.mode === 'mock'
+          ? `已跳过 ${result.duplicates.length} 个重复任务`
+          : '相同提交已存在，已复用原采集任务',
+      )
     if (result.created.length) draft.value = ''
     page.value = 1
     await fetchList()
@@ -227,8 +313,10 @@ async function retry(ids: string[]) {
   busy.value = true
   try {
     const count = await service.value.retry(ids)
-    message.info(count ? `已演示重试 ${count} 个任务` : '没有可重试的任务')
+    message.info(count ? `已提交 ${count} 个明细重试` : '没有可有限重试的明细')
     await fetchList()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '重试失败')
   } finally {
     busy.value = false
   }
@@ -239,8 +327,10 @@ async function cancel(ids: string[]) {
   busy.value = true
   try {
     const count = await service.value.cancel(ids)
-    message.info(count ? `已演示取消 ${count} 个任务` : '没有可取消的任务')
+    message.info(count ? `已取消 ${count} 个采集请求` : '没有可取消的请求')
     await fetchList()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '取消失败')
   } finally {
     busy.value = false
   }
@@ -250,6 +340,43 @@ function viewProduct(row: CollectionTask) {
   void router.push({ path: '/products', query: { productId: row.productId } })
 }
 
+async function openDetail(row: CollectionTask) {
+  if (!service.value?.available) return
+  try {
+    detail.value = await service.value.detail(row.id)
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '任务详情加载失败')
+  }
+}
+
+async function retryItem(itemId: string) {
+  if (!service.value?.available || busy.value) return
+  busy.value = true
+  try {
+    detail.value = await service.value.retryItem(itemId)
+    message.success('已提交有限重试')
+    await fetchList()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '该明细不能重试')
+  } finally {
+    busy.value = false
+  }
+}
+
+async function recaptureItem(itemId: string) {
+  if (!service.value?.available || busy.value) return
+  busy.value = true
+  try {
+    detail.value = await service.value.recaptureItem(itemId)
+    message.success('已提交重新采集')
+    await fetchList()
+  } catch (error) {
+    message.error(error instanceof Error ? error.message : '重新采集失败')
+  } finally {
+    busy.value = false
+  }
+}
+
 const columns = computed<DataTableColumns<CollectionTask>>(() => [
   { type: 'selection', width: 44, fixed: 'left' },
   {
@@ -257,7 +384,8 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
     key: 'platform',
     width: 112,
     align: 'center',
-    render: (row) => h(PlatformDisplay, { code: row.platform }),
+    render: (row) =>
+      row.platform ? h(PlatformDisplay, { code: row.platform }) : '—',
   },
   {
     title: '商品／提交内容',
@@ -306,17 +434,17 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
       h('div', { class: 'collection-task-actions' }, [
         h(
           AppButton,
-          { tone: 'link', size: 'small', onClick: () => (detail.value = row) },
+          { tone: 'link', size: 'small', onClick: () => openDetail(row) },
           () => '详情',
         ),
-        row.status === 'completed' && row.productId
+        row.status === 'succeeded' && row.productId
           ? h(
               AppButton,
               { size: 'small', onClick: () => viewProduct(row) },
               () => '查看商品',
             )
           : null,
-        row.status === 'failed'
+        row.status === 'failed' || row.status === 'partial'
           ? h(
               AppButton,
               { size: 'small', onClick: () => retry([row.id]) },
@@ -354,7 +482,11 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
           </template>
         </ContextSwitchBar>
         <template v-if="platform === 'douyin'">
-          <AppRadio v-model="inputMode" :options="inputModeOptions" />
+          <AppRadio
+            v-if="service.supportsShopCode"
+            v-model="inputMode"
+            :options="inputModeOptions"
+          />
           <div class="collection-task-composer__entry">
             <AppInput
               v-model="draft"
@@ -380,6 +512,7 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
 
       <ManagementListSection density="compact">
         <ContextSwitchBar
+          v-if="service.supportsListFilters"
           label="采集任务状态"
           appearance="bare"
           :items="statusItems"
@@ -387,21 +520,23 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
           @select="setStatus"
         />
         <FilterBar class="collection-task-filter" density="compact">
-          <FilterField width="lg">
-            <AppInput
-              v-model="keyword"
-              placeholder="搜索商品标题、ID或提交内容"
-              clearable
-              @keyup.enter="searchTasks"
-            />
-          </FilterField>
-          <FilterField width="sm">
-            <AppSelect
-              :model-value="filterPlatform ?? 'all'"
-              :options="platformOptions"
-              @update:model-value="setFilterPlatform"
-            />
-          </FilterField>
+          <template v-if="service.supportsListFilters">
+            <FilterField width="lg">
+              <AppInput
+                v-model="keyword"
+                placeholder="搜索商品标题、ID或提交内容"
+                clearable
+                @keyup.enter="searchTasks"
+              />
+            </FilterField>
+            <FilterField width="sm">
+              <AppSelect
+                :model-value="filterPlatform ?? 'all'"
+                :options="platformOptions"
+                @update:model-value="setFilterPlatform"
+              />
+            </FilterField>
+          </template>
           <template #actions>
             <span v-if="selected.length">已选 {{ selected.length }} 项</span>
             <AppButton @click="searchTasks">查询</AppButton>
@@ -439,7 +574,7 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
           show-header-when-empty
           empty-description="暂无采集任务"
           @update:checked-row-keys="selected = $event"
-          @retry="fetchList"
+          @retry="() => fetchList()"
         />
         <PaginationBar
           v-model:page="page"
@@ -454,7 +589,10 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
     <CollectionTaskDetailDialog
       :show="Boolean(detail)"
       :task="detail"
+      :busy="busy"
       @update:show="detail = $event ? detail : null"
+      @retry-item="retryItem"
+      @recapture-item="recaptureItem"
     />
   </div>
 </template>

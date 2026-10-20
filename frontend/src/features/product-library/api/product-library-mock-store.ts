@@ -121,6 +121,17 @@ export function createProductLibraryMockService(): ProductLibraryService {
   return {
     available: true,
     mode: 'mock',
+    capabilities: {
+      platformFilter: true,
+      categoryFilter: true,
+      edit: true,
+      createGroup: true,
+      moveGroup: true,
+      remove: true,
+      recollect: true,
+      import: true,
+      export: true,
+    },
     async groups() {
       refreshCounts()
       return structuredClone(groups)

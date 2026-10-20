@@ -99,7 +99,8 @@ const platformOptions = [
 const groupOptions = computed(() => [
   { label: '全部分组', value: 'all' },
   ...groups.value.map((group) => ({
-    label: `${group.name}（${group.count}）`,
+    label:
+      group.count === null ? group.name : `${group.name}（${group.count}）`,
     value: group.id,
   })),
 ])
@@ -121,6 +122,12 @@ async function loadService() {
     service.value = resolved
     if (!resolved.available) return
     groups.value = await resolved.groups()
+    if (
+      resolved.mode === 'real' &&
+      libraryView.value === 'grouped' &&
+      !groupId.value
+    )
+      groupId.value = groups.value[0]?.id ?? null
   } catch (error) {
     if (current === revision)
       loadError.value =
@@ -190,7 +197,10 @@ function reset() {
 function setLibraryView(value: string) {
   if (value !== 'all' && value !== 'ungrouped' && value !== 'grouped') return
   libraryView.value = value
-  groupId.value = null
+  groupId.value =
+    value === 'grouped' && service.value?.mode === 'real'
+      ? (groups.value[0]?.id ?? null)
+      : null
   page.value = 1
   selected.value = []
   const query = { ...route.query }
@@ -316,7 +326,13 @@ async function navigatePreview(direction: 'previous' | 'next') {
 }
 
 async function savePreviewEdit(draft: ProductEditDraft) {
-  if (!service.value?.available || !preview.value || previewSaving.value) return
+  if (
+    !service.value?.available ||
+    !service.value.capabilities.edit ||
+    !preview.value ||
+    previewSaving.value
+  )
+    return
   previewSaving.value = true
   try {
     preview.value = await service.value.saveEdit(preview.value.id, draft)
@@ -338,6 +354,10 @@ function closePreview(show: boolean) {
 }
 
 function openExport(rows: LibraryProduct[]) {
+  if (!service.value?.capabilities.export) {
+    message.warning('正式商品库导出尚未接入')
+    return
+  }
   exportProducts.value = rows
 }
 
@@ -363,13 +383,26 @@ function confirmImport(payload: {
 }
 
 function openGroup(ids: string[], title = '移动商品分组') {
+  if (!service.value?.capabilities.moveGroup && ids.length) {
+    message.warning('正式商品库移动分组尚未接入')
+    return
+  }
+  if (!service.value?.capabilities.createGroup && !ids.length) {
+    message.warning('正式商品库新建分组尚未接入')
+    return
+  }
   groupTargetIds.value = ids
   groupDialogTitle.value = title
   groupDialogOpen.value = true
 }
 
 async function createGroup(name: string) {
-  if (!service.value?.available || busy.value) return
+  if (
+    !service.value?.available ||
+    !service.value.capabilities.createGroup ||
+    busy.value
+  )
+    return
   busy.value = true
   try {
     await service.value.createGroup(name)
@@ -383,7 +416,12 @@ async function createGroup(name: string) {
 }
 
 async function moveGroup(target: string | null) {
-  if (!service.value?.available || busy.value || !groupTargetIds.value.length)
+  if (
+    !service.value?.available ||
+    !service.value.capabilities.moveGroup ||
+    busy.value ||
+    !groupTargetIds.value.length
+  )
     return
   busy.value = true
   try {
@@ -401,7 +439,13 @@ async function moveGroup(target: string | null) {
 }
 
 async function recollectSelected() {
-  if (!service.value?.available || busy.value || !selected.value.length) return
+  if (
+    !service.value?.available ||
+    !service.value.capabilities.recollect ||
+    busy.value ||
+    !selected.value.length
+  )
+    return
   busy.value = true
   try {
     const count = await service.value.recollect(selected.value.map(String))
@@ -413,7 +457,13 @@ async function recollectSelected() {
 }
 
 async function removeProducts(ids: string[]) {
-  if (!service.value?.available || busy.value || !ids.length) return
+  if (
+    !service.value?.available ||
+    !service.value.capabilities.remove ||
+    busy.value ||
+    !ids.length
+  )
+    return
   busy.value = true
   try {
     const count = await service.value.remove(ids)
@@ -492,7 +542,9 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
     render: (row) =>
       row.currentPrice === null
         ? h(NText, { depth: 3 }, () => '—')
-        : `¥${row.currentPrice}`,
+        : row.currency && !['CNY', 'RMB'].includes(row.currency)
+          ? `${row.currency} ${row.currentPrice}`
+          : `¥${row.currentPrice}`,
   },
   {
     title: '采集时间',
@@ -512,11 +564,18 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         h(
           AppButton,
           { tone: 'link', size: 'small', onClick: () => openPreview(row) },
-          () => '编辑商品',
+          () => (service.value?.capabilities.edit ? '编辑商品' : '查看商品'),
         ),
         h(
           AppButton,
-          { size: 'small', onClick: () => openExport([row]) },
+          {
+            size: 'small',
+            disabled: !service.value?.capabilities.export,
+            title: service.value?.capabilities.export
+              ? undefined
+              : '正式导出尚未接入',
+            onClick: () => openExport([row]),
+          },
           () => '导出 TXT',
         ),
         h(
@@ -524,6 +583,10 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
           {
             tone: 'danger',
             size: 'small',
+            disabled: !service.value?.capabilities.remove,
+            title: service.value?.capabilities.remove
+              ? undefined
+              : '正式删除尚未接入',
             onClick: () => removeProducts([row.id]),
           },
           () => '删除',
@@ -562,14 +625,14 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
           @keyup.enter="searchList"
         />
       </FilterField>
-      <FilterField width="sm">
+      <FilterField v-if="service.capabilities.platformFilter" width="sm">
         <AppSelect
           :model-value="platform ?? 'all'"
           :options="platformOptions"
           @update:model-value="setPlatformFilter"
         />
       </FilterField>
-      <FilterField width="sm">
+      <FilterField v-if="service.capabilities.categoryFilter" width="sm">
         <AppSelect
           :model-value="category ?? 'all'"
           :options="categoryOptions"
@@ -592,8 +655,21 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         <AppButton @click="searchList">查询</AppButton>
       </template>
       <template #primary-action>
-        <AppButton @click="openGroup([], '新建商品分组')">新建分组</AppButton>
-        <AppButton tone="primary" @click="importOpen = true"
+        <AppButton
+          :disabled="!service.capabilities.createGroup"
+          :title="
+            service.capabilities.createGroup
+              ? undefined
+              : '正式分组写入尚未接入'
+          "
+          @click="openGroup([], '新建商品分组')"
+          >新建分组</AppButton
+        >
+        <AppButton
+          tone="primary"
+          :disabled="!service.capabilities.import"
+          :title="service.capabilities.import ? undefined : '正式导入尚未接入'"
+          @click="importOpen = true"
           >导入资料包</AppButton
         >
       </template>
@@ -605,21 +681,36 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         <template #actions>
           <AppButton
             size="small"
-            :disabled="!selected.length"
+            :disabled="!selected.length || !service.capabilities.export"
+            :title="
+              service.capabilities.export ? undefined : '正式导出尚未接入'
+            "
             @click="openExport(selectedProducts())"
           >
             批量导出 TXT
           </AppButton>
           <AppButton
             size="small"
-            :disabled="!selected.length"
+            :disabled="!selected.length || !service.capabilities.moveGroup"
+            :title="
+              service.capabilities.moveGroup
+                ? undefined
+                : '正式分组写入尚未接入'
+            "
             @click="openGroup(selected.map(String))"
           >
             移动分组
           </AppButton>
           <AppButton
             size="small"
-            :disabled="!selected.length || busy"
+            :disabled="
+              !selected.length || busy || !service.capabilities.recollect
+            "
+            :title="
+              service.capabilities.recollect
+                ? undefined
+                : '正式重新采集尚未接入'
+            "
             @click="recollectSelected"
           >
             重新采集
@@ -627,7 +718,10 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
           <AppButton
             tone="danger"
             size="small"
-            :disabled="!selected.length || busy"
+            :disabled="!selected.length || busy || !service.capabilities.remove"
+            :title="
+              service.capabilities.remove ? undefined : '正式删除尚未接入'
+            "
             @click="removeSelected"
           >
             删除
@@ -662,6 +756,9 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
       :show="Boolean(preview)"
       :product="preview"
       :saving="previewSaving"
+      :editable="service.capabilities.edit"
+      :exportable="service.capabilities.export"
+      :groupable="service.capabilities.moveGroup"
       :can-previous="previewCanPrevious"
       :can-next="previewCanNext"
       :position-label="previewPositionLabel"

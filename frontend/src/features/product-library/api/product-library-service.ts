@@ -10,6 +10,17 @@ function unavailable(): ProductLibraryService {
   return {
     available: false,
     mode: 'real',
+    capabilities: {
+      platformFilter: false,
+      categoryFilter: false,
+      edit: false,
+      createGroup: false,
+      moveGroup: false,
+      remove: false,
+      recollect: false,
+      import: false,
+      export: false,
+    },
     groups: reject,
     list: reject,
     detail: reject,
@@ -28,6 +39,11 @@ export async function createProductLibraryService(
     const { createProductLibraryMockService } =
       await import('./product-library-mock-store')
     return createProductLibraryMockService()
+  }
+  if (mode === 'real') {
+    const { createProductLibraryRealService } =
+      await import('./product-library-real')
+    return createProductLibraryRealService()
   }
   return unavailable()
 }

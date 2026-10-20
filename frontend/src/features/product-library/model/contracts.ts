@@ -3,7 +3,7 @@ import type { PlatformCode } from '@/entities/platform/model/registry'
 export interface ProductGroup {
   id: string
   name: string
-  count: number
+  count: number | null
 }
 
 export interface ProductSku {
@@ -56,6 +56,7 @@ export interface LibraryProduct {
   groupName: string | null
   category: string | null
   currentPrice: string | null
+  currency?: string | null
   collectedAt: string
   sourceUrl: string | null
   mainImageUrl: string | null
@@ -69,6 +70,8 @@ export interface LibraryProduct {
   mockEditedAt: string | null
   packageFiles: Array<{ name: string; kind: 'txt' | 'origin-txt' | 'image' }>
   history: ProductHistory[]
+  latestCollectionState?: string | null
+  latestCollectionErrorCode?: string | null
 }
 
 export interface ProductLibraryQuery {
@@ -95,6 +98,17 @@ export interface ProductLibraryPage {
 export interface ProductLibraryService {
   available: boolean
   mode: 'mock' | 'real'
+  capabilities: {
+    platformFilter: boolean
+    categoryFilter: boolean
+    edit: boolean
+    createGroup: boolean
+    moveGroup: boolean
+    remove: boolean
+    recollect: boolean
+    import: boolean
+    export: boolean
+  }
   groups(): Promise<ProductGroup[]>
   list(query: ProductLibraryQuery): Promise<ProductLibraryPage>
   detail(id: string): Promise<LibraryProduct>

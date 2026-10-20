@@ -34,6 +34,7 @@ import {
   type SelectionRelativeDto,
   type SelectionStrategyDto,
 } from './selection-strategy-api'
+import { submitCandidateCollectionRequest } from '@/features/product-collection/api/product-collection-real-api'
 
 export function mapSelectionStrategy(
   dto: SelectionStrategyDto,
@@ -145,6 +146,7 @@ export function mapSelectionObservation(
   const leaderboardId = `${source.platform}:${source.endpoint}`
   return {
     id: dto.observation_id,
+    candidateId: dto.candidate_id,
     productId: dto.product_id,
     title: dto.title ?? '—',
     shopId: dto.request_shop_id,
@@ -235,6 +237,7 @@ export function mapSelectionObservation(
 export function createSelectionRealService(
   unavailable: () => Promise<never>,
 ): SelectionService {
+  const collectionSubmissionKeys = new Map<string, string>()
   function findScope(
     nodes: CategoryNode[],
     id: string,
@@ -329,6 +332,7 @@ export function createSelectionRealService(
     scheduleAvailable: true,
     candidatesAvailable: true,
     candidateBlockAvailable: true,
+    materialCollectionAvailable: true,
     batches: async (strategyId, shopId) =>
       (await readSelectionBatches(strategyId, shopId)).items,
     async blockCandidate(id, blocked) {
@@ -434,7 +438,28 @@ export function createSelectionRealService(
       )
     },
     demoAction: unavailable,
-    collectBatch: unavailable,
+    async collectBatch(candidateIds) {
+      const ids = [...new Set(candidateIds)].sort()
+      if (!ids.length) throw new Error('请选择至少一个候选商品')
+      const signature = ids.join(',')
+      const submissionKey =
+        collectionSubmissionKeys.get(signature) ?? crypto.randomUUID()
+      collectionSubmissionKeys.set(signature, submissionKey)
+      const receipt = await submitCandidateCollectionRequest(ids, submissionKey)
+      return {
+        mode: 'real',
+        requestId: receipt.request_id,
+        results: ids.map((candidateId) => ({
+          candidateId,
+          candidateIds: [candidateId],
+          productId: null,
+          state: receipt.reused ? 'reused' : 'submitted',
+          message: receipt.reused
+            ? '已复用相同提交的采集任务'
+            : '已提交资料采集任务',
+        })),
+      }
+    },
     updateCompassMetrics: unavailable,
     markCompetitor: unavailable,
   }

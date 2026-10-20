@@ -315,8 +315,16 @@ async function act(
       await query.refetch()
       return
     }
-    const receipt = await props.service.demoAction(row.id, action)
-    message.info(receipt.message)
+    if (action === 'collect') {
+      const receipt = await props.service.collectBatch([row.candidateId])
+      const result = receipt.results[0]
+      if (!result || result.state === 'failed')
+        throw new Error(result?.message ?? '资料采集提交失败')
+      message.success(result.message)
+    } else {
+      const receipt = await props.service.demoAction(row.id, action)
+      message.info(receipt.message)
+    }
     checked.value = []
     await query.refetch()
   } catch (error) {
@@ -327,26 +335,41 @@ async function act(
 }
 async function collectSelected() {
   if (busy.value || !checked.value.length) return
-  const ids = checked.value.map(String)
+  const selectedIds = new Set(checked.value.map(String))
+  const selectedRows = (query.data.value?.items ?? []).filter((row) =>
+    selectedIds.has(row.id),
+  )
+  const ids = selectedRows.map((row) => row.candidateId)
+  if (!ids.length) return
   busy.value = true
   batchReceipt.value = null
   try {
     const receipt = await props.service.collectBatch(ids)
     batchReceipt.value = receipt
     const succeeded = receipt.results.filter(
-      (result) => result.state === 'demo',
+      (result) => result.state !== 'failed',
     )
-    const successIds = new Set(
+    const successfulCandidateIds = new Set(
       succeeded.flatMap((result) => result.candidateIds),
     )
-    checked.value = checked.value.filter((key) => !successIds.has(String(key)))
-    const feedback = `资料采集演示完成 ${succeeded.length} 项，失败 ${batchFailures.value.length} 项；未发起真实采集`
+    const successfulObservationIds = new Set(
+      selectedRows
+        .filter((row) => successfulCandidateIds.has(row.candidateId))
+        .map((row) => row.id),
+    )
+    checked.value = checked.value.filter(
+      (key) => !successfulObservationIds.has(String(key)),
+    )
+    const feedback =
+      receipt.mode === 'mock'
+        ? `资料采集演示完成 ${succeeded.length} 项，失败 ${batchFailures.value.length} 项；未发起真实采集`
+        : `${receipt.results.some((result) => result.state === 'reused') ? '已复用' : '已提交'} ${succeeded.length} 个候选商品的资料采集任务${batchFailures.value.length ? `，失败 ${batchFailures.value.length} 项` : ''}`
     if (batchFailures.value.length) message.warning(feedback)
     else message.info(feedback)
     await query.refetch()
   } catch (error) {
     message.error(
-      error instanceof Error ? error.message : '批量演示失败，请重试',
+      error instanceof Error ? error.message : '批量资料采集提交失败，请重试',
     )
   } finally {
     busy.value = false
@@ -622,7 +645,12 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
           {
             tone: 'secondary',
             size: 'small',
-            disabled: busy.value || !props.service.available,
+            disabled:
+              busy.value ||
+              !(
+                props.service.materialCollectionAvailable ??
+                props.service.available
+              ),
             onClick: () => act(row, 'collect'),
           },
           () => '采集资料',
@@ -770,7 +798,11 @@ const scrollWidth = computed(() => {
         <template #actions>
           <AppButton
             tone="primary"
-            :disabled="!checked.length || busy || !service.available"
+            :disabled="
+              !checked.length ||
+              busy ||
+              !(service.materialCollectionAvailable ?? service.available)
+            "
             :loading="busy"
             @click="collectSelected"
           >
@@ -781,7 +813,7 @@ const scrollWidth = computed(() => {
       <NAlert
         v-if="batchFailures.length"
         type="warning"
-        title="演示采集失败"
+        :title="batchReceipt?.mode === 'mock' ? '演示采集失败' : '采集提交失败'"
         closable
         @close="batchReceipt = null"
       >

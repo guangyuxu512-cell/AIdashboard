@@ -8,11 +8,23 @@ describe('product workspace Real boundary', () => {
       createCollectionTaskService('real'),
       createProductLibraryService('real'),
     ])
-    expect(tasks).toMatchObject({ available: false, mode: 'real' })
-    expect(products).toMatchObject({ available: false, mode: 'real' })
+    expect(tasks).toMatchObject({
+      available: true,
+      mode: 'real',
+      supportsListFilters: false,
+    })
+    expect(products).toMatchObject({
+      available: true,
+      mode: 'real',
+      capabilities: { edit: false, export: false, import: false },
+    })
     await expect(
-      tasks.create({ platform: 'douyin', inputMode: 'product', values: ['1'] }),
-    ).rejects.toThrow('尚未接入正式服务')
-    await expect(products.groups()).rejects.toThrow('尚未接入')
+      products.saveEdit('product-id', {
+        title: '不会保存',
+        attributes: [],
+        specDimensions: [],
+        skus: [],
+      }),
+    ).rejects.toThrow('尚未接入正式接口')
   })
 })

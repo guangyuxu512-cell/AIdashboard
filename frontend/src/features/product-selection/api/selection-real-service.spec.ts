@@ -107,6 +107,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
   it('maps exact identity, original intervals, null, true zero and independent clocks', () => {
     const dto = observation()
     const result = mapSelectionObservation(dto)
+    expect(result.candidateId).toBe('candidate-id')
     expect(result.productId).toBe('3769776708757094595')
     expect(result.merchant?.shopId).not.toBe(result.shopId)
     expect(result.negativeReviewRate).toBe(Number(dto.bad_comment_rate_raw))
@@ -148,7 +149,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       expect(dto.bad_comment_rate_raw).toBe(raw)
     },
   )
-  it('queries database on list/detail/refresh; never invokes an execution API', async () => {
+  it('queries database and submits the canonical candidate identity to collection', async () => {
     const dto = observation()
     vi.mocked(httpClient.get)
       .mockResolvedValueOnce({
@@ -164,8 +165,29 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       '/api/v1/product-selection/observations/observation-id',
       { params: { receipt_id: undefined } },
     )
-    await expect(real.collectBatch(['observation-id'])).rejects.toThrow(
-      SELECTION_UNAVAILABLE,
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      data: {
+        request_id: 'request-id',
+        status: 'pending',
+        item_count: 1,
+        reused: false,
+      },
+    })
+    const receipt = await real.collectBatch(['candidate-id'])
+    expect(receipt).toMatchObject({
+      mode: 'real',
+      requestId: 'request-id',
+      results: [{ candidateId: 'candidate-id', state: 'submitted' }],
+    })
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/api/v1/product-collection/requests',
+      {
+        submission_key: expect.any(String),
+        source: {
+          kind: 'selection_candidates',
+          candidate_ids: ['candidate-id'],
+        },
+      },
     )
     expect(httpClient.get).toHaveBeenCalledTimes(2)
   })

@@ -18,11 +18,18 @@ const initialTasks: CollectionTask[] = [
     inputValue: '3832497447662387684',
     productId: '3832497447662387684',
     title: '家用不锈钢滤网储油罐',
-    status: 'completed',
+    status: 'succeeded',
     progress: 100,
     receiptId: 'demo-receipt-001',
     ingestionState: 'ingested',
     errorMessage: null,
+    itemCount: 1,
+    pendingCount: 0,
+    runningCount: 0,
+    succeededCount: 1,
+    failedCount: 0,
+    canceledCount: 0,
+    items: null,
     createdAt: '2026-10-20T09:12:00+08:00',
     updatedAt: '2026-10-20T09:14:18+08:00',
   },
@@ -33,11 +40,18 @@ const initialTasks: CollectionTask[] = [
     inputValue: '3769776708757094595',
     productId: '3769776708757094595',
     title: '多规格不锈钢带滤网猪油罐',
-    status: 'processing',
+    status: 'running',
     progress: 62,
     receiptId: 'demo-receipt-002',
     ingestionState: 'processing',
     errorMessage: null,
+    itemCount: 1,
+    pendingCount: 0,
+    runningCount: 1,
+    succeededCount: 0,
+    failedCount: 0,
+    canceledCount: 0,
+    items: null,
     createdAt: '2026-10-20T10:18:00+08:00',
     updatedAt: now,
   },
@@ -53,6 +67,13 @@ const initialTasks: CollectionTask[] = [
     receiptId: 'demo-receipt-003',
     ingestionState: 'not-started',
     errorMessage: '手机端未回传商品资料',
+    itemCount: 1,
+    pendingCount: 0,
+    runningCount: 0,
+    succeededCount: 0,
+    failedCount: 1,
+    canceledCount: 0,
+    items: null,
     createdAt: '2026-10-19T18:30:00+08:00',
     updatedAt: '2026-10-19T18:36:00+08:00',
   },
@@ -75,24 +96,32 @@ function createTask(
         ? (normalized.match(/\d{8,}/)?.[0] ?? normalized)
         : null,
     title,
-    status: 'queued',
+    status: 'pending',
     progress: 0,
     receiptId: null,
     ingestionState: 'not-started',
     errorMessage: null,
+    itemCount: 1,
+    pendingCount: 1,
+    runningCount: 0,
+    succeededCount: 0,
+    failedCount: 0,
+    canceledCount: 0,
+    items: null,
     createdAt: now,
     updatedAt: now,
   }
 }
 
 function counts() {
-  const result: CollectionTaskPage['counts'] = {
+  const result: NonNullable<CollectionTaskPage['counts']> = {
     all: tasks.length,
-    queued: 0,
-    processing: 0,
-    completed: 0,
+    pending: 0,
+    running: 0,
+    partial: 0,
+    succeeded: 0,
     failed: 0,
-    cancelled: 0,
+    canceled: 0,
   }
   for (const task of tasks) result[task.status] += 1
   return result
@@ -108,7 +137,7 @@ export function enqueueCandidateCollectionTasks(
         (task) =>
           task.platform === (row.platform ?? 'douyin') &&
           task.productId === row.productId &&
-          !['failed', 'cancelled'].includes(task.status),
+          !['failed', 'canceled'].includes(task.status),
       )
     )
       continue
@@ -127,6 +156,9 @@ export function createCollectionTaskMockService(): CollectionTaskService {
   return {
     available: true,
     mode: 'mock',
+    supportsListFilters: true,
+    supportsShopCode: true,
+    supportsAutomaticPdd: false,
     async list(query) {
       const keyword = query.keyword.trim().toLocaleLowerCase()
       const filtered = tasks.filter(
@@ -173,7 +205,7 @@ export function createCollectionTaskMockService(): CollectionTaskService {
             (input.inputMode === 'product'
               ? task.productId === productId
               : task.inputValue === value) &&
-            !['failed', 'cancelled'].includes(task.status),
+            !['failed', 'canceled'].includes(task.status),
         )
         if (existing) {
           duplicates.push({ value, taskId: existing.id })
@@ -190,9 +222,11 @@ export function createCollectionTaskMockService(): CollectionTaskService {
       for (const id of new Set(ids)) {
         const task = tasks.find((item) => item.id === id)
         if (!task || task.status !== 'failed') continue
-        task.status = 'queued'
+        task.status = 'pending'
         task.progress = 0
         task.errorMessage = null
+        task.pendingCount = task.itemCount
+        task.failedCount = 0
         task.updatedAt = now
         changed += 1
       }
@@ -202,13 +236,36 @@ export function createCollectionTaskMockService(): CollectionTaskService {
       let changed = 0
       for (const id of new Set(ids)) {
         const task = tasks.find((item) => item.id === id)
-        if (!task || !['queued', 'processing'].includes(task.status)) continue
-        task.status = 'cancelled'
+        if (!task || !['pending', 'running'].includes(task.status)) continue
+        task.status = 'canceled'
         task.progress = null
+        task.pendingCount = 0
+        task.runningCount = 0
+        task.canceledCount = task.itemCount
         task.updatedAt = now
         changed += 1
       }
       return changed
+    },
+    async retryItem(itemId) {
+      const task = tasks.find((item) =>
+        item.items?.some((row) => row.id === itemId),
+      )
+      if (!task) throw new Error('演示采集明细不存在')
+      task.status = 'pending'
+      task.pendingCount = task.itemCount
+      task.failedCount = 0
+      return structuredClone(task)
+    },
+    async recaptureItem(itemId) {
+      const task = tasks.find((item) =>
+        item.items?.some((row) => row.id === itemId),
+      )
+      if (!task) throw new Error('演示采集明细不存在')
+      task.status = 'running'
+      task.runningCount = 1
+      task.failedCount = 0
+      return structuredClone(task)
     },
   }
 }

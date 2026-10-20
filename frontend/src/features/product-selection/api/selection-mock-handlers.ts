@@ -58,6 +58,7 @@ export function createSelectionMockHandlers(
       const shop = shops[index % shops.length]!
       return {
         id: `candidate-${String(index).padStart(3, '0')}`,
+        candidateId: `candidate-${String(index).padStart(3, '0')}`,
         shopId: shop.shopId,
         shopName: shop.shopName,
         merchant: {

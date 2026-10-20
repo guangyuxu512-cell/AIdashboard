@@ -336,4 +336,37 @@ describe('candidate selection and batch demo', () => {
     expect(wrapper.text()).not.toContain('已选')
     dispose()
   })
+  it('submits canonical candidate ids instead of observation row ids', async () => {
+    const service = createSelectionMockHandlers()
+    const readCandidates = service.candidates.bind(service)
+    vi.spyOn(service, 'candidates').mockImplementation(async (query) => {
+      const result = await readCandidates(query)
+      if (result.items[0])
+        result.items[0].candidateId = 'canonical-candidate-id'
+      return result
+    })
+    const collect = vi.spyOn(service, 'collectBatch').mockResolvedValue({
+      mode: 'real',
+      requestId: 'request-id',
+      results: [
+        {
+          candidateId: 'canonical-candidate-id',
+          candidateIds: ['canonical-candidate-id'],
+          productId: null,
+          state: 'submitted',
+          message: '已提交资料采集任务',
+        },
+      ],
+    })
+    const { table, button, dispose } = render(service)
+    await flushPromises()
+    const observationId = table.props('data')[0].id
+    table.vm.$emit('update:checkedRowKeys', [observationId])
+    await flushPromises()
+    button().vm.$emit('click', new MouseEvent('click'))
+    await flushPromises()
+    expect(collect).toHaveBeenCalledExactlyOnceWith(['canonical-candidate-id'])
+    expect(table.props('checkedRowKeys')).toEqual([])
+    dispose()
+  })
 })

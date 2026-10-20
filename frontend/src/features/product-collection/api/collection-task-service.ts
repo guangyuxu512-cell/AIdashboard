@@ -10,11 +10,16 @@ function unavailable(): CollectionTaskService {
   return {
     available: false,
     mode: 'real',
+    supportsListFilters: false,
+    supportsShopCode: false,
+    supportsAutomaticPdd: false,
     list: reject,
     detail: reject,
     create: reject,
     retry: reject,
     cancel: reject,
+    retryItem: reject,
+    recaptureItem: reject,
   }
 }
 
@@ -25,6 +30,11 @@ export async function createCollectionTaskService(
     const { createCollectionTaskMockService } =
       await import('./collection-task-mock-store')
     return createCollectionTaskMockService()
+  }
+  if (mode === 'real') {
+    const { createCollectionTaskRealService } =
+      await import('./collection-task-real')
+    return createCollectionTaskRealService()
   }
   return unavailable()
 }
