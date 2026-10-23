@@ -40,6 +40,17 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
+from app.modules.product_collection.models import (
+    ProductCollectionCaptureAttempt,
+    ProductCollectionDispatch,
+    ProductCollectionItem,
+    ProductCollectionPersistReceipt,
+    ProductCollectionRequest,
+    ProductCollectionUploadReceipt,
+    ProductLibraryGroup,
+    ProductLibraryProduct,
+    ProductLibraryProductVersion,
+)
 from app.modules.product_selection.models import (
     ProductSelectionCandidate,
     ProductSelectionObservation,
@@ -78,6 +89,15 @@ _MODELS = (
     MaterialGroupAsset,
     MaterialGroupTemplateBinding,
     ProductMaterialGroup,
+    ProductCollectionCaptureAttempt,
+    ProductCollectionDispatch,
+    ProductCollectionItem,
+    ProductCollectionPersistReceipt,
+    ProductCollectionRequest,
+    ProductCollectionUploadReceipt,
+    ProductLibraryGroup,
+    ProductLibraryProduct,
+    ProductLibraryProductVersion,
     ProductSelectionCandidate,
     ProductSelectionObservation,
     ProductSelectionRun,

@@ -110,6 +110,107 @@ class Settings(BaseSettings):
             raise ValueError("Selection capacity must be a positive integer")
         return value
     product_selection_run_lease_seconds: int = Field(default=120, ge=30, le=600)
+    # Mobile product collection remains fail-closed until the paired gateway
+    # and collector changes have passed their own Gate.  Secrets are never
+    # stored in product-collection business tables.
+    product_collection_execution_enabled: bool = False
+    product_collection_gateway_id: str | None = Field(default=None, max_length=128)
+    product_collection_gateway_base_url: str | None = None
+    product_collection_gateway_control_token: SecretStr | None = None
+    product_collection_gateway_callback_token: SecretStr | None = None
+    # A new Dispatch freezes this finite phone-capture budget in its canonical
+    # payload hash. Isolated one-attempt Gates set 1; ordinary business keeps 3.
+    product_collection_capture_max_attempts: int = Field(default=3, ge=1, le=3)
+
+    @field_validator("product_collection_capture_max_attempts", mode="before")
+    @classmethod
+    def reject_boolean_capture_budget(cls, value):
+        if isinstance(value, bool):
+            raise ValueError("Capture attempt budget must be a positive integer")
+        return value
+
+    product_collection_gateway_timeout_seconds: float = Field(
+        default=15.0,
+        ge=1.0,
+        le=120.0,
+    )
+    product_collection_service_token: SecretStr | None = None
+    product_collection_ingest_hmac_key: SecretStr | None = None
+    product_collection_ingest_key_id: str = Field(
+        default="product-collection-ingest-v1",
+        min_length=1,
+        max_length=128,
+    )
+    product_collection_public_base_url: str | None = None
+    product_collection_ingest_token_ttl_seconds: int = Field(
+        default=1800,
+        ge=60,
+        le=86400,
+    )
+    product_collection_accept_grace_seconds: int = Field(
+        default=1800,
+        ge=0,
+        le=86400,
+    )
+    product_collection_processing_enabled: bool = False
+    product_collection_settlement_enabled: bool = False
+    product_collection_scan_interval_seconds: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=60.0,
+    )
+    product_collection_dispatch_lease_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=600,
+    )
+    product_collection_delivery_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+    )
+    product_collection_delivery_retry_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+    )
+    product_collection_processing_lease_seconds: int = Field(
+        default=120,
+        ge=30,
+        le=1800,
+    )
+    product_collection_settlement_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=10,
+    )
+    product_collection_settlement_delivery_timeout_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=1800,
+    )
+    product_collection_settlement_retry_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=3600,
+    )
+    product_collection_cleaner_module_path: Path | None = None
+    product_collection_cleaner_node_executable: str = Field(
+        default="node",
+        min_length=1,
+        max_length=1024,
+    )
+    product_collection_cleaner_timeout_seconds: int = Field(
+        default=30,
+        ge=1,
+        le=300,
+    )
+    product_collection_cleaner_version: str = Field(
+        default="uu-convert-complete-v1",
+        min_length=1,
+        max_length=64,
+    )
+    product_collection_image_allowed_hosts: list[str] = Field(default_factory=list)
     # Disabled by default so Feature/Integration environments never begin
     # platform collection merely because the Backend process is running.
     # Production enablement remains a separate Release-Gate decision.
@@ -182,6 +283,63 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    @field_validator(
+        "product_collection_gateway_control_token",
+        "product_collection_gateway_callback_token",
+        "product_collection_service_token",
+        "product_collection_ingest_hmac_key",
+        mode="before",
+    )
+    @classmethod
+    def normalize_optional_product_collection_secrets(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
+    @field_validator("product_collection_ingest_hmac_key")
+    @classmethod
+    def validate_product_collection_hmac_key(
+        cls,
+        value: SecretStr | None,
+    ) -> SecretStr | None:
+        if value is not None and len(value.get_secret_value().encode("utf-8")) < 32:
+            raise ValueError("Product Collection HMAC key必须至少包含256 bit")
+        return value
+
+    @field_validator("product_collection_gateway_id", mode="before")
+    @classmethod
+    def normalize_optional_gateway_id(cls, value: object) -> object:
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return value
+
+    @field_validator("product_collection_public_base_url")
+    @classmethod
+    def validate_product_collection_public_base_url(
+        cls,
+        value: str | None,
+    ) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().rstrip("/")
+        parsed = urlsplit(normalized)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("Product Collection Public Base URL必须是不含路径的HTTP Origin")
+        try:
+            parsed.port
+        except ValueError as error:
+            raise ValueError("Product Collection Public Base URL端口无效") from error
+        return normalized
 
     @field_validator("douyin_signer_url")
     @classmethod
