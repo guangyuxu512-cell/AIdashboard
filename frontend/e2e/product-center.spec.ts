@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-test('product navigation preserves framed query history, refresh, fallback and library placeholder', async ({
+test('product navigation preserves framed query history, refresh, fallback and product workspaces', async ({
   page,
 }) => {
   const errors: string[] = []
@@ -9,7 +9,7 @@ test('product navigation preserves framed query history, refresh, fallback and l
   const bar = page.getByRole('navigation', { name: '选品库切换', exact: true })
   await expect(bar).toHaveAttribute('data-appearance', 'framed')
   await expect(
-    page.getByText('采集任务功能待接入', { exact: true }),
+    page.getByRole('button', { name: '创建采集任务', exact: true }),
   ).toBeVisible()
   await bar.getByRole('button', { name: '选品策略', exact: true }).click()
   await expect(page).toHaveURL(/tab=selection-strategy/)
@@ -39,7 +39,7 @@ test('product navigation preserves framed query history, refresh, fallback and l
   ).toHaveAttribute('aria-pressed', 'true')
   await page.goto('/#/products')
   await expect(
-    page.getByText('商品库功能待接入', { exact: true }),
+    page.getByPlaceholder('搜索商品标题、商品 ID 或类目'),
   ).toBeVisible()
   const nav = page.getByRole('navigation', { name: '主导航', exact: true })
   await nav.getByText('商品中心', { exact: true }).click()

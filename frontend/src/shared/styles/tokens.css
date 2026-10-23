@@ -49,6 +49,11 @@
   --dialog-width-sm: 420px;
   --dialog-width-md: 560px;
   --dialog-width-lg: 720px;
+  --dialog-width-xl: 960px;
+  --dialog-width-workspace: calc(100% - var(--space-4));
+  --dialog-height-workspace: calc(
+    100dvh - var(--layout-topbar-height) - var(--space-4)
+  );
   --overlay-viewport-safe-gap: var(--space-6);
   --dialog-max-height: calc(
     100dvh - var(--layout-topbar-height) - var(--overlay-viewport-safe-gap) -

@@ -186,21 +186,32 @@ test('shows a normal empty state when the selected device has no Business Skill'
   await expect(dialog.getByText('加载失败')).toHaveCount(0)
 })
 
-test('keeps the timezone menu inside a 1366×768 viewport', async ({ page }) => {
-  await page.setViewportSize({ width: 1366, height: 768 })
+test('keeps the timezone menu interactive and anchored in a low viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1366, height: 620 })
   await page.goto('/#/schedules')
   await page.getByRole('button', { name: '+ 新建计划' }).click()
   const dialog = page.getByRole('dialog').filter({ hasText: '新建定时计划' })
-  const timezoneField = dialog.locator('.n-form-item').filter({ hasText: '时区' })
+  const timezoneField = dialog
+    .locator('.n-form-item')
+    .filter({ hasText: '时区' })
 
   await timezoneField.locator('.n-base-selection').click()
   const menu = page.locator('.app-select-menu--viewport-safe').last()
   await expect(menu).toBeVisible()
+  expect(
+    await menu.evaluate(
+      (element) =>
+        !!element.closest('#app-overlay-host') &&
+        !element.closest('.app-dialog'),
+    ),
+  ).toBe(true)
 
   const bounds = await menu.boundingBox()
   expect(bounds).not.toBeNull()
   expect(bounds!.y).toBeGreaterThanOrEqual(0)
-  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(768)
+  expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(620)
   const scrollState = await menu.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -210,6 +221,48 @@ test('keeps the timezone menu inside a 1366×768 viewport', async ({ page }) => 
     scrollState.clientHeight,
   )
   await expect(page.getByText('美国东部时间（纽约）')).toBeAttached()
+  const lastVisibleOption = menu.locator('.n-base-select-option').last()
+  await lastVisibleOption.scrollIntoViewIfNeeded()
+  const optionBounds = await lastVisibleOption.boundingBox()
+  expect(optionBounds).not.toBeNull()
+  expect(
+    await page.evaluate(
+      ({ x, y }) => {
+        const hit = document.elementFromPoint(x, y)
+        return !!hit?.closest('.n-base-select-option')
+      },
+      {
+        x: optionBounds!.x + optionBounds!.width / 2,
+        y: optionBounds!.y + optionBounds!.height / 2,
+      },
+    ),
+  ).toBe(true)
+
+  const selection = timezoneField.locator('.n-base-selection')
+  const bodyScroller = dialog
+    .locator('.n-card__content-scrollbar .n-scrollbar-container')
+    .first()
+  const beforeAnchor = await selection.boundingBox()
+  const beforeMenu = await menu.boundingBox()
+  const moved = await bodyScroller.evaluate((element) => {
+    const before = element.scrollTop
+    element.scrollTop = Math.max(0, before - 32)
+    element.dispatchEvent(new Event('scroll'))
+    return { before, after: element.scrollTop }
+  })
+  expect(moved.before).toBeGreaterThan(moved.after)
+  await expect(menu).toBeVisible()
+  await expect
+    .poll(async () => {
+      const afterAnchor = await selection.boundingBox()
+      const afterMenu = await menu.boundingBox()
+      if (!beforeAnchor || !beforeMenu || !afterAnchor || !afterMenu)
+        return null
+      return Math.abs(
+        afterMenu.y - beforeMenu.y - (afterAnchor.y - beforeAnchor.y),
+      )
+    })
+    .toBeLessThanOrEqual(2)
 })
 
 test('edits, disables, enables and archives a schedule without changing page pattern', async ({

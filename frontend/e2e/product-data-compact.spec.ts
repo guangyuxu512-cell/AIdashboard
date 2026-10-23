@@ -153,6 +153,11 @@ for (const [preset, label] of [
           (element) => !!element.closest('.product-data-view'),
         ),
       ).toBe(false)
+      expect(
+        await menu.evaluate(
+          (element) => !!element.closest('#app-overlay-host'),
+        ),
+      ).toBe(true)
       await page.screenshot({
         path: info.outputPath('product-data-' + preset + '-menu.png'),
         animations: 'disabled',

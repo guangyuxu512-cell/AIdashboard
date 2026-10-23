@@ -562,11 +562,11 @@ description（需要时）
 | `AppRadio`       | `NRadioGroup`  | 统一 button 模式                                 |
 | `AppTable`       | `NDataTable`   | 统一尺寸、边框和滚动入口                         |
 | `AppPagination`  | `NPagination`  | 统一 page/pageSize 事件和页容量                  |
-| `AppDialog`      | `NModal`       | sm / md / lg、固定 Header/Footer、Body 单滚动    |
+| `AppDialog`      | `NModal`       | sm / md / lg / xl、固定 Header/Footer、Body 单滚动 |
 | `AppDrawer`      | `NDrawer`      | sm / md / lg、统一内容区                         |
 | `AppTabs`        | `NTabs`        | 统一 medium 与动画                               |
 
-宽度只允许 `xs / sm / md / lg / xl / full`，弹层只允许 `sm / md / lg`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
+宽度只允许 `xs / sm / md / lg / xl / full`；Drawer 只允许 `sm / md / lg`，Dialog 可为信息密集的预览显式选择 `xl`，默认仍为 `md`。低频且没有项目额外语义的 Naive UI 组件继续允许直接使用，不为数量完整性重复封装。
 
 `AppButton.size="small"` 仅用于明确的紧凑行内操作，沿用已存在的 Naive small 与 `--control-height-compact`；其他调用保持 medium，不定义新尺寸或改变 tone 默认行为。
 
@@ -580,7 +580,7 @@ description（需要时）
 
 阶段 2D-4 为 `AppSelect` 增加通用 `renderLabel` 透传，用于 Platform Registry 等领域展示在原有 Select 中组合图标、Label 和支持状态；不得为图标选项创建第二套 Select。
 
-阶段 3A-1 增加 `AppOverlayHost`，由 AppShell 唯一渲染。`AppDrawer`、`AppDialog` 与 `NDialogProvider` 默认挂载到该 Host，使所有业务弹层只覆盖 Topbar 下方 Workspace。基础组件允许为隔离测试显式覆盖 `to`，业务页面不得自行选择 Teleport 容器。
+阶段 3A-1 增加 `AppOverlayHost`，由 AppShell 唯一渲染。`AppDrawer`、`AppDialog` 与 `NDialogProvider` 默认挂载到该 Host，使所有业务弹层只覆盖 Topbar 下方 Workspace。`AppSelect` 的菜单同样优先挂载到该 Host，避免在 Dialog／Drawer／Popover 的裁切与独立滚动 Body 内被截断；登录布局等未渲染 Host 的场景回退到 Naive 的全屏层。基础组件允许为隔离测试显式覆盖 `to`（selector、HTMLElement、`true` 或 `false` 均保持调用方语义），业务页面不得自行选择 Teleport 容器或增加局部 z-index／overflow 补丁。
 
 店铺中心与设备中心共用 `ManagementListSection`。它只封装 `PageSection.fill` 与列表内容的 `flex: 1 / min-height: 0` 链，不替代 `DataTable`、`PaginationBar` 或领域工具栏。普通管理列表不得在 Page 内复制这一布局，也不得使用固定高度或 `100vh - xxx` 修正分页位置。
 
