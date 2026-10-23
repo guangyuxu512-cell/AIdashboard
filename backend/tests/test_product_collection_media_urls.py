@@ -17,6 +17,7 @@ IMAGE_URL = "https://p3-product-comment-sign.byteimg.com/tos-cn-i-8y5sebgt5i/syn
 ITEM_IMAGE = "chunks.*.promotion_v3.components.*.slices.*.data.item_list.*.image.url"
 GATE2_COVER_URL = "https://p3-sign.douyinpic.com/tos-cn-v-800a60/synthetic.webp?dy_q=1&l=1&x-expires=1&x-signature=synthetic-resource"
 GATE2_ECOM_URL = "https://p9-ecom-commentpic-sign.byteimg.com/douyin-user-image-file/synthetic.webp?lk3s=synthetic&x-expires=1&x-signature=synthetic-resource"
+GATE2_P3_ECOM_URL = GATE2_ECOM_URL.replace("p9-ecom-commentpic-", "p3-ecom-commentpic-")
 
 
 def _nested(path, value):
@@ -169,6 +170,7 @@ def test_gate2_reduced_complete_package_preserves_all_five_media_and_source_hash
     (ITEM_IMAGE, IMAGE_URL),
     (ITEM_IMAGE, IMAGE_URL.replace("p3-", "p9-")),
     (ITEM_IMAGE, GATE2_ECOM_URL),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL),
 ])
 def test_gate2_evidenced_media_fields_accept_only_resource_context(path, url):
     original = _body(path, url)
@@ -183,7 +185,7 @@ def test_gate2_evidenced_media_fields_accept_only_resource_context(path, url):
     (f"{VIDEO}.cover.url_list.*", GATE2_COVER_URL.replace("dy_q=1&", "")),
     (ITEM_IMAGE, IMAGE_URL.replace("/tos-cn-i-8y5sebgt5i/", "/douyin-user-image-file/")),
     (ITEM_IMAGE, GATE2_ECOM_URL.replace("/douyin-user-image-file/", "/tos-cn-i-8y5sebgt5i/")),
-    (ITEM_IMAGE, GATE2_ECOM_URL.replace("p9-ecom-commentpic-", "p3-ecom-commentpic-")),
+    (ITEM_IMAGE, GATE2_ECOM_URL.replace("p9-ecom-commentpic-", "p6-ecom-commentpic-")),
     (ITEM_IMAGE, GATE2_ECOM_URL.replace("/douyin-user-image-file/", "/api/account/")),
     (ITEM_IMAGE, GATE2_ECOM_URL.replace("https:", "http:")),
     (ITEM_IMAGE, GATE2_ECOM_URL.replace("https://", "https://user:synthetic@")),
@@ -194,6 +196,18 @@ def test_gate2_evidenced_media_fields_accept_only_resource_context(path, url):
     (ITEM_IMAGE, GATE2_ECOM_URL.replace("lk3s=synthetic&", "")),
     (ITEM_IMAGE, GATE2_ECOM_URL + "#synthetic-fragment"),
     (f"{COMMENTS}.comment_medias_arr.*.media_image_src", GATE2_ECOM_URL),
+    (f"{COMMENTS}.comment_medias_arr.*.media_image_src", GATE2_P3_ECOM_URL),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL.replace("/douyin-user-image-file/", "/tos-cn-i-8y5sebgt5i/")),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL.replace("https:", "http:")),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL.replace("https://", "https://user:synthetic@")),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL.replace("byteimg.com/", "byteimg.com:8443/")),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL + "&access_token=synthetic-auth"),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL + "&unexpected=synthetic"),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL + "&x-signature=synthetic-duplicate"),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL + "&%78-signature=synthetic-encoded-duplicate"),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL.replace("lk3s=synthetic&", "")),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL.replace("x-signature=synthetic-resource", "x-signature=")),
+    (ITEM_IMAGE, GATE2_P3_ECOM_URL + "#synthetic-fragment"),
 ])
 def test_gate2_media_does_not_expand_hosts_paths_queries_or_existing_comment_fields(path, url):
     with pytest.raises(ValueError, match=(
@@ -202,8 +216,9 @@ def test_gate2_media_does_not_expand_hosts_paths_queries_or_existing_comment_fie
         parse_complete_package(json.dumps(_body(path, url)).encode())
 
 
-def test_gate2_media_remains_forbidden_in_requests_sku_legacy_and_fake_field_paths():
-    body = _body(ITEM_IMAGE, GATE2_ECOM_URL)
+@pytest.mark.parametrize("ecom_url", [GATE2_ECOM_URL, GATE2_P3_ECOM_URL])
+def test_gate2_media_remains_forbidden_in_requests_sku_legacy_and_fake_field_paths(ecom_url):
+    body = _body(ITEM_IMAGE, ecom_url)
     legacy = deepcopy(body)
     for key in ("schemaVersion", "source", "trigger", "productId", "detailCapturedAt", "appVersion",
                 "detailSha256", "skuSha256", "sha256"):
@@ -211,10 +226,10 @@ def test_gate2_media_remains_forbidden_in_requests_sku_legacy_and_fake_field_pat
     sku = deepcopy(body)
     sku["skuBody"], sku["detailBody"] = sku["detailBody"], {}
     dotted = deepcopy(body)
-    dotted["detailBody"] = {ITEM_IMAGE: GATE2_ECOM_URL}
+    dotted["detailBody"] = {ITEM_IMAGE: ecom_url}
     fake_array = deepcopy(body)
     fake_array["detailBody"]["chunks"] = {"*": fake_array["detailBody"]["chunks"][0]}
-    for invalid in (legacy, sku, dotted, fake_array, _body("request_url", GATE2_ECOM_URL)):
+    for invalid in (legacy, sku, dotted, fake_array, _body("request_url", ecom_url)):
         with pytest.raises(ValueError, match="credential"):
             parse_complete_package(json.dumps(invalid).encode())
 
@@ -222,6 +237,20 @@ def test_gate2_media_remains_forbidden_in_requests_sku_legacy_and_fake_field_pat
 def test_gate2_media_exception_does_not_allow_plaintext_or_nested_identity(gate2_complete_package):
     for key in ("Cookie", "Authorization", "headers", "access_token"):
         invalid = deepcopy(gate2_complete_package)
+        invalid["detailBody"]["nested"] = {"identity": {key: "synthetic-forbidden"}}
+        with pytest.raises(ValueError, match="credential"):
+            parse_complete_package(json.dumps(invalid).encode())
+
+
+def test_p3_ecom_reduced_package_preserves_raw_and_keeps_identity_forbidden(gate2_complete_package):
+    body = gate2_complete_package
+    items = body["detailBody"]["chunks"][0]["promotion_v3"]["components"][0]["slices"][0]["data"]["item_list"]
+    items[2]["image"]["url"] = GATE2_P3_ECOM_URL
+    parsed = parse_complete_package(json.dumps(body).encode())
+    assert parsed.model_dump(mode="json", by_alias=True) == body
+    assert canonical_sha256(parsed.model_dump(mode="json", by_alias=True)) == canonical_sha256(body)
+    for key in ("Cookie", "Authorization", "headers", "access_token"):
+        invalid = deepcopy(body)
         invalid["detailBody"]["nested"] = {"identity": {key: "synthetic-forbidden"}}
         with pytest.raises(ValueError, match="credential"):
             parse_complete_package(json.dumps(invalid).encode())

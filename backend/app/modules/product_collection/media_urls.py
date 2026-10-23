@@ -89,7 +89,7 @@ def collector_v2_media_query_keys(path: tuple[str | None, ...], value: str) -> f
         and (
             (host in {"p3-product-comment-sign.byteimg.com", "p9-product-comment-sign.byteimg.com"}
              and parts.path.startswith("/tos-cn-i-8y5sebgt5i/"))
-            or (host == "p9-ecom-commentpic-sign.byteimg.com"
+            or (host in {"p3-ecom-commentpic-sign.byteimg.com", "p9-ecom-commentpic-sign.byteimg.com"}
                 and parts.path.startswith("/douyin-user-image-file/"))
         )
     ):
