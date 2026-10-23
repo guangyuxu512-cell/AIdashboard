@@ -351,6 +351,9 @@ class ProductCollectionDispatchService:
                 .join(CollectionRequest, CollectionRequest.request_id == Item.request_id)
                 .where(
                     CollectionRequest.cancel_requested_at.is_not(None),
+                    # Preserve the request audit, but do not apply an earlier
+                    # cancel to a later explicitly created recapture dispatch.
+                    Dispatch.created_at <= CollectionRequest.cancel_requested_at,
                     Dispatch.state.in_(("pending_delivery", "delivering", "dispatched", "running")),
                     Item.state.in_(("dispatching", "dispatched", "running")),
                     Item.current_dispatch_id == Dispatch.dispatch_id,

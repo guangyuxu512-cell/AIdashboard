@@ -319,6 +319,16 @@ class ProductCollectionHumanService:
                 "running",
             }:
                 raise ProductCollectionStateConflictError("当前商品已有进行中的采集任务")
+            request = self.repository.request_for_actor(
+                actor=actor,
+                request_id=item.request_id,
+                lock=True,
+            )
+            if request is None:
+                raise ProductCollectionRequestNotFoundError()
+            # Serialize with new cancel requests. Transaction-start now() may
+            # predate a cancel committed while this request was waiting.
+            recaptured_at = self.session.scalar(select(func.clock_timestamp()))
             dispatch_no = self.session.scalar(
                 select(func.coalesce(func.max(Dispatch.dispatch_no), 0)).where(
                     Dispatch.item_id == item.item_id,
@@ -338,6 +348,8 @@ class ProductCollectionHumanService:
                 gateway_id=gateway_id.strip(),
                 state="pending_delivery",
                 delivery_attempts=0,
+                created_at=recaptured_at,
+                updated_at=recaptured_at,
             )
             self.session.add(dispatch)
             self.session.flush()
@@ -355,13 +367,6 @@ class ProductCollectionHumanService:
             item.last_error_code = None
             item.last_error_stage = None
             item.last_error_message = None
-            request = self.repository.request_for_actor(
-                actor=actor,
-                request_id=item.request_id,
-                lock=True,
-            )
-            if request is None:
-                raise ProductCollectionRequestNotFoundError()
             request.status = "running"
             request.finished_at = None
             self.session.commit()
