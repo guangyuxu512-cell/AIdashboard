@@ -89,6 +89,8 @@ export type MaterialCollectionStatus =
   'not-collected' | 'demo-collected' | 'failed' | 'unknown'
 export interface SelectionCandidate {
   id: string
+  /** Canonical Team candidate UUID used by the collection API. */
+  candidateId: string
   shopId: string
   shopName: string
   merchant: CandidateMerchant | null
@@ -154,11 +156,12 @@ export interface DemoReceipt {
 export interface BatchCollectItemResult {
   candidateId: string
   productId: string | null
-  state: 'demo' | 'failed'
+  state: 'demo' | 'submitted' | 'reused' | 'failed'
   message: string
 }
 export interface BatchCollectReceipt {
-  mode: 'mock'
+  mode: 'mock' | 'real'
+  requestId?: string
   // One result per distinct product; all supplied candidate aliases are returned.
   results: (BatchCollectItemResult & { candidateIds: string[] })[]
 }
@@ -168,6 +171,7 @@ export interface SelectionService {
   readonly scheduleAvailable?: boolean
   readonly candidatesAvailable?: boolean
   readonly candidateBlockAvailable?: boolean
+  readonly materialCollectionAvailable?: boolean
   batches?(
     strategyId: string,
     shopId: string | null,

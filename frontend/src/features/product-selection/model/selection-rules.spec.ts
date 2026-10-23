@@ -382,9 +382,9 @@ describe('selection draft and isolated mock handlers', () => {
       ...first,
       collectionStatus: 'demo-collected',
     })
-    await expect(
-      (await createSelectionService('real')).collectBatch([first.id]),
-    ).rejects.toThrow(SELECTION_UNAVAILABLE)
+    expect(
+      (await createSelectionService('real')).materialCollectionAvailable,
+    ).toBe(true)
   })
   it('only requires a creator for Baiying, never for Compass-only retrieval/save', async () => {
     const mock = createSelectionMockHandlers()

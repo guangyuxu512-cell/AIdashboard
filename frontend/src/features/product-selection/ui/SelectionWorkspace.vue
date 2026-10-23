@@ -21,6 +21,7 @@ import type {
 import { runResult, runWindow } from '../model/run-display'
 import CandidatePool from './CandidatePool.vue'
 import StrategyList from './StrategyList.vue'
+import CollectionTasksPanel from '@/features/product-collection/ui/CollectionTasksPanel.vue'
 
 defineProps<{
   panel: 'candidate-pool' | 'selection-strategy' | 'collection-tasks'
@@ -99,9 +100,11 @@ watch(feedback.error, (error) => {
 </script>
 
 <template>
-  <PageSection v-if="panel === 'collection-tasks'"
-    ><EmptyState description="采集任务功能待接入"
-  /></PageSection>
+  <CollectionTasksPanel
+    v-if="panel === 'collection-tasks'"
+    :key="`collection:${contextKey}`"
+    :context-key="contextKey"
+  />
   <PageSection v-else-if="error"
     ><ErrorState :description="error" retryable @retry="load"
   /></PageSection>

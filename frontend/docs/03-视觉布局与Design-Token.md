@@ -43,7 +43,8 @@ Table header / row: 38px / 42px
 
 共享默认 `ProductImage` summary 80px、thumbnail 64px；`ProductInfoCell` 默认 ID 13px／复制槽 30px。compact 显式 thumbnail 48px／ID 12px／复制槽 28px，缺图及重试保留同一 48px 槽。详情不得自动缩小：包括未传密度的商品数据详情默认 thumbnail 64px。
 
-当前只授权候选池试点；策略列表须待新视觉原生确认后再显式复用。商品库／采集任务仍占位，不因有共享规则新建业务列表。
+候选池、采集任务和商品库业务列表均须显式传 `density="compact"` 才使用紧凑规则；详情 Dialog 保持默认密度。
+各 Feature 只配置自身列宽、固定列和交互，不修改共享表格默认样式，也不复制主题颜色。
 
 建议：
 
@@ -89,7 +90,7 @@ AppShell 默认品牌为“思余AI中控台”。品牌图使用真实 Alpha �
 | 控件      | `--control-height-*`、`--field-width-*`、`--date-picker-width-*`                              |
 | 圆角/阴影 | `--radius-*`、`--shadow-*`                                                                    |
 | 弹层      | `--dialog-width-*`、`--drawer-width-*`                                                        |
-| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`    |
+| 布局      | `--layout-*`、`--table-header-height`、`--table-row-height`、`--table-list-viewport-height`   |
 
 `typography.css` 只负责全局排版基线，`layout.css` 只负责页面和语义宽度布局，`theme.css` 是应用唯一样式入口。Naive UI 的全局覆盖位于 `app/providers/naive-theme.ts`，其尺寸直接引用 CSS Token；需要参与 Naive 颜色计算的值必须在 Provider 创建时从 CSS Token 读取计算值，禁止在 TypeScript 再复制一份颜色常量。
 
@@ -126,12 +127,12 @@ Base Token
 
 ### 四套主题返修落点
 
-| 预设 | 侧栏 | 页面 | 卡片 | 主按钮 | 辅助色 |
-| --- | --- | --- | --- | --- | --- |
-| 石墨浅色 | `#1F2937` | `#F3F4F6` | `#FFFFFF` | `#2563EB` | `#64748B` |
-| 森林绿 | `#123E3B` | `#F8FBF5` | `#FFFFFF` | `#2F6F45` | 薄荷 `#DDF7E3`、青柠 `#B7E44B` |
-| 珊瑚红 | `#F06A6B` | `#FFF9F5` | `#FFFFFF` | `#D52E3B` | 暖橙 `#F4A261`、浅珊瑚 `#FFB4A2`；图表强调 `#E63946` |
-| 午夜青 | `#0B1E3F` | `#111827` | `#1F2937` | `#12A08F` | 青绿 `#2DD4BF`、少量暖橙 `#F59E0B` |
+| 预设     | 侧栏      | 页面      | 卡片      | 主按钮    | 辅助色                                               |
+| -------- | --------- | --------- | --------- | --------- | ---------------------------------------------------- |
+| 石墨浅色 | `#1F2937` | `#F3F4F6` | `#FFFFFF` | `#2563EB` | `#64748B`                                            |
+| 森林绿   | `#123E3B` | `#F8FBF5` | `#FFFFFF` | `#2F6F45` | 薄荷 `#DDF7E3`、青柠 `#B7E44B`                       |
+| 珊瑚红   | `#F06A6B` | `#FFF9F5` | `#FFFFFF` | `#D52E3B` | 暖橙 `#F4A261`、浅珊瑚 `#FFB4A2`；图表强调 `#E63946` |
+| 午夜青   | `#0B1E3F` | `#111827` | `#1F2937` | `#12A08F` | 青绿 `#2DD4BF`、少量暖橙 `#F59E0B`                   |
 
 森林薄荷用于表头/轻层次与选中表面，青柠只用于小面积导航标识；珊瑚侧栏用 `#3B291D` 深色文字/图标（指定初值 `#3D2B1F` 对比度 4.46:1，微调达到 4.59:1）、`#FFB4A2` 选中背景、`#F78982` 悬停背景和 `#E6555B` 分割线，主按钮继续深珊瑚配白字，不把成功/警告语义改红。午夜内容表面采用中性灰明度分层，不延续全蓝工具栏/表头。颜色仍只由 CSS Token 定义，不在页面复制。
 
@@ -161,11 +162,18 @@ Electron Windows 窗口使用原生 Window Controls Overlay 覆盖现有 54px To
 
 所有 Drawer、Modal 与动态 Dialog 统一 Teleport 到 AppShell 内的 `AppOverlayHost`。该 Host 从 `--layout-topbar-height` 以下覆盖 Workspace，并建立 Fixed Position Containing Block；业务 Overlay 因而不会进入 Custom Title Bar 或 Window Controls Overlay。业务 Drawer 禁止用单页 `top`、`margin-top` 或固定像素修补。
 
+Dialog／Drawer 内的 `AppSelect` 菜单也必须脱离可滚动、可裁切的 Overlay Body：应用壳存在时由共享组件挂到 `AppOverlayHost`，登录等无应用壳布局挂到全屏层。不得移除 Host 的视口裁切／Fixed Containing Block，也不得在业务页用 `overflow: visible`、局部 `z-index` 或 `to="body"` 修补单一页面。
+
 ## Overlay / Dialog 滚动
 
 `AppDialog` 是普通 Dialog/Modal 的唯一视口约束入口。默认最大高度由
 `--dialog-max-height` 计算，安全留白统一使用 `--overlay-viewport-safe-gap`；业务组件不得复制
 `100dvh - x` 或自定义另一套安全间距。
+
+数据密集型商品编辑器可显式使用 `AppDialog size="workspace"`：宽度占据
+`AppOverlayHost` 可用宽度并保留 8px 外边距，高度占据 Topbar 以下可用高度并保留 8px
+外边距。该模式由 `--dialog-width-workspace`／`--dialog-height-workspace` 统一控制，不进入
+系统全屏，不改变 `sm/md/lg/xl` 既有消费者，也不得用于普通确认弹窗扩宽。
 
 标准结构固定为：
 
@@ -179,8 +187,10 @@ Footer（固定）
 
 内容较少时 Dialog 保持自然高度且不显示无意义滚动条；内容超过可用视口时只收缩并滚动
 Body，标题和操作区始终可见。背景 Page 不参与弹层内容滚动。一个 Overlay 默认只能有一个
-主纵向滚动容器；日志、代码等确有独立滚动语义的区域由 Feature 明确设计。Drawer 保持
-现有 `AppDrawer` / `NDrawerContent` 布局，不套用 Dialog 内部结构。
+主纵向滚动容器；日志、代码等确有独立滚动语义的区域由 Feature 明确设计。商品编辑
+`workspace` 是显式例外：外层 Body 不滚动，左侧编辑区与右侧当前范围列表各自只有一个内部
+纵向滚动区，Header 和 Footer 保持固定；不得再嵌套第三个主滚动区。Drawer 保持现有
+`AppDrawer` / `NDrawerContent` 布局，不套用 Dialog 内部结构。
 
 ## Compact Management Fill 链路
 
