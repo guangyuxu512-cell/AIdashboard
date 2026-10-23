@@ -28,7 +28,8 @@ _GALLERY_PATHS = frozenset(_field_path(value) for value in {
     f"{_GALLERY}.content_list.*.icon.*.url_list.*",
 })
 _COVER_PATH = _field_path(f"{_VIDEO}.cover.url_list.*")
-_SIGNED_MEDIA_PATHS = _VIDEO_PATHS | _COMMENT_PATHS | _GALLERY_PATHS | {_COVER_PATH}
+_ITEM_IMAGE_PATH = _field_path("chunks.*.promotion_v3.components.*.slices.*.data.item_list.*.image.url")
+_SIGNED_MEDIA_PATHS = _VIDEO_PATHS | _COMMENT_PATHS | _GALLERY_PATHS | {_COVER_PATH, _ITEM_IMAGE_PATH}
 
 
 def safe_url_parts(value: str, *, allowed_schemes: set[str]):
@@ -68,6 +69,7 @@ def collector_v2_media_query_keys(path: tuple[str | None, ...], value: str) -> f
     host = parts.hostname.lower()
     signature = None
     allowed: set[str] = set()
+    exact_query_keys = False
     if (
         field in _VIDEO_PATHS
         and host in {"api-play.amemv.com", "api.amemv.com", "api-play-hl.amemv.com", "api-hl.amemv.com"}
@@ -83,12 +85,25 @@ def collector_v2_media_query_keys(path: tuple[str | None, ...], value: str) -> f
         signature = "x-signature"
         allowed = {"lk3s", "x-expires", "x-signature"}
     elif (
+        field == _ITEM_IMAGE_PATH
+        and (
+            (host in {"p3-product-comment-sign.byteimg.com", "p9-product-comment-sign.byteimg.com"}
+             and parts.path.startswith("/tos-cn-i-8y5sebgt5i/"))
+            or (host == "p9-ecom-commentpic-sign.byteimg.com"
+                and parts.path.startswith("/douyin-user-image-file/"))
+        )
+    ):
+        signature = "x-signature"
+        allowed = {"lk3s", "x-expires", "x-signature"}
+        exact_query_keys = True
+    elif (
         field == _COVER_PATH
         and host == "p3-sign.douyinpic.com"
-        and parts.path.startswith("/tos-cn-v-2e5523/")
+        and parts.path.startswith(("/tos-cn-v-2e5523/", "/tos-cn-v-800a60/"))
     ):
         signature = "x-signature"
         allowed = {"dy_q", "l", "x-expires", "x-signature"}
+        exact_query_keys = parts.path.startswith("/tos-cn-v-800a60/")
     elif (
         field in _GALLERY_PATHS
         and host in {"p3-sellpoint1-sign.byteimg.com", "p11-sellpoint1-sign.byteimg.com"}
@@ -101,6 +116,7 @@ def collector_v2_media_query_keys(path: tuple[str | None, ...], value: str) -> f
         signature is None or any(key not in allowed for key, _ in query)
         or len({key for key, _ in query}) != len(query)
         or not any(key == signature and item for key, item in query)
+        or (exact_query_keys and {key for key, _ in query} != allowed)
     ):
         return frozenset()
     return frozenset({signature.replace("-", "_")})
