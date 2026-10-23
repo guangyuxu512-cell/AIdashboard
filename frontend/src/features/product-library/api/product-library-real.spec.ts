@@ -100,6 +100,69 @@ describe('product library Real adapter', () => {
     expect(detail.attributes).toEqual([])
   })
 
+  it('exports only the adopted version complete UU snapshot as JSON TXT', async () => {
+    const adoptedSnapshot = {
+      schemaVersion: 2,
+      productId: product.source_product_id,
+      skuList: [{ skuId: 'sku-1', title: '中文规格' }],
+      images: { detail: ['https://example.invalid/detail.webp'] },
+    }
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      data: {
+        ...product,
+        merchant_snapshot: null,
+        latest_collection_state: 'succeeded',
+        latest_collection_error_code: null,
+        versions: [
+          {
+            version_id: 'version-old',
+            captured_at: '2026-10-19T09:00:00+08:00',
+            source_format_version: 1,
+            cleaner_version: 'cleaner-1',
+            raw_content_sha256: 'b'.repeat(64),
+            uu_snapshot: { stale: true },
+            price_evidence: {},
+          },
+          {
+            version_id: 'version-1',
+            captured_at: '2026-10-20T09:00:00+08:00',
+            source_format_version: 2,
+            cleaner_version: 'cleaner-2',
+            raw_content_sha256: 'a'.repeat(64),
+            uu_snapshot: adoptedSnapshot,
+            price_evidence: {},
+          },
+        ],
+      },
+    })
+
+    const file =
+      await createProductLibraryRealService().exportSingle('library-1')
+
+    expect(file.fileName).toBe(`${product.source_product_id}.txt`)
+    expect(JSON.parse(file.content)).toEqual(adoptedSnapshot)
+    expect(file.content).not.toContain('"stale"')
+    expect(httpClient.get).toHaveBeenCalledWith(
+      '/api/v1/product-library/products/library-1',
+    )
+  })
+
+  it('refuses export when the adopted version is absent from detail', async () => {
+    vi.mocked(httpClient.get).mockResolvedValueOnce({
+      data: {
+        ...product,
+        merchant_snapshot: null,
+        latest_collection_state: 'succeeded',
+        latest_collection_error_code: null,
+        versions: [],
+      },
+    })
+
+    await expect(
+      createProductLibraryRealService().exportSingle('library-1'),
+    ).rejects.toThrow('已采用的资料版本未在商品详情中返回')
+  })
+
   it('rejects unsupported current-page filters and mutations explicitly', async () => {
     const service = createProductLibraryRealService()
     await expect(

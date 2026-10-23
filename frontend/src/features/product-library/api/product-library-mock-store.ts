@@ -131,6 +131,7 @@ export function createProductLibraryMockService(): ProductLibraryService {
       recollect: true,
       import: true,
       export: true,
+      batchExport: true,
     },
     async groups() {
       refreshCounts()
@@ -287,6 +288,9 @@ export function createProductLibraryMockService(): ProductLibraryService {
           platform: product.platform,
         })),
       ).length
+    },
+    async exportSingle() {
+      throw new Error('演示模式仅核对导出入口与文件清单')
     },
   }
 }

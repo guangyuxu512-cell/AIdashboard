@@ -20,6 +20,7 @@ function unavailable(): ProductLibraryService {
       recollect: false,
       import: false,
       export: false,
+      batchExport: false,
     },
     groups: reject,
     list: reject,
@@ -29,6 +30,7 @@ function unavailable(): ProductLibraryService {
     moveToGroup: reject,
     remove: reject,
     recollect: reject,
+    exportSingle: reject,
   }
 }
 

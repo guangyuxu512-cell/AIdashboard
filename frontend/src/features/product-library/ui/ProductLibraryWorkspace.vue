@@ -62,6 +62,7 @@ const listError = ref<string | null>(null)
 const loading = ref(false)
 const busy = ref(false)
 const previewSaving = ref(false)
+const exportingProductId = ref<string | null>(null)
 const keyword = ref('')
 const libraryView = ref<ProductLibraryView>(
   route.query.view === 'ungrouped' || route.query.view === 'grouped'
@@ -353,9 +354,45 @@ function closePreview(show: boolean) {
   void router.replace({ query })
 }
 
-function openExport(rows: LibraryProduct[]) {
+function downloadTextFile(fileName: string, content: string) {
+  const url = URL.createObjectURL(
+    new Blob([content], { type: 'text/plain;charset=utf-8' }),
+  )
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = fileName
+  anchor.style.display = 'none'
+  document.body.appendChild(anchor)
+  anchor.click()
+  anchor.remove()
+  window.setTimeout(() => URL.revokeObjectURL(url), 0)
+}
+
+async function openExport(rows: LibraryProduct[]) {
   if (!service.value?.capabilities.export) {
     message.warning('正式商品库导出尚未接入')
+    return
+  }
+  if (rows.length !== 1) {
+    message.warning('正式商品库暂不支持批量导出')
+    return
+  }
+  if (service.value.mode === 'real') {
+    if (exportingProductId.value) return
+    const product = rows[0]
+    if (!product) return
+    exportingProductId.value = product.id
+    try {
+      const file = await service.value.exportSingle(product.id)
+      downloadTextFile(file.fileName, file.content)
+      message.success('商品 UU 资料已下载')
+    } catch (error) {
+      message.error(
+        error instanceof Error ? error.message : '商品 UU 资料下载失败',
+      )
+    } finally {
+      exportingProductId.value = null
+    }
     return
   }
   exportProducts.value = rows
@@ -570,7 +607,9 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
           AppButton,
           {
             size: 'small',
-            disabled: !service.value?.capabilities.export,
+            disabled:
+              !service.value?.capabilities.export ||
+              exportingProductId.value === row.id,
             title: service.value?.capabilities.export
               ? undefined
               : '正式导出尚未接入',
@@ -681,9 +720,11 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
         <template #actions>
           <AppButton
             size="small"
-            :disabled="!selected.length || !service.capabilities.export"
+            :disabled="!selected.length || !service.capabilities.batchExport"
             :title="
-              service.capabilities.export ? undefined : '正式导出尚未接入'
+              service.capabilities.batchExport
+                ? undefined
+                : '正式批量导出尚未接入'
             "
             @click="openExport(selectedProducts())"
           >
@@ -757,7 +798,9 @@ const columns = computed<DataTableColumns<LibraryProduct>>(() => [
       :product="preview"
       :saving="previewSaving"
       :editable="service.capabilities.edit"
-      :exportable="service.capabilities.export"
+      :exportable="
+        service.capabilities.export && exportingProductId !== preview?.id
+      "
       :groupable="service.capabilities.moveGroup"
       :can-previous="previewCanPrevious"
       :can-next="previewCanNext"

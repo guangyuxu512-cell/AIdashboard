@@ -95,6 +95,11 @@ export interface ProductLibraryPage {
   categories: string[]
 }
 
+export interface ProductLibraryExportFile {
+  fileName: string
+  content: string
+}
+
 export interface ProductLibraryService {
   available: boolean
   mode: 'mock' | 'real'
@@ -107,7 +112,10 @@ export interface ProductLibraryService {
     remove: boolean
     recollect: boolean
     import: boolean
+    /** Single adopted UU snapshot exported as its original JSON TXT. */
     export: boolean
+    /** Multi-product archive/list export remains a separate capability. */
+    batchExport: boolean
   }
   groups(): Promise<ProductGroup[]>
   list(query: ProductLibraryQuery): Promise<ProductLibraryPage>
@@ -117,4 +125,5 @@ export interface ProductLibraryService {
   moveToGroup(ids: string[], groupId: string | null): Promise<number>
   remove(ids: string[]): Promise<number>
   recollect(ids: string[]): Promise<number>
+  exportSingle(id: string): Promise<ProductLibraryExportFile>
 }

@@ -1,6 +1,7 @@
 import { httpClient, type PageDto } from '@/shared/api'
 import type {
   LibraryProduct,
+  ProductLibraryExportFile,
   ProductGroup,
   ProductLibraryService,
 } from '../model/contracts'
@@ -57,6 +58,26 @@ function platform(value: ProductLibraryProductDto['platform']) {
   return value === 'pinduoduo' ? ('pdd' as const) : value
 }
 
+function adoptedSnapshot(
+  dto: ProductLibraryProductDetailDto,
+): ProductLibraryExportFile {
+  if (!dto.adopted_version_id) throw new Error('商品尚无已采用的资料版本')
+  const adopted = dto.versions.find(
+    (version) => version.version_id === dto.adopted_version_id,
+  )
+  if (!adopted) throw new Error('已采用的资料版本未在商品详情中返回')
+  if (
+    adopted.uu_snapshot === null ||
+    typeof adopted.uu_snapshot !== 'object' ||
+    Array.isArray(adopted.uu_snapshot)
+  )
+    throw new Error('已采用的 UU 快照格式无效')
+  return {
+    fileName: `${dto.source_product_id}.txt`,
+    content: `${JSON.stringify(adopted.uu_snapshot, null, 2)}\n`,
+  }
+}
+
 function mapProduct(
   dto: ProductLibraryProductDto,
   groupNames: ReadonlyMap<string, string>,
@@ -111,7 +132,8 @@ export function createProductLibraryRealService(): ProductLibraryService {
       remove: false,
       recollect: false,
       import: false,
-      export: false,
+      export: true,
+      batchExport: false,
     },
     async groups(): Promise<ProductGroup[]> {
       const rows = (await httpClient.get<ProductLibraryGroupDto[]>(groupsPath))
@@ -163,6 +185,14 @@ export function createProductLibraryRealService(): ProductLibraryService {
         )
       ).data
       return mapProduct(dto, groupNames, dto)
+    },
+    async exportSingle(id) {
+      const dto = (
+        await httpClient.get<ProductLibraryProductDetailDto>(
+          `${productsPath}/${encodeURIComponent(id)}`,
+        )
+      ).data
+      return adoptedSnapshot(dto)
     },
     saveEdit: writeUnavailable,
     createGroup: writeUnavailable,

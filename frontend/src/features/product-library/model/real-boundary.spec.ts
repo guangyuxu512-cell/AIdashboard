@@ -16,7 +16,12 @@ describe('product workspace Real boundary', () => {
     expect(products).toMatchObject({
       available: true,
       mode: 'real',
-      capabilities: { edit: false, export: false, import: false },
+      capabilities: {
+        edit: false,
+        export: true,
+        batchExport: false,
+        import: false,
+      },
     })
     await expect(
       products.saveEdit('product-id', {
