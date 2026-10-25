@@ -55,6 +55,25 @@ class ProductCollectionHumanRepository:
             ),
         )
 
+    @staticmethod
+    def visible_groups(actor: ActorContext):
+        return DataScopePolicy.apply(
+            select(Group).where(Group.archived_at.is_(None)),
+            team_id_column=Group.team_id,
+            created_by_user_id_column=Group.created_by_user_id,
+            actor=actor,
+        )
+
+    def group_for_actor(
+        self,
+        *,
+        actor: ActorContext,
+        group_id: UUID,
+    ) -> Group | None:
+        return self.session.scalar(
+            self.visible_groups(actor).where(Group.group_id == group_id),
+        )
+
     def visible_candidates(
         self,
         *,
@@ -199,16 +218,18 @@ class ProductCollectionHumanRepository:
     def list_groups(self, *, actor: ActorContext) -> list[Group]:
         return list(
             self.session.scalars(
-                select(Group).where(
-                    Group.team_id == actor.require_team_id(),
-                    Group.archived_at.is_(None),
-                ).order_by(Group.name, Group.group_id),
+                self.visible_groups(actor).order_by(Group.name, Group.group_id),
             ),
         )
 
     @staticmethod
     def visible_products(actor: ActorContext):
-        return select(Product).where(Product.team_id == actor.require_team_id())
+        return DataScopePolicy.apply(
+            select(Product),
+            team_id_column=Product.team_id,
+            created_by_user_id_column=Product.created_by_user_id,
+            actor=actor,
+        )
 
     def list_products(
         self,

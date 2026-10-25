@@ -376,7 +376,7 @@ class ProductCollectionHumanService:
             raise
 
     def list_groups(self, actor: ActorContext):
-        self._read_team(actor)
+        self._require_read_access(actor)
         return self.repository.list_groups(actor=actor)
 
     def list_products(
@@ -389,11 +389,11 @@ class ProductCollectionHumanService:
         group_id: UUID | None,
         ungrouped: bool,
     ):
-        self._read_team(actor)
+        self._require_read_access(actor)
         if group_id is not None and ungrouped:
             raise ProductLibraryFilterConflictError()
-        if group_id is not None and self.repository.group(
-            team_id=actor.require_team_id(),
+        if group_id is not None and self.repository.group_for_actor(
+            actor=actor,
             group_id=group_id,
         ) is None:
             raise ProductCollectionGroupNotFoundError()
@@ -411,16 +411,16 @@ class ProductCollectionHumanService:
         actor: ActorContext,
         product_id: UUID,
     ) -> ProductLibraryProductDetail:
-        team_id = self._read_team(actor)
+        self._require_read_access(actor)
         product = self.repository.product_for_actor(actor=actor, product_id=product_id)
         if product is None:
             raise ProductLibraryProductNotFoundError()
         versions = self.repository.product_versions(
-            team_id=team_id,
+            team_id=product.team_id,
             product_id=product.product_id,
         )
         latest_item = self.repository.latest_item_for_product(
-            team_id=team_id,
+            team_id=product.team_id,
             product=product,
         )
         return ProductLibraryProductDetail.model_validate(
@@ -524,8 +524,8 @@ class ProductCollectionHumanService:
         self.module_access.require_module_access(actor, ModuleCode.PRODUCT_LIBRARY)
         return actor.require_team_id()
 
-    def _read_team(self, actor: ActorContext) -> UUID:
-        return self._write_team(actor)
+    def _require_read_access(self, actor: ActorContext) -> None:
+        self.module_access.require_module_access(actor, ModuleCode.PRODUCT_LIBRARY)
 
 
 def _normalized_request_hash(

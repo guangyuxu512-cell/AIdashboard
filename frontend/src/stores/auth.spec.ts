@@ -58,6 +58,14 @@ function dataSource(
   }
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((accept) => {
+    resolve = accept
+  })
+  return { promise, resolve }
+}
+
 describe('Human Auth Store', () => {
   beforeEach(() => {
     window.localStorage.clear()
@@ -268,5 +276,50 @@ describe('Human Auth Store', () => {
     expect(auth.activeTeamId).toBe('team-1')
     expect(auth.hasTeamContext).toBe(true)
     expect(onTeamChanged).not.toHaveBeenCalled()
+  })
+
+  it('does not let an older team access response overwrite the latest team', async () => {
+    const teamAAccess = deferred<CurrentModuleAccess>()
+    const teamBAccess = deferred<CurrentModuleAccess>()
+    const source = dataSource({
+      teams: [team('team-a', 'Team A'), team('team-b', 'Team B')],
+      moduleAccess: {
+        moduleCodes: ['product-library'],
+        isAccessAdministrator: true,
+        isSuperAccount: true,
+      },
+    })
+    vi.mocked(source.getCurrentModuleAccess)
+      .mockReturnValueOnce(
+        Promise.resolve({
+          moduleCodes: ['product-library'],
+          isAccessAdministrator: true,
+          isSuperAccount: true,
+        }),
+      )
+      .mockReturnValueOnce(teamAAccess.promise)
+      .mockReturnValueOnce(teamBAccess.promise)
+    const auth = useAuthStore()
+    auth.setDataSource(source)
+    await auth.initialize()
+
+    const selectA = auth.selectTeam('team-a')
+    const selectB = auth.selectTeam('team-b')
+    teamBAccess.resolve({
+      moduleCodes: ['product-library'],
+      isAccessAdministrator: true,
+      isSuperAccount: true,
+    })
+    await selectB
+    teamAAccess.resolve({
+      moduleCodes: ['asset'],
+      isAccessAdministrator: true,
+      isSuperAccount: true,
+    })
+    await selectA
+
+    expect(auth.activeTeamId).toBe('team-b')
+    expect(auth.allowedModuleCodes).toEqual(new Set(['product-library']))
+    expect(source.getCurrentModuleAccess).toHaveBeenCalledTimes(3)
   })
 })
