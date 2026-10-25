@@ -37,6 +37,7 @@ containers+=("$frontend")
 receiver="$(docker run -d --name "$run_id-receiver" --read-only --no-healthcheck \
     --network "container:$frontend" --entrypoint python "$backend_image" -B -u -c '
 import hashlib
+import json
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -44,9 +45,10 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 class Receiver(BaseHTTPRequestHandler):
     arrivals = 0
 
-    def reply(self, status, text):
+    def reply(self, status, text, content_type="text/plain"):
         body = (text + "\n").encode()
         self.send_response(status)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
@@ -55,6 +57,14 @@ class Receiver(BaseHTTPRequestHandler):
         self.reply(200, str(Receiver.arrivals))
 
     def do_POST(self):
+        if self.path.startswith("/internal/mobile-collection/v1/"):
+            size = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(size).decode()
+            authorized = self.headers.get("Authorization") == "Bearer synthetic-proxy-token"
+            return self.reply(200 if authorized else 401, json.dumps({
+                "backend": "transport-fixture", "path": self.path,
+                "body": body, "authorized": authorized,
+            }), "application/json")
         Receiver.arrivals += 1
         self.connection.settimeout(10)
         size = int(self.headers.get("Content-Length", "0"))
@@ -138,5 +148,40 @@ for origin in "$http_origin" "$https_origin"; do
         -o "$test_root/rejected" -w '%{http_code}' "$origin/api/v1/assets")"
     test "$code" = 413
     test "$(curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/api/v1/assets")" = "$before"
+
+    # Internal mobile endpoints must preserve the complete URI, query, body and
+    # Authorization header. The fixture is not an application credential check.
+    for path in \
+        '/internal/mobile-collection/v1/attempts/register?scope=one%2Ftwo&replay=1' \
+        '/internal/mobile-collection/v1/attempts/00000000-0000-0000-0000-000000000001/credentials/refresh'; do
+        for auth in missing invalid valid; do
+            auth_headers=()
+            expected_code=401
+            authorized=false
+            if [[ "$auth" == invalid ]]; then
+                auth_headers=(-H 'Authorization: Bearer invalid-proxy-token')
+            elif [[ "$auth" == valid ]]; then
+                auth_headers=(-H 'Authorization: Bearer synthetic-proxy-token')
+                expected_code=200
+                authorized=true
+            fi
+            code="$(curl "${curl_options[@]}" "${trust[@]}" "${auth_headers[@]}" \
+                -H 'Content-Type: application/json' --data-binary '{"proxyFixture":true}' \
+                -D "$test_root/internal.headers" -o "$test_root/internal.json" \
+                -w '%{http_code}' "$origin$path")"
+            test "$code" = "$expected_code"
+            tr -d '\r' < "$test_root/internal.headers" | grep -Eqi '^Content-Type: application/json'
+            expected="$(printf '{"backend": "transport-fixture", "path": "%s", "body": "{\\"proxyFixture\\":true}", "authorized": %s}\n' "$path" "$authorized")"
+            test "$(cat "$test_root/internal.json")" = "$expected"
+        done
+    done
+
+    # Do not expose a broader /internal/ or a different protocol-version prefix.
+    curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/index.html" -o "$test_root/pc.html"
+    for path in /internal/mobile-collection/v2/attempts/register /internal/unrelated; do
+        curl "${curl_options[@]}" "${trust[@]}" --fail "$origin$path" -o "$test_root/non-mobile.html"
+        cmp "$test_root/pc.html" "$test_root/non-mobile.html"
+    done
 done
 printf 'PASS: production inner and host TLS Nginx preserve multipart bytes through 10 MiB; over-12 MiB bodies return 413 without forwarding (transport fixture only)\n'
+printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/auth preserved, missing/invalid auth stays 401, adjacent prefixes stay frontend\n'
