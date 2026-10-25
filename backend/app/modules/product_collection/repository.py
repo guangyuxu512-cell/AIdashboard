@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import and_, case, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, or_, select, update
 from sqlalchemy.orm import Session
 
 from app.modules.product_collection.contracts import (
@@ -30,6 +30,7 @@ from app.modules.product_collection.models import (
 )
 from app.modules.product_collection.ports import (
     GatewaySettlementClaim,
+    GatewayStatusClaim,
     UploadProcessingClaim,
 )
 from app.shared.identifiers import generate_id
@@ -41,6 +42,52 @@ class ProductCollectionRepository:
 
     def now(self) -> datetime:
         return self.session.scalar(select(func.clock_timestamp()))
+
+    def claim_gateway_status(
+        self, *, gateway_id: str, interval_seconds: float,
+    ) -> GatewayStatusClaim | None:
+        if not gateway_id.strip() or isinstance(interval_seconds, bool) or interval_seconds <= 0:
+            raise ValueError("Gateway status polling settings are invalid")
+        now = self.now()
+        row = self.session.execute(
+            select(Dispatch, Item)
+            .join(Item, and_(Item.item_id == Dispatch.item_id, Item.team_id == Dispatch.team_id))
+            .where(
+                Dispatch.gateway_id == gateway_id,
+                Dispatch.gateway_job_id.is_not(None),
+                Dispatch.state.in_(("dispatched", "running")),
+                Item.state.in_(("dispatched", "running")),
+                Item.current_dispatch_id == Dispatch.dispatch_id,
+                or_(Dispatch.next_attempt_at.is_(None), Dispatch.next_attempt_at <= now),
+                ~exists(select(CaptureAttempt.attempt_id).where(
+                    CaptureAttempt.dispatch_id == Dispatch.dispatch_id,
+                    CaptureAttempt.state.in_(("received", "processing", "persisted")),
+                )),
+            )
+            .order_by(func.coalesce(Dispatch.next_attempt_at, Dispatch.created_at), Dispatch.dispatch_id)
+            .with_for_update(of=Dispatch, skip_locked=True)
+            .limit(1),
+        ).one_or_none()
+        if row is None:
+            return None
+        dispatch, item = row
+        attempt = self.session.scalar(select(CaptureAttempt).where(
+            CaptureAttempt.dispatch_id == dispatch.dispatch_id,
+            CaptureAttempt.gateway_id == dispatch.gateway_id,
+            CaptureAttempt.gateway_job_id == dispatch.gateway_job_id,
+            CaptureAttempt.team_id == dispatch.team_id,
+            CaptureAttempt.state.in_(("registered", "running")),
+        ).with_for_update())
+        # Reuse the existing due timestamp, not the delivery/capture attempt
+        # counters or a new queue. Commit it before doing read-only HTTP.
+        dispatch.next_attempt_at = now + timedelta(seconds=interval_seconds)
+        return GatewayStatusClaim(
+            dispatch.dispatch_id, item.item_id, dispatch.team_id, dispatch.gateway_id,
+            dispatch.gateway_job_id, dispatch.external_job_id, item.platform, item.source_product_id,
+            attempt.attempt_id if attempt else None,
+            attempt.capture_batch_id if attempt else None,
+            attempt.gateway_device_id if attempt else None,
+        )
 
     def claim_upload(self, *, lease_seconds: int) -> UploadProcessingClaim | None:
         if type(lease_seconds) is not int or lease_seconds < 1:

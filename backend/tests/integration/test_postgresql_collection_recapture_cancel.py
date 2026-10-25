@@ -33,7 +33,7 @@ from app.modules.product_collection.models import (
     ProductCollectionPersistReceipt as PersistReceipt,
     ProductLibraryProductVersion as ProductVersion,
 )
-from app.modules.product_collection.ports import GatewayCancelResult, GatewayDispatchResult
+from app.modules.product_collection.ports import GatewayCancelResult, GatewayDispatchResult, GatewayJobState
 from app.modules.users.models import User
 from tests.integration.test_postgresql_collection_media_budget import (
     isolated_collection, _settings,
@@ -60,6 +60,11 @@ class Gateway:
     def cancel(self, *, gateway_job_id):
         self.canceled.append(gateway_job_id)
         return GatewayCancelResult(gateway_job_id=gateway_job_id, status="canceled")
+
+    def status(self, *, gateway_job_id, external_job_id):
+        command = next(c for c in self.delivered if c.external_job_id == external_job_id)
+        return GatewayJobState("synthetic-gateway", gateway_job_id, external_job_id,
+            command.source_platform.value, command.source_product_id, None, "pending", 0, command.max_attempts)
 
     def settle(self, settlement):
         self.settled.append(settlement)
