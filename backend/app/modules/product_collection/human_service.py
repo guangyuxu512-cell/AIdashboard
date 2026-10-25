@@ -156,7 +156,7 @@ class ProductCollectionHumanService:
         *,
         include_items: bool = True,
     ) -> ProductCollectionRequestRead:
-        self._read_team(actor)
+        self.module_access.require_module_access(actor, ModuleCode.PRODUCT_LIBRARY)
         request = self.repository.request_for_actor(actor=actor, request_id=request_id)
         if request is None:
             raise ProductCollectionRequestNotFoundError()
@@ -169,7 +169,7 @@ class ProductCollectionHumanService:
         offset: int,
         limit: int,
     ) -> tuple[list[ProductCollectionRequestRead], int]:
-        self._read_team(actor)
+        self.module_access.require_module_access(actor, ModuleCode.PRODUCT_LIBRARY)
         rows, total = self.repository.list_requests(
             actor=actor,
             offset=offset,
