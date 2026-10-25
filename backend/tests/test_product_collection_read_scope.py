@@ -1,7 +1,8 @@
 """Collection reads share DataScopePolicy; global browsing never grants writes."""
 
 from dataclasses import replace
-from unittest.mock import Mock
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 from uuid import uuid4
 
 import pytest
@@ -11,6 +12,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError, TeamContextRequiredError
 from app.modules.product_collection.human_repository import ProductCollectionHumanRepository
+from app.modules.product_collection.human_contracts import ProductLibraryProductDetail
 from app.modules.product_collection.human_service import ProductCollectionHumanService
 
 
@@ -28,6 +30,24 @@ def test_collection_sql_scope_before_pagination(super_account, selected_team):
     assert list(compiled.params.values()) == ([actor.team_id] if selected_team else [])
 
 
+@pytest.mark.parametrize("resource", ["groups", "products"])
+@pytest.mark.parametrize("super_account,selected_team", [(True, False), (True, True), (False, True)])
+def test_product_library_sql_scope_before_filters_and_pagination(
+    resource,
+    super_account,
+    selected_team,
+):
+    actor = _actor(super_account=super_account, team_id=uuid4() if selected_team else None)
+    statement = {
+        "groups": ProductCollectionHumanRepository.visible_groups,
+        "products": ProductCollectionHumanRepository.visible_products,
+    }[resource](actor)
+    compiled = statement.compile(dialect=postgresql.dialect())
+    table = "product_library_groups" if resource == "groups" else "product_library_products"
+    assert (f"{table}.team_id =" in str(compiled)) == selected_team
+    assert list(compiled.params.values()) == ([actor.team_id] if selected_team else [])
+
+
 def test_global_super_can_list_and_read_collection_requests_without_a_write_team():
     service = ProductCollectionHumanService(Mock())
     service.repository = Mock(spec=ProductCollectionHumanRepository)
@@ -38,6 +58,40 @@ def test_global_super_can_list_and_read_collection_requests_without_a_write_team
     assert service.list_requests(actor, offset=0, limit=20) == ([], 0)
     assert service.get_request(actor, request_id) == "synthetic-detail"
     service.repository.request_for_actor.assert_called_once_with(actor=actor, request_id=request_id)
+
+
+def test_global_super_product_detail_reads_children_from_authorized_product_team():
+    service = ProductCollectionHumanService(Mock())
+    service.repository = Mock(spec=ProductCollectionHumanRepository)
+    actor, product_id, product_team = _actor(), uuid4(), uuid4()
+    product_fields = {
+        field: None
+        for field in ProductLibraryProductDetail.model_fields
+        if field not in {"versions", "latest_collection_state", "latest_collection_error_code"}
+    }
+    product_fields.update(product_id=product_id, team_id=product_team)
+    product = SimpleNamespace(**product_fields)
+    service.repository.product_for_actor.return_value = product
+    service.repository.product_versions.return_value = []
+    service.repository.latest_item_for_product.return_value = None
+    with patch.object(
+        ProductLibraryProductDetail,
+        "model_validate",
+        return_value="synthetic-detail",
+    ):
+        assert service.get_product(actor, product_id) == "synthetic-detail"
+    service.repository.product_for_actor.assert_called_once_with(
+        actor=actor,
+        product_id=product_id,
+    )
+    service.repository.product_versions.assert_called_once_with(
+        team_id=product_team,
+        product_id=product_id,
+    )
+    service.repository.latest_item_for_product.assert_called_once_with(
+        team_id=product_team,
+        product=product,
+    )
 
 
 def test_module_guard_and_missing_member_team_still_fail_closed():

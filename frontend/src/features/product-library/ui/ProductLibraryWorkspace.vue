@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, h, ref, shallowRef, watch } from 'vue'
+import { computed, h, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import {
   NEllipsis,
@@ -82,7 +82,23 @@ const groupDialogOpen = ref(false)
 const groupDialogTitle = ref('移动商品分组')
 const groupTargetIds = ref<string[]>([])
 let revision = 0
+let listRevision = 0
+let detailRevision = 0
+let exportRevision = 0
+let mounted = true
 let pendingPreviewNavigation: 'previous' | 'next' | null = null
+
+function isCurrent(current: number) {
+  return mounted && current === revision
+}
+
+onBeforeUnmount(() => {
+  mounted = false
+  revision += 1
+  listRevision += 1
+  detailRevision += 1
+  exportRevision += 1
+})
 
 const libraryViewItems = [
   { key: 'all', label: '全部商品' },
@@ -113,35 +129,58 @@ const categoryOptions = computed(() => [
   })),
 ])
 
-async function loadService() {
+function clearScopeState() {
   const current = ++revision
+  listRevision += 1
+  detailRevision += 1
+  exportRevision += 1
   service.value = null
+  groups.value = []
+  pageData.value = null
+  selected.value = []
+  preview.value = null
+  exportProducts.value = []
+  exportingProductId.value = null
+  groupId.value = null
+  groupTargetIds.value = []
+  groupDialogOpen.value = false
+  pendingPreviewNavigation = null
   loadError.value = null
+  listError.value = null
+  loading.value = false
+  return current
+}
+
+async function loadService(current = clearScopeState()) {
   try {
     const resolved = await createProductLibraryService(apiMode)
-    if (current !== revision) return
+    if (!isCurrent(current)) return
+    if (!resolved.available) {
+      service.value = resolved
+      return
+    }
+    const nextGroups = await resolved.groups()
+    if (!isCurrent(current)) return
+    groups.value = nextGroups
+    if (resolved.mode === 'real' && libraryView.value === 'grouped')
+      groupId.value = nextGroups[0]?.id ?? null
     service.value = resolved
-    if (!resolved.available) return
-    groups.value = await resolved.groups()
-    if (
-      resolved.mode === 'real' &&
-      libraryView.value === 'grouped' &&
-      !groupId.value
-    )
-      groupId.value = groups.value[0]?.id ?? null
   } catch (error) {
-    if (current === revision)
+    if (isCurrent(current))
       loadError.value =
         error instanceof Error ? error.message : '商品库加载失败'
   }
 }
 
 async function fetchList() {
-  if (!service.value?.available) return
+  const source = service.value
+  if (!mounted || !source?.available) return
+  const current = revision
+  const request = ++listRevision
   loading.value = true
   listError.value = null
   try {
-    const result = await service.value.list({
+    const result = await source.list({
       view: libraryView.value,
       keyword: keyword.value.trim(),
       platform: platform.value,
@@ -150,6 +189,7 @@ async function fetchList() {
       page: page.value,
       pageSize: pageSize.value,
     })
+    if (!isCurrent(current) || request !== listRevision) return
     const items = result.items
     pageData.value = result
     page.value = result.page
@@ -164,27 +204,46 @@ async function fetchList() {
       typeof route.query.productId === 'string' ? route.query.productId : null
     if (requested && !preview.value) {
       const match = items.find((item) => item.productId === requested)
-      if (match) preview.value = await service.value.detail(match.id)
+      if (match) await openPreview(match)
     }
   } catch (error) {
-    listError.value =
-      error instanceof Error ? error.message : '商品列表加载失败'
+    if (isCurrent(current) && request === listRevision)
+      listError.value =
+        error instanceof Error ? error.message : '商品列表加载失败'
   } finally {
-    loading.value = false
+    if (isCurrent(current) && request === listRevision) loading.value = false
   }
 }
 
 watch(
   contextKey,
-  async () => {
+  async (context, previousContext) => {
+    const current = clearScopeState()
     keyword.value =
-      typeof route.query.productId === 'string' ? route.query.productId : ''
-    await loadService()
-    await fetchList()
+      previousContext === undefined && typeof route.query.productId === 'string'
+        ? route.query.productId
+        : ''
+    if (previousContext !== undefined) {
+      try {
+        await auth.refreshModuleAccess()
+      } catch {
+        return
+      }
+      if (!isCurrent(current) || context !== contextKey.value) return
+      const query = { ...route.query }
+      delete query.productId
+      await router.replace({ query })
+      if (!isCurrent(current) || context !== contextKey.value) return
+    }
+    await loadService(current)
+    if (mounted && context === contextKey.value) await fetchList()
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
-watch([libraryView, platform, groupId, category, page, pageSize], fetchList)
+watch(
+  [libraryView, platform, groupId, category, page, pageSize],
+  () => void fetchList(),
+)
 
 function reset() {
   keyword.value = ''
@@ -238,12 +297,18 @@ function setProductPageSize(value: number) {
 }
 
 async function openPreview(row: LibraryProduct) {
-  if (!service.value?.available) return
+  const source = service.value
+  if (!mounted || !source?.available) return
+  const current = revision
+  const request = ++detailRevision
   try {
-    preview.value = await service.value.detail(row.id)
+    const result = await source.detail(row.id)
+    if (!isCurrent(current) || request !== detailRevision) return
+    preview.value = result
     void router.replace({ query: { ...route.query, productId: row.productId } })
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '商品详情加载失败')
+    if (isCurrent(current) && request === detailRevision)
+      message.error(error instanceof Error ? error.message : '商品详情加载失败')
   }
 }
 
@@ -348,6 +413,7 @@ async function savePreviewEdit(draft: ProductEditDraft) {
 
 function closePreview(show: boolean) {
   if (show) return
+  detailRevision += 1
   preview.value = null
   const query = { ...route.query }
   delete query.productId
@@ -379,19 +445,25 @@ async function openExport(rows: LibraryProduct[]) {
   }
   if (service.value.mode === 'real') {
     if (exportingProductId.value) return
+    const source = service.value
+    const current = revision
+    const request = ++exportRevision
     const product = rows[0]
     if (!product) return
     exportingProductId.value = product.id
     try {
-      const file = await service.value.exportSingle(product.id)
+      const file = await source.exportSingle(product.id)
+      if (!isCurrent(current) || request !== exportRevision) return
       downloadTextFile(file.fileName, file.content)
       message.success('商品 UU 资料已下载')
     } catch (error) {
-      message.error(
-        error instanceof Error ? error.message : '商品 UU 资料下载失败',
-      )
+      if (isCurrent(current) && request === exportRevision)
+        message.error(
+          error instanceof Error ? error.message : '商品 UU 资料下载失败',
+        )
     } finally {
-      exportingProductId.value = null
+      if (isCurrent(current) && request === exportRevision)
+        exportingProductId.value = null
     }
     return
   }

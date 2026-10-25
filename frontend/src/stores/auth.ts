@@ -67,6 +67,11 @@ export const useAuthStore = defineStore('auth', () => {
   const currentModuleAccess = ref<CurrentModuleAccess | null>(null)
   const restoreError = ref<string | null>(null)
   let initialization: Promise<void> | null = null
+  let moduleAccessRefresh: {
+    context: string
+    promise: Promise<void>
+  } | null = null
+  let moduleAccessRevision = 0
   let dataSource: HumanAuthDataSource = humanAuthDataSource
 
   const isAuthenticated = computed(
@@ -93,14 +98,14 @@ export const useAuthStore = defineStore('auth', () => {
   const allowedModuleCodes = computed(
     () => new Set(currentModuleAccess.value?.moduleCodes ?? []),
   )
-  const isAccessAdministrator = computed(
-    () => isSuperAccount.value,
-  )
+  const isAccessAdministrator = computed(() => isSuperAccount.value)
 
   function applyAuthenticatedSession(
     user: CurrentHumanUser,
     memberships: HumanTeamMembership[],
   ): void {
+    moduleAccessRevision += 1
+    moduleAccessRefresh = null
     currentUser.value = user
     teams.value = memberships
     const available = memberships.filter(
@@ -122,6 +127,8 @@ export const useAuthStore = defineStore('auth', () => {
     if (clearPersistedTeam && currentUser.value) {
       removeStoredTeamId(currentUser.value.userId)
     }
+    moduleAccessRevision += 1
+    moduleAccessRefresh = null
     currentUser.value = null
     teams.value = []
     activeTeamId.value = null
@@ -179,8 +186,10 @@ export const useAuthStore = defineStore('auth', () => {
       return
     }
     if (activeTeamId.value === teamId) return
-    activeTeamId.value = teamId
+    moduleAccessRevision += 1
+    moduleAccessRefresh = null
     currentModuleAccess.value = null
+    activeTeamId.value = teamId
     if (teamId === null) removeStoredTeamId(currentUser.value.userId)
     else persistTeamId(currentUser.value.userId, teamId)
     authEffects.onTeamChanged()
@@ -192,18 +201,42 @@ export const useAuthStore = defineStore('auth', () => {
       currentModuleAccess.value = null
       return
     }
-    currentModuleAccess.value = await dataSource.getCurrentModuleAccess()
-    if (
-      !currentModuleAccess.value.isSuperAccount &&
-      !activeTeamId.value &&
-      currentUser.value &&
-      activeTeams.value.length === 1
-    ) {
-      const teamId = activeTeams.value[0]?.teamId
-      if (teamId) {
-        activeTeamId.value = teamId
-        persistTeamId(currentUser.value.userId, teamId)
+    const userId = currentUser.value?.userId
+    const teamId = activeTeamId.value
+    const requestedRevision = moduleAccessRevision
+    const context = `${requestedRevision}:${userId ?? 'none'}:${teamId ?? 'none'}`
+    if (moduleAccessRefresh?.context === context) {
+      await moduleAccessRefresh.promise
+      return
+    }
+    const refresh = (async () => {
+      const access = await dataSource.getCurrentModuleAccess()
+      if (
+        moduleAccessRevision !== requestedRevision ||
+        currentUser.value?.userId !== userId ||
+        activeTeamId.value !== teamId
+      )
+        return
+      currentModuleAccess.value = access
+      if (
+        !access.isSuperAccount &&
+        !activeTeamId.value &&
+        currentUser.value &&
+        activeTeams.value.length === 1
+      ) {
+        const onlyTeamId = activeTeams.value[0]?.teamId
+        if (onlyTeamId) {
+          activeTeamId.value = onlyTeamId
+          persistTeamId(currentUser.value.userId, onlyTeamId)
+        }
       }
+    })()
+    const pending = { context, promise: refresh }
+    moduleAccessRefresh = pending
+    try {
+      await refresh
+    } finally {
+      if (moduleAccessRefresh === pending) moduleAccessRefresh = null
     }
   }
 
@@ -214,6 +247,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   function setDataSource(source: HumanAuthDataSource): void {
+    moduleAccessRevision += 1
+    moduleAccessRefresh = null
     dataSource = source
   }
 
