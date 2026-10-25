@@ -41,6 +41,19 @@ PostgreSQL 测试复用分配给 Feature 的
 `control_center_feat_mobile_product_collection_integration`，测试数据位于外层回滚事务；
 Migration Head、消费者开关和生产数据均未改。仅有既有 Starlette/httpx 弃用提示和 Vite 大 chunk 警告。
 
+## Gate 2 退回增量
+
+ca97 对首个 Candidate `d8734649d9c6edaa2a9eb504843a6c80a1647ffb` 的 Real 验收确认：
+超级账号全部团队的商品库读取、搜索、总数和详情均正确；但从已打开详情切到具体团队时，
+商品库为清除旧 `productId` 立即触发路由替换，恰逢 Auth Store 已清空旧模块权限而新团队权限尚未返回，
+守卫按空权限跳到 `permission-denied`。
+
+退回修复保持守卫 fail-closed：团队切换先清空旧模块权限和商品库状态，模块权限刷新按 Actor/Team/代次
+合并同范围请求并拒绝旧响应；商品库等待新权限返回后才清理详情路由并加载新团队范围。新增真实 Router Guard、
+Auth Store 与商品库工作区组合测试，证明等待期间不离开商品库、旧详情已清空，刷新后请求使用新 Team。
+增量 Gate 1 为 10 个相关前端测试文件、46 PASS，定向 ESLint 与 `vue-tsc` 均通过；新 Candidate SHA
+见正式 Handoff。普通成员、无授权跳转、写权限及 Backend/数据库均未改变。
+
 ## Gate 2 与发布交接
 
 ca97 应对精确 Candidate 做独立 Gate 2，重点验证商品中心商品库：超级管理员“全部团队”可浏览

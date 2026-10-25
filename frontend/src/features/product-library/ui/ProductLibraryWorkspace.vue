@@ -129,7 +129,7 @@ const categoryOptions = computed(() => [
   })),
 ])
 
-async function loadService() {
+function clearScopeState() {
   const current = ++revision
   listRevision += 1
   detailRevision += 1
@@ -148,6 +148,10 @@ async function loadService() {
   loadError.value = null
   listError.value = null
   loading.value = false
+  return current
+}
+
+async function loadService(current = clearScopeState()) {
   try {
     const resolved = await createProductLibraryService(apiMode)
     if (!isCurrent(current)) return
@@ -214,16 +218,24 @@ async function fetchList() {
 watch(
   contextKey,
   async (context, previousContext) => {
-    if (previousContext !== undefined) {
-      const query = { ...route.query }
-      delete query.productId
-      void router.replace({ query })
-    }
+    const current = clearScopeState()
     keyword.value =
       previousContext === undefined && typeof route.query.productId === 'string'
         ? route.query.productId
         : ''
-    await loadService()
+    if (previousContext !== undefined) {
+      try {
+        await auth.refreshModuleAccess()
+      } catch {
+        return
+      }
+      if (!isCurrent(current) || context !== contextKey.value) return
+      const query = { ...route.query }
+      delete query.productId
+      await router.replace({ query })
+      if (!isCurrent(current) || context !== contextKey.value) return
+    }
+    await loadService(current)
     if (mounted && context === contextKey.value) await fetchList()
   },
   { immediate: true, flush: 'sync' },
