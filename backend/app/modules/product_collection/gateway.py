@@ -14,13 +14,15 @@ from typing import Any, Iterator, Literal
 from urllib.parse import quote, urlsplit
 
 import httpx
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StrictInt, StrictStr, ValidationError, model_validator
 
 from app.modules.product_collection.contracts import GatewaySettlementV1, Sha256Hex
 from app.modules.product_collection.ports import (
+    GATEWAY_CAPTURE_MAX_ATTEMPTS,
     GatewayCancelResult,
     GatewayDispatchCommand,
     GatewayDispatchResult,
+    GatewayJobState,
 )
 
 
@@ -144,6 +146,36 @@ class _GatewayCancelEnvelope(BaseModel):
 
     ok: Literal[True]
     job: _GatewayCanceledJob
+
+
+class _GatewayJobStateRead(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, hide_input_in_errors=True)
+
+    ok: Literal[True]
+    job_id: StrictStr = Field(alias="jobId", min_length=1, max_length=128)
+    external_job_id: StrictStr = Field(alias="externalJobId", min_length=1, max_length=128)
+    status: GatewayJobStatus
+    source_platform: Literal["douyin"] = Field(alias="sourcePlatform")
+    source_product_id: StrictStr = Field(alias="sourceProductId", min_length=1, max_length=128)
+    capture_batch_id: StrictStr | None = Field(alias="captureBatchId", min_length=1, max_length=128)
+    attempts: StrictInt = Field(ge=0)
+    max_attempts: StrictInt = Field(alias="maxAttempts", ge=1, le=GATEWAY_CAPTURE_MAX_ATTEMPTS)
+    last_error: StrictStr | None = Field(alias="lastError", repr=False)
+    updated_at: AwareDatetime = Field(alias="updatedAt")
+    finished_at: AwareDatetime | None = Field(alias="finishedAt")
+
+    @model_validator(mode="before")
+    @classmethod
+    def require_true(cls, value):
+        if not isinstance(value, dict) or value.get("ok") is not True:
+            raise ValueError("Gateway status envelope is invalid")
+        return value
+
+    @model_validator(mode="after")
+    def validate_attempts(self):
+        if self.attempts > self.max_attempts:
+            raise ValueError("Gateway status attempt counts are invalid")
+        return self
 
 
 class _GatewaySettlementRead(BaseModel):
@@ -303,6 +335,34 @@ class HttpProductCollectionGateway:
         ):
             raise _invalid_response()
 
+    def status(self, *, gateway_job_id: str, external_job_id: str) -> GatewayJobState:
+        normalized_job_id = _required(gateway_job_id, "Gateway job id")
+        normalized_external = _required(external_job_id, "Gateway external job id")
+        payload = self._request_json(
+            "GET", f"/api/v1/jobs/{quote(normalized_job_id, safe='')}/result"
+            f"?externalJobId={quote(normalized_external, safe='')}",
+            token=_configured_token(self._control_token), expected_status=200,
+        )
+        try:
+            job = _GatewayJobStateRead.model_validate(payload)
+        except ValidationError:
+            raise _invalid_response() from None
+        if job.job_id != normalized_job_id or job.external_job_id != normalized_external:
+            raise _invalid_response()
+        # Only observed, fixed public reasons cross this boundary. Arbitrary
+        # NAS diagnostics may contain URLs/secrets and are never persisted.
+        reason = {
+            "等待本批次完整包超时": "等待本批次完整包超时",
+            "中控确认超时：购物车已经点击，有限自动恢复后仍未生成本批次完整包。请检查 LSPosed 作用域、采集插件和抖音进程。":
+                "手机采集等待本批次完整包超时",
+        }.get(job.last_error, "手机采集网关任务已失败")
+        return GatewayJobState(
+            self._gateway_id, job.job_id, job.external_job_id, job.source_platform,
+            job.source_product_id, job.capture_batch_id, job.status.value,
+            job.attempts, job.max_attempts,
+            f"{reason}（尝试 {job.attempts}/{job.max_attempts} 次）",
+        )
+
     def _request_json(
         self,
         method: str,
@@ -310,7 +370,7 @@ class HttpProductCollectionGateway:
         *,
         token: str,
         expected_status: int,
-        json: dict[str, Any],
+        json: dict[str, Any] | None = None,
         settlement: bool = False,
         parse_cancel_conflict: bool = False,
     ) -> dict[str, Any]:

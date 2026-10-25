@@ -110,6 +110,15 @@ def _gateway(*, lose_first_response=False):
     delivered, jobs = [], {}
 
     def handle(request):
+        if request.method == "GET":
+            payload = jobs[request.url.params["externalJobId"]]
+            return httpx.Response(200, json={
+                "ok": True, "jobId": "synthetic-job-" + payload["dispatchId"],
+                "externalJobId": payload["externalJobId"], "status": "pending",
+                "sourcePlatform": payload["sourcePlatform"], "sourceProductId": payload["sourceProductId"],
+                "captureBatchId": None, "attempts": 0, "maxAttempts": payload["maxAttempts"],
+                "lastError": None, "updatedAt": datetime.now(UTC).isoformat(), "finishedAt": None,
+            })
         assert request.url.path == "/api/v1/jobs"
         body = json.loads(request.content)
         delivered.append(body)

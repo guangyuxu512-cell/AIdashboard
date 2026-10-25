@@ -62,6 +62,22 @@ class GatewayCancelResult:
     status: Literal["failed", "canceled"]
 
 
+@dataclass(frozen=True, slots=True)
+class GatewayJobState:
+    """Allowlisted job status; error_message is safe adapter-owned text."""
+
+    gateway_id: str
+    gateway_job_id: str
+    external_job_id: str
+    source_platform: str
+    source_product_id: str
+    capture_batch_id: str | None
+    status: str
+    attempts: int
+    max_attempts: int
+    error_message: str = "手机采集网关任务已失败"
+
+
 class ProductCollectionGateway(Protocol):
     """Service-authenticated operations exposed by the existing gateway."""
 
@@ -70,6 +86,8 @@ class ProductCollectionGateway(Protocol):
     def retry(self, *, gateway_job_id: str) -> GatewayDispatchResult: ...
 
     def cancel(self, *, gateway_job_id: str) -> GatewayCancelResult: ...
+
+    def status(self, *, gateway_job_id: str, external_job_id: str) -> GatewayJobState: ...
 
     def settle(self, settlement: GatewaySettlementV1) -> None: ...
 
@@ -107,6 +125,21 @@ class DeliveryClaim:
     command: GatewayDispatchCommand
     retry_gateway_job_id: str | None
     attempt_no: int
+
+
+@dataclass(frozen=True, slots=True)
+class GatewayStatusClaim:
+    dispatch_id: UUID
+    item_id: UUID
+    team_id: UUID
+    gateway_id: str
+    gateway_job_id: str
+    external_job_id: str
+    source_platform: str
+    source_product_id: str
+    attempt_id: UUID | None
+    capture_batch_id: str | None
+    gateway_device_id: str | None
 
 
 @dataclass(frozen=True, slots=True)
