@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.models import TeamShopAccess
+from app.modules.access.policy import DataScopePolicy
 from app.modules.product_collection.models import (
     ProductCollectionItem as Item,
     ProductCollectionRequest as CollectionRequest,
@@ -89,8 +90,11 @@ class ProductCollectionHumanRepository:
 
     @staticmethod
     def visible_requests(actor: ActorContext):
-        return select(CollectionRequest).where(
-            CollectionRequest.team_id == actor.require_team_id(),
+        return DataScopePolicy.apply(
+            select(CollectionRequest),
+            team_id_column=CollectionRequest.team_id,
+            created_by_user_id_column=CollectionRequest.requested_by_user_id,
+            actor=actor,
         )
 
     def request_for_actor(

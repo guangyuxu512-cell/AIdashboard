@@ -15,6 +15,7 @@ import {
 } from '@/entities/platform/model/registry'
 import { PlatformDisplay, PlatformIcon } from '@/entities/platform'
 import { apiMode } from '@/shared/api'
+import { useAuthStore } from '@/stores/auth'
 import {
   ContextSwitchBar,
   DataTable,
@@ -45,6 +46,7 @@ import CollectionTaskDetailDialog from './CollectionTaskDetailDialog.vue'
 const props = defineProps<{ contextKey: string }>()
 const router = useRouter()
 const message = useMessage()
+const auth = useAuthStore()
 const service = shallowRef<CollectionTaskService | null>(null)
 const loadError = ref<string | null>(null)
 const listError = ref<string | null>(null)
@@ -63,7 +65,20 @@ const status = ref<CollectionTaskStatus | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
 let revision = 0
+let listRevision = 0
+let detailRevision = 0
+let mounted = true
 let pollTimer: ReturnType<typeof setTimeout> | null = null
+const canWrite = computed(
+  () => service.value?.mode === 'mock' || auth.hasTeamContext,
+)
+const writeHint = computed(() =>
+  canWrite.value ? undefined : '请先选择具体团队后再操作',
+)
+
+function isCurrent(current: number) {
+  return mounted && current === revision
+}
 
 function clearPoll() {
   if (pollTimer !== null) clearTimeout(pollTimer)
@@ -73,6 +88,7 @@ function clearPoll() {
 function schedulePoll() {
   clearPoll()
   if (
+    !mounted ||
     service.value?.mode !== 'real' ||
     !pageData.value?.items.some((item) =>
       ['pending', 'running'].includes(item.status),
@@ -82,7 +98,11 @@ function schedulePoll() {
   pollTimer = setTimeout(() => void fetchList(true), 2000)
 }
 
-onBeforeUnmount(clearPoll)
+onBeforeUnmount(() => {
+  mounted = false
+  revision += 1
+  clearPoll()
+})
 
 const platformItems = computed(() =>
   (service.value?.mode === 'real'
@@ -148,10 +168,17 @@ async function loadService() {
   clearPoll()
   const current = ++revision
   service.value = null
+  pageData.value = null
+  detail.value = null
+  selected.value = []
+  pendingSubmission.value = null
+  listError.value = null
+  loading.value = false
+  busy.value = false
   loadError.value = null
   try {
     const resolved = await createCollectionTaskService(apiMode)
-    if (current === revision) {
+    if (isCurrent(current)) {
       service.value = resolved
       if (!resolved.supportsListFilters) {
         keyword.value = ''
@@ -162,48 +189,65 @@ async function loadService() {
       if (resolved.mode === 'real') platform.value = 'douyin'
     }
   } catch (error) {
-    if (current === revision)
+    if (isCurrent(current))
       loadError.value = error instanceof Error ? error.message : '加载失败'
   }
 }
 
 async function fetchList(preserveSelection = false) {
-  if (!service.value?.available) return
+  const source = service.value
+  if (!mounted || !source?.available) return
+  const current = revision
+  const request = ++listRevision
   loading.value = true
   listError.value = null
   try {
-    const result = await service.value.list({
+    const result = await source.list({
       keyword: keyword.value.trim(),
       platform: filterPlatform.value,
       status: status.value,
       page: page.value,
       pageSize: pageSize.value,
     })
+    if (!isCurrent(current) || request !== listRevision) return
     pageData.value = result
-    if (detail.value && service.value.mode === 'real')
+    page.value = result.page
+    if (!preserveSelection) selected.value = []
+    if (detail.value && source.mode === 'real') {
+      const id = detail.value.id
+      const detailRequest = detailRevision
       try {
-        detail.value = await service.value.detail(detail.value.id)
+        const result = await source.detail(id)
+        if (
+          isCurrent(current) &&
+          detailRequest === detailRevision &&
+          detail.value?.id === id
+        )
+          detail.value = result
       } catch {
         // Keep the last visible detail while the list remains refreshable.
       }
-    page.value = result.page
-    if (!preserveSelection) selected.value = []
+    }
   } catch (error) {
-    listError.value =
-      error instanceof Error ? error.message : '任务列表加载失败'
+    if (isCurrent(current) && request === listRevision)
+      listError.value =
+        error instanceof Error ? error.message : '任务列表加载失败'
   } finally {
-    loading.value = false
-    schedulePoll()
+    if (isCurrent(current) && request === listRevision) {
+      loading.value = false
+      schedulePoll()
+    }
   }
 }
 
 watch(
   () => props.contextKey,
   async () => {
+    const context = props.contextKey
     await loadService()
-    await fetchList()
+    if (mounted && context === props.contextKey) await fetchList()
   },
-  { immediate: true },
+  { immediate: true, flush: 'sync' },
 )
 watch([status, filterPlatform, page, pageSize], () => void fetchList())
 
@@ -257,7 +301,8 @@ function validate(values: string[]): string | null {
 }
 
 async function createTasks() {
-  if (!service.value?.available || busy.value) return
+  if (!service.value?.available || busy.value || !canWrite.value) return
+  const current = revision
   const values = parsedValues()
   const error = validate(values)
   if (error) {
@@ -279,6 +324,7 @@ async function createTasks() {
       values,
       submissionKey: pendingSubmission.value.key,
     })
+    if (!isCurrent(current)) return
     if (result.created.length) {
       const itemCount = result.created.reduce(
         (total, task) => total + task.itemCount,
@@ -302,37 +348,44 @@ async function createTasks() {
     page.value = 1
     await fetchList()
   } catch (cause) {
-    message.error(cause instanceof Error ? cause.message : '创建失败')
+    if (isCurrent(current))
+      message.error(cause instanceof Error ? cause.message : '创建失败')
   } finally {
-    busy.value = false
+    if (isCurrent(current)) busy.value = false
   }
 }
 
 async function retry(ids: string[]) {
-  if (!service.value?.available || busy.value) return
+  if (!service.value?.available || busy.value || !canWrite.value) return
+  const current = revision
   busy.value = true
   try {
     const count = await service.value.retry(ids)
+    if (!isCurrent(current)) return
     message.info(count ? `已提交 ${count} 个明细重试` : '没有可有限重试的明细')
     await fetchList()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '重试失败')
+    if (isCurrent(current))
+      message.error(error instanceof Error ? error.message : '重试失败')
   } finally {
-    busy.value = false
+    if (isCurrent(current)) busy.value = false
   }
 }
 
 async function cancel(ids: string[]) {
-  if (!service.value?.available || busy.value) return
+  if (!service.value?.available || busy.value || !canWrite.value) return
+  const current = revision
   busy.value = true
   try {
     const count = await service.value.cancel(ids)
+    if (!isCurrent(current)) return
     message.info(count ? `已取消 ${count} 个采集请求` : '没有可取消的请求')
     await fetchList()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '取消失败')
+    if (isCurrent(current))
+      message.error(error instanceof Error ? error.message : '取消失败')
   } finally {
-    busy.value = false
+    if (isCurrent(current)) busy.value = false
   }
 }
 
@@ -342,38 +395,52 @@ function viewProduct(row: CollectionTask) {
 
 async function openDetail(row: CollectionTask) {
   if (!service.value?.available) return
+  const current = revision
+  const request = ++detailRevision
   try {
-    detail.value = await service.value.detail(row.id)
+    const result = await service.value.detail(row.id)
+    if (isCurrent(current) && request === detailRevision) detail.value = result
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '任务详情加载失败')
+    if (isCurrent(current) && request === detailRevision)
+      message.error(error instanceof Error ? error.message : '任务详情加载失败')
   }
 }
 
 async function retryItem(itemId: string) {
-  if (!service.value?.available || busy.value) return
+  if (!service.value?.available || busy.value || !canWrite.value) return
+  const current = revision
+  const request = ++detailRevision
   busy.value = true
   try {
-    detail.value = await service.value.retryItem(itemId)
+    const result = await service.value.retryItem(itemId)
+    if (!isCurrent(current)) return
+    if (request === detailRevision) detail.value = result
     message.success('已提交有限重试')
     await fetchList()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '该明细不能重试')
+    if (isCurrent(current))
+      message.error(error instanceof Error ? error.message : '该明细不能重试')
   } finally {
-    busy.value = false
+    if (isCurrent(current)) busy.value = false
   }
 }
 
 async function recaptureItem(itemId: string) {
-  if (!service.value?.available || busy.value) return
+  if (!service.value?.available || busy.value || !canWrite.value) return
+  const current = revision
+  const request = ++detailRevision
   busy.value = true
   try {
-    detail.value = await service.value.recaptureItem(itemId)
+    const result = await service.value.recaptureItem(itemId)
+    if (!isCurrent(current)) return
+    if (request === detailRevision) detail.value = result
     message.success('已提交重新采集')
     await fetchList()
   } catch (error) {
-    message.error(error instanceof Error ? error.message : '重新采集失败')
+    if (isCurrent(current))
+      message.error(error instanceof Error ? error.message : '重新采集失败')
   } finally {
-    busy.value = false
+    if (isCurrent(current)) busy.value = false
   }
 }
 
@@ -447,7 +514,12 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
         row.status === 'failed' || row.status === 'partial'
           ? h(
               AppButton,
-              { size: 'small', onClick: () => retry([row.id]) },
+              {
+                size: 'small',
+                disabled: busy.value || !canWrite.value,
+                title: writeHint.value,
+                onClick: () => retry([row.id]),
+              },
               () => '重试',
             )
           : null,
@@ -499,7 +571,13 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
               :maxlength="4000"
               aria-label="采集任务输入"
             />
-            <AppButton tone="primary" :loading="busy" @click="createTasks">
+            <AppButton
+              tone="primary"
+              :loading="busy"
+              :disabled="!canWrite"
+              :title="writeHint"
+              @click="createTasks"
+            >
               创建采集任务
             </AppButton>
           </div>
@@ -545,17 +623,18 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
                 <span>
                   <AppButton
                     size="small"
-                    :disabled="!selected.length || busy"
+                    :disabled="!selected.length || busy || !canWrite"
                     @click="retry(selected.map(String))"
                     >批量重试</AppButton
                   >
                 </span>
               </template>
-              仅失败任务可重试
+              {{ writeHint ?? '仅失败任务可重试' }}
             </NTooltip>
             <AppButton
               size="small"
-              :disabled="!selected.length || busy"
+              :disabled="!selected.length || busy || !canWrite"
+              :title="writeHint"
               @click="cancel(selected.map(String))"
               >取消选中任务</AppButton
             >
@@ -589,7 +668,7 @@ const columns = computed<DataTableColumns<CollectionTask>>(() => [
     <CollectionTaskDetailDialog
       :show="Boolean(detail)"
       :task="detail"
-      :busy="busy"
+      :busy="busy || !canWrite"
       @update:show="detail = $event ? detail : null"
       @retry-item="retryItem"
       @recapture-item="recaptureItem"
