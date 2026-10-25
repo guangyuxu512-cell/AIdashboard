@@ -14,6 +14,7 @@ from app.modules.product_collection.exceptions import (
     ProductCollectionLeaseLostError,
     ProductCollectionStateConflictError,
 )
+from app.modules.product_collection.gateway import ProductCollectionGatewayError
 from app.modules.product_collection.models import (
     ProductCollectionCaptureAttempt as CaptureAttempt,
     ProductCollectionDispatch as Dispatch,
@@ -25,6 +26,8 @@ from app.modules.product_collection.ports import (
     GATEWAY_CAPTURE_MAX_ATTEMPTS,
     GatewayDispatchCommand,
     GatewayDispatchResult,
+    GatewayJobState,
+    GatewayStatusClaim,
     ProductCollectionGateway,
 )
 from app.modules.product_collection.repository import ProductCollectionRepository
@@ -341,6 +344,89 @@ class ProductCollectionDispatchService:
         self.succeed(claim, result)
         return True
 
+    def reconcile_gateway_once(
+        self, gateway: ProductCollectionGateway, *, gateway_id: str, interval_seconds: float,
+    ) -> bool:
+        try:
+            claim = self.repository.claim_gateway_status(
+                gateway_id=gateway_id, interval_seconds=interval_seconds,
+            )
+            if claim is None:
+                self.session.rollback()
+                return False
+            self.session.commit()
+        except Exception:
+            self.session.rollback()
+            raise
+        try:
+            result = gateway.status(gateway_job_id=claim.gateway_job_id, external_job_id=claim.external_job_id)
+        except ProductCollectionGatewayError:
+            # Read failures/unknown responses cannot become business failures
+            # or stop normal dispatch. Never store the raw exception/response.
+            return False
+        return self.reconcile_gateway_failure(claim, result)
+
+    def reconcile_gateway_failure(self, claim: GatewayStatusClaim, result: GatewayJobState) -> bool:
+        if (
+            result.status != "failed"
+            or result.gateway_id != claim.gateway_id
+            or result.gateway_job_id != claim.gateway_job_id
+            or result.external_job_id != claim.external_job_id
+            or result.source_platform != claim.source_platform
+            or result.source_product_id != claim.source_product_id
+            or result.capture_batch_id != claim.capture_batch_id
+        ):
+            self.session.rollback()
+            return False
+        try:
+            dispatch = self.repository.lock_dispatch(claim.dispatch_id, claim.team_id)
+            if (
+                dispatch is None
+                or dispatch.gateway_id != claim.gateway_id
+                or dispatch.gateway_job_id != claim.gateway_job_id
+                or dispatch.external_job_id != claim.external_job_id
+                or dispatch.state not in {"dispatched", "running"}
+            ):
+                self.session.rollback()
+                return False
+            item = self.repository.lock_item(claim.item_id, claim.team_id)
+            if (
+                item is None or dispatch.item_id != item.item_id
+                or item.current_dispatch_id != dispatch.dispatch_id
+                or item.state not in {"dispatched", "running"}
+                or item.platform != claim.source_platform or item.source_product_id != claim.source_product_id
+            ):
+                self.session.rollback()
+                return False
+            attempt = self.session.scalar(select(CaptureAttempt).where(
+                CaptureAttempt.dispatch_id == dispatch.dispatch_id,
+                CaptureAttempt.team_id == claim.team_id,
+                CaptureAttempt.state.in_(("registered", "running", "received", "processing")),
+            ).with_for_update().execution_options(populate_existing=True))
+            if (
+                (attempt.attempt_id if attempt else None) != claim.attempt_id
+                or (attempt is not None and (
+                    attempt.state not in {"registered", "running"}
+                    or attempt.gateway_id != claim.gateway_id
+                    or attempt.gateway_job_id != claim.gateway_job_id
+                    or attempt.capture_batch_id != claim.capture_batch_id
+                    or attempt.gateway_device_id != claim.gateway_device_id
+                    or attempt.token_consumed_at is not None
+                ))
+            ):
+                self.session.rollback()
+                return False
+            request = self.repository.lock_request(item.request_id, claim.team_id)
+            if request is None:
+                self.session.rollback()
+                return False
+            self._finish_gateway_failed(dispatch, item, request, error_message=result.error_message)
+            self.session.commit()
+            return True
+        except Exception:
+            self.session.rollback()
+            raise
+
     def cancel_requested_once(self, gateway: ProductCollectionGateway) -> bool:
         """Honor one durable human cancel intent without claiming physical retraction."""
 
@@ -462,11 +548,12 @@ class ProductCollectionDispatchService:
         dispatch: Dispatch,
         item: Item,
         request: CollectionRequest,
+        *,
+        error_message: str = "手机采集网关任务已在取消请求前结束为失败",
     ) -> None:
         now = self.repository.now()
         error_code = "PRODUCT_COLLECTION_GATEWAY_EXECUTION_FAILED"
         error_stage = "gateway_execution"
-        error_message = "手机采集网关任务已在取消请求前结束为失败"
         dispatch.state = "execution_failed"
         dispatch.finished_at = now
         dispatch.lease_id = None

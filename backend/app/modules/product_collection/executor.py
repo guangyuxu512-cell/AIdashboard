@@ -54,18 +54,24 @@ class ProductCollectionExecutor:
             if ProductCollectionDispatchService(session).cancel_requested_once(self.gateway):
                 return True
         with self.session_factory() as session:
+            reconciled = ProductCollectionDispatchService(session).reconcile_gateway_once(
+                self.gateway, gateway_id=gateway_id,
+                interval_seconds=self.settings.product_collection_scan_interval_seconds,
+            )
+        with self.session_factory() as session:
             ProductCollectionDispatchService(session).plan_pending(
                 gateway_id=gateway_id,
                 limit=100,
                 max_capture_attempts=self.settings.product_collection_capture_max_attempts,
             )
         with self.session_factory() as session:
-            return ProductCollectionDispatchService(session).deliver_once(
+            delivered = ProductCollectionDispatchService(session).deliver_once(
                 self.gateway,
                 lease_seconds=self.settings.product_collection_dispatch_lease_seconds,
                 max_attempts=self.settings.product_collection_delivery_max_attempts,
                 retry_delay_seconds=self.settings.product_collection_delivery_retry_seconds,
             )
+        return delivered or reconciled
 
     def process_once(self) -> bool:
         if not self.settings.product_collection_processing_enabled:
