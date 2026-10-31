@@ -138,7 +138,8 @@ if __name__ == "__main__":
                 params = [str(suite / "tests"), "-c", str(suite / "pyproject.toml"), "--rootdir", str(suite)]
                 if args.suite == "backend":
                     params += ["--ignore=" + str(suite / "tests/test_douyin_signer_runtime.py"),
-                               "--ignore=" + str(suite / "tests/test_notification_webhook_e2e.py")]
+                               "--ignore=" + str(suite / "tests/test_notification_webhook_e2e.py"),
+                               "--ignore=" + str(suite / "tests/test_worker_precheck_lock_postgres.py")]
                 raise SystemExit(pytest.main(params))
         finally:
             # Windows cannot remove the current directory. Restore it before

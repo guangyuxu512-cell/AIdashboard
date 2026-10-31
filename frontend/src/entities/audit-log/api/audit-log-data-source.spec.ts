@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { httpClient } from '@/shared/api'
 
 import { createAuditLogDataSource } from './audit-log-data-source'
-import { getAuditActionLabel, type AuditAction } from '../model/types'
+import {
+  getAuditActionLabel,
+  getAuditTargetLabel,
+  type AuditAction,
+} from '../model/types'
 
 describe('Audit Log Data Source', () => {
   afterEach(() => vi.restoreAllMocks())
@@ -85,6 +89,43 @@ describe('Audit Log Data Source', () => {
       page: 1,
       pageSize: 20,
     })
+  })
+
+  it('maps and labels task-scoped shop session audit entries', async () => {
+    vi.spyOn(httpClient, 'get').mockResolvedValue({
+      data: {
+        items: [
+          {
+            audit_log_id: 'log-task-session',
+            request_id: 'request-task-session',
+            actor_user_id: 'user-1',
+            actor_display_name: '管理员',
+            team_id: 'team-1',
+            action: 'session.read_for_task',
+            target_type: 'shop',
+            target_id: '12345678-0000-4000-8000-000000000000',
+            details: null,
+            created_at: '2026-10-31T00:00:00Z',
+          },
+        ],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      },
+    })
+
+    const page = await createAuditLogDataSource('real').list({
+      page: 1,
+      pageSize: 20,
+    })
+    const entry = page.items[0]
+
+    expect(entry).toMatchObject({
+      action: 'session.read_for_task',
+      targetType: 'shop',
+    })
+    expect(getAuditActionLabel(entry.action)).toBe('读取任务店铺会话')
+    expect(getAuditTargetLabel(entry)).toBe('店铺 · 12345678')
   })
 
   it('preserves global audit entries without a team and labels every access action', async () => {

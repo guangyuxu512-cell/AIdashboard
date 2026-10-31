@@ -1,4 +1,5 @@
 export type AuditAction =
+  | 'session.read_for_task'
   | 'product_selection.block_candidate'
   | 'product_selection.restore_candidate'
   | 'access_management.create_member'
@@ -16,7 +17,7 @@ export type AuditAction =
   | 'access_management.designate_super_account'
 
 export type AuditTargetType =
-  'user' | 'membership' | 'team' | 'selection_candidate'
+  'user' | 'membership' | 'team' | 'selection_candidate' | 'shop'
 
 export interface AuditLogViewModel {
   auditLogId: string
@@ -32,6 +33,7 @@ export interface AuditLogViewModel {
 }
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  'session.read_for_task': '读取任务店铺会话',
   'product_selection.block_candidate': '屏蔽候选商品',
   'product_selection.restore_candidate': '恢复候选商品',
   'access_management.create_member': '创建员工',
@@ -50,6 +52,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
 }
 
 const TARGET_LABELS: Record<AuditTargetType, string> = {
+  shop: '店铺',
   selection_candidate: '候选商品',
   user: '员工',
   membership: '成员关系',

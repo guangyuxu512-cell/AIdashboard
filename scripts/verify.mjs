@@ -93,6 +93,7 @@ const report = {
       ? [
           "backend/tests/test_douyin_signer_runtime.py (opens ports; original CI retains it)",
           "backend/tests/test_notification_webhook_e2e.py (opens ports; original CI retains it)",
+          "backend/tests/test_worker_precheck_lock_postgres.py (requires disposable PostgreSQL; CI backend job retains it)",
         ]
       : []),
     ...(full
