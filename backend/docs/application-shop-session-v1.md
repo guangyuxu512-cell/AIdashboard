@@ -18,6 +18,13 @@ Device、Task、影刀或设备绑定。店铺 Session 的加密原件仍由中�
 修改开关或文件路径需重启；文件内容在每次鉴权及发送 Session 前重新读取。使用原子替换更新文件，
 停用软件或撤掉店铺 ID 可阻止后续读取；不可撤销已经交付给客户端的 Session，应重新登录使其失效。
 
+生产 Compose 默认将独立的空卷只读挂载到 `/run/secrets/application-sessions`，开关仍为 false。
+正式启用时，`APPLICATION_SHOP_SESSION_CONFIG_SOURCE` 需改为已存在的受保护**宿主机目录**，
+`BACKEND_APPLICATION_SHOP_SESSION_CLIENTS_FILE` 指向容器内该目录的 `clients.json`，并确认 Backend
+非 root 用户可读取。挂载目录而不是单文件，才能让原子替换后的文件被运行中的进程重新读取。
+不要在 Git 或镜像中写入授权配置；首次挂载/开关变化需按 Release Gate 重建 Backend，之后更新
+目录内配置不需重建。默认空卷、未启用时不会暴露任何店铺 Session。
+
 JSON 契约：
 
 ```json

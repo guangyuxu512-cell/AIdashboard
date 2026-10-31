@@ -243,3 +243,38 @@ jobs:
           PRODUCTION_NGINX_VHOST_DIR=/tmp \
           PRODUCTION_ENV_FILE="$(pwd)/deploy/production/.env.example" \
           docker compose --env-file deploy/production/.env.example -f deploy/production/compose.yaml config -q
+      - name: Validate isolated application Session grant mount
+        run: |
+          export DEPLOYMENT_IMAGE_TAG='${{ github.sha }}'
+          export PRODUCTION_ENV_FILE="$(pwd)/deploy/production/.env.example"
+          grant_dir="${RUNNER_TEMP}/application-session-grants"
+          mkdir -p "$grant_dir"
+          chmod 755 "$grant_dir"
+          docker compose --env-file deploy/production/.env.example -f deploy/production/compose.yaml config --format json > "$RUNNER_TEMP/session-default.json"
+          APPLICATION_SHOP_SESSION_CONFIG_SOURCE="$grant_dir" docker compose --env-file deploy/production/.env.example -f deploy/production/compose.yaml config --format json > "$RUNNER_TEMP/session-bind.json"
+          python - "$RUNNER_TEMP/session-default.json" "$RUNNER_TEMP/session-bind.json" "$grant_dir" <<'PY'
+          import json, pathlib, sys
+          default, bound = (json.loads(pathlib.Path(p).read_text()) for p in sys.argv[1:3])
+          target = '/run/secrets/application-sessions'
+          def mount(config):
+              matches = [m for m in config['services']['backend']['volumes'] if m['target'] == target]
+              assert len(matches) == 1 and matches[0]['read_only'] is True
+              return matches[0]
+          assert mount(default)['type'] == 'volume'
+          assert mount(bound)['type'] == 'bind' and mount(bound)['source'] == sys.argv[3]
+          assert all(not any(m['target'] == target for m in service.get('volumes', []))
+                     for name, service in bound['services'].items() if name != 'backend')
+          PY
+          printf 'before' > "$grant_dir/clients.json"
+          chmod 644 "$grant_dir/clients.json"
+          name="control-center-app-session-mount-${{ github.run_id }}"
+          cleanup() { docker rm --force "$name" >/dev/null 2>&1 || true; }
+          trap cleanup EXIT
+          docker run --detach --name "$name" --network none --read-only \
+            --mount "type=bind,src=$grant_dir,dst=/run/secrets/application-sessions,readonly" \
+            --entrypoint python "control-center-backend-ci:${{ github.sha }}" -c 'import time; time.sleep(60)' >/dev/null
+          docker exec "$name" python -c "from pathlib import Path; assert Path('/run/secrets/application-sessions/clients.json').read_text() == 'before'"
+          printf 'after' > "$grant_dir/clients.next"
+          chmod 644 "$grant_dir/clients.next"
+          mv -f "$grant_dir/clients.next" "$grant_dir/clients.json"
+          docker exec "$name" python -c "from pathlib import Path; assert Path('/run/secrets/application-sessions/clients.json').read_text() == 'after'"

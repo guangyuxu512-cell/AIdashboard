@@ -1,5 +1,6 @@
 import hashlib
 import json
+import os
 from types import SimpleNamespace
 from uuid import uuid4
 
@@ -183,6 +184,16 @@ def test_auth_config_is_fail_closed_and_reread(setup):
     setup.config_path.write_text("invalid json")
     with pytest.raises(ApplicationSessionUnavailableError):
         setup.auth.authenticate("product-library", TOKEN)
+
+
+def test_atomic_grant_replacement_is_seen_before_next_session_read(setup, tmp_path):
+    assert len(setup.service.list_shops(setup.principal)) == 1
+    replacement = tmp_path / "grants-next.json"
+    replacement.write_text(json.dumps({"version": 1, "clients": [{**setup.grant, "enabled": False}]}))
+    os.replace(replacement, setup.config_path)
+    with pytest.raises(ApplicationAuthenticationError):
+        setup.service.read_session(setup.principal, shop_id=setup.shop_id, request_id=str(uuid4()))
+    assert setup.db.commits == 0
 
 
 def test_shared_token_between_applications_is_rejected(setup):
