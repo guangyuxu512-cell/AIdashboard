@@ -38,6 +38,7 @@ const appliedFilters = ref<{
 })
 
 const auditActions: AuditAction[] = [
+  'application.read_shop_session',
   'access_management.create_member',
   'access_management.update_member',
   'access_management.reset_member_password',
@@ -94,6 +95,10 @@ const columns: DataTableColumns<AuditLogViewModel> = [
     key: 'actorDisplayName',
     minWidth: 140,
     ellipsis: { tooltip: true },
+    render: (log) =>
+      log.details?.actor_kind === 'application'
+        ? `软件 · ${String(log.details?.application_id ?? '')}`
+        : log.actorDisplayName,
   },
   {
     title: '操作',

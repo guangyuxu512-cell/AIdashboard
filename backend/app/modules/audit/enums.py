@@ -2,6 +2,7 @@ from enum import Enum
 
 
 class AuditAction(str, Enum):
+    APPLICATION_READ_SHOP_SESSION = "application.read_shop_session"
     BLOCK_SELECTION_CANDIDATE = "product_selection.block_candidate"
     RESTORE_SELECTION_CANDIDATE = "product_selection.restore_candidate"
     CREATE_MEMBER = "access_management.create_member"
@@ -20,6 +21,7 @@ class AuditAction(str, Enum):
 
 
 class AuditTargetType(str, Enum):
+    SHOP_SESSION = "shop_session"
     SELECTION_CANDIDATE = "selection_candidate"
     USER = "user"
     MEMBERSHIP = "membership"
