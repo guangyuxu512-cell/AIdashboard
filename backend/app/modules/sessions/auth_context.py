@@ -57,6 +57,7 @@ class ShopSessionAuthContext(BaseModel):
     platform: ShopPlatform
     session_version: int
     cookies: tuple[StoredSessionCookie, ...]
+    identity: StoredSessionIdentity | None = None
 
 
 class ShopSessionAccessor:
@@ -114,6 +115,7 @@ class ShopSessionAccessor:
             platform=payload.platform,
             session_version=version,
             cookies=tuple(payload.cookies),
+            identity=payload.identity,
         )
 
     def merge_response_cookies(

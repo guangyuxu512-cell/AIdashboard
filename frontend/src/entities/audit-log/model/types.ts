@@ -1,4 +1,5 @@
 export type AuditAction =
+  | 'application.read_shop_session'
   | 'product_selection.block_candidate'
   | 'product_selection.restore_candidate'
   | 'access_management.create_member'
@@ -16,7 +17,7 @@ export type AuditAction =
   | 'access_management.designate_super_account'
 
 export type AuditTargetType =
-  'user' | 'membership' | 'team' | 'selection_candidate'
+  'user' | 'membership' | 'team' | 'selection_candidate' | 'shop_session'
 
 export interface AuditLogViewModel {
   auditLogId: string
@@ -32,6 +33,7 @@ export interface AuditLogViewModel {
 }
 
 const ACTION_LABELS: Record<AuditAction, string> = {
+  'application.read_shop_session': '软件读取店铺会话',
   'product_selection.block_candidate': '屏蔽候选商品',
   'product_selection.restore_candidate': '恢复候选商品',
   'access_management.create_member': '创建员工',
@@ -50,6 +52,7 @@ const ACTION_LABELS: Record<AuditAction, string> = {
 }
 
 const TARGET_LABELS: Record<AuditTargetType, string> = {
+  shop_session: '店铺会话',
   selection_candidate: '候选商品',
   user: '员工',
   membership: '成员关系',
@@ -82,6 +85,9 @@ export function getAuditTargetLabel(log: AuditLogViewModel): string {
 }
 
 export function getAuditSummary(log: AuditLogViewModel): string {
+  if (log.action === 'application.read_shop_session') {
+    return `配置授权人：${log.actorDisplayName}`
+  }
   if (log.action === 'access_management.reset_member_password') {
     return '已重置密码'
   }

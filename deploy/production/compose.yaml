@@ -49,6 +49,9 @@ services:
         condition: service_healthy
     volumes:
       - "${BACKEND_ASSET_STORAGE_VOLUME_SOURCE:-backend-assets}:/app/data/assets"
+      # Mount the directory, not the file: atomic grant-file replacement must
+      # remain visible to the running backend when access is revoked.
+      - "${APPLICATION_SHOP_SESSION_CONFIG_SOURCE:-application-session-empty}:/run/secrets/application-sessions:ro"
     network_mode: host
     restart: unless-stopped
     init: true
@@ -111,3 +114,5 @@ services:
 volumes:
   backend-assets:
     name: control-center-backend-prod-assets
+  application-session-empty:
+    name: control-center-application-session-empty

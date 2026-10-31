@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     )
     worker_online_timeout_seconds: int = Field(default=45, ge=15, le=300)
     worker_task_lease_seconds: int = Field(default=60, ge=30, le=600)
+    # Independent service integrations; no Worker, task, or device is required.
+    application_shop_session_enabled: bool = False
+    application_shop_session_clients_file: Path | None = None
     worker_reconcile_interval_seconds: int = Field(default=10, ge=1, le=60)
     task_event_retention_days: int = Field(default=90, ge=1, le=3650)
     task_event_retention_sweep_interval_seconds: int = Field(

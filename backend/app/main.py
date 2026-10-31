@@ -56,6 +56,7 @@ from app.modules.product_selection.run_executor import execute_selection_runs_fo
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
 from app.modules.sessions.api import router as sessions_router
+from app.modules.sessions.application_api import router as application_sessions_router
 from app.modules.shops.api import router as shops_router
 from app.modules.tasks.api import router as tasks_router
 from app.modules.tasks.reconcile import reconcile_lost_tasks_forever
@@ -230,6 +231,7 @@ def create_app() -> FastAPI:
     application.include_router(product_data_router)
     application.include_router(credentials_router)
     application.include_router(sessions_router)
+    application.include_router(application_sessions_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
     application.include_router(workers_router)
