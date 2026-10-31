@@ -1,3 +1,4 @@
+import json
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -18,10 +19,12 @@ from app.modules.access.enums import DataScope
 from app.modules.access.repository import ExecutionAuthorizationLockRepository
 from app.modules.access.exceptions import TeamResourceAccessDeniedError
 from app.modules.sessions.auth_context import (
+    ShopSessionAccessor,
     ShopSessionAuthContext,
     StoredSessionCookie,
     StoredSessionIdentity,
 )
+from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
     ShopSessionNotConfiguredError,
     ShopSessionPayloadInvalidError,
@@ -137,6 +140,27 @@ def test_only_authorized_session_is_returned_and_audited_without_secret():
     assert f.audit[0]["task_id"] == f.task_id
     assert f.audit[0]["device_id"] == f.device_id
     assert f.session.commits == 1
+
+
+def test_authorized_read_decrypts_real_stored_payload_with_matching_identity():
+    f = Fixture()
+    cipher = SecretCipher(Fernet.generate_key().decode())
+    f.stored.status = ShopSessionStatus.CAPTURED
+    f.stored.version = 4
+    f.stored.payload_encrypted = cipher.encrypt_bytes(json.dumps({
+        "schema": "management-login.session.v1",
+        "platform": "douyin",
+        "identity": {"platform": "douyin", "platformShopId": "shop-1",
+                     "shopDisplayName": "Test store"},
+        "cookies": [{"name": "sessionid", "value": "synthetic-encrypted-cookie"}],
+    }).encode())
+    repository = SimpleNamespace(get_by_shop=lambda shop_id: f.stored)
+    f.service.accessor = ShopSessionAccessor(f.session, cipher, repository)
+    result = f.read()
+    assert result.session_version == 4
+    assert result.cookies[0].value.get_secret_value() == "synthetic-encrypted-cookie"
+    assert "synthetic-encrypted-cookie" not in repr(result)
+    assert "synthetic-encrypted-cookie" not in repr(f.audit)
 
 
 @pytest.mark.parametrize("change", [
