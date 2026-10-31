@@ -184,8 +184,12 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 `cookies`（每项包含 `name/value/domain/path/secure/httpOnly/sameSite/expirationDate`）。
 响应 `Cache-Control: no-store, private`。未经认证为 401；任务不存在、已结束或不属于设备、店铺
 不属于任务、开关关闭时为 404；当前人员、团队或资源权限不符时拒绝；Session 未配置、无效或身份不匹配
-使用现有 Session 错误契约。成功记录 `session.read_for_task` 审计。Cookie 内容不得进入日志或结果，
-在公开网络启用前必须配置受信任 HTTPS。完整权限及未完成项见 `10-账号凭证与Session规范.md`。
+使用现有 Session 错误契约。读取所需的锁正被权限修改占用时返回
+`409 PRECHECK_SESSION_AUTHORIZATION_BUSY`，不返回 Cookie；调用方可在重新确认租约后重试获取，
+不得将其当作平台请求失败后自动重试。通过授权的读取尝试记录 `session.read_for_task` 审计，
+审计提交后租约过期则拒绝交付，但该审计记录仍保留。Cookie 内容不得进入日志或结果。
+Worker 客户端要求 HTTPS；服务端路由本身依赖受控代理和内部监听隔离，不自行证明 TLS，
+在公开网络启用前必须核验 HTTPS 入口及端口边界。完整权限及未完成项见 `10-账号凭证与Session规范.md`。
 
 阶段 3A 增加：
 

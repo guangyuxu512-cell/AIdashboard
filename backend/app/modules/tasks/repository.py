@@ -22,7 +22,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.policy import DataScopePolicy
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TERMINAL_TASK_STATUS_VALUES, TaskStatus
-from app.modules.tasks.models import Task, TaskEvent
+from app.modules.tasks.models import Task, TaskEvent, TaskShop
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
@@ -61,7 +61,7 @@ class TaskRepository:
     def get(self, task_id: UUID) -> Task | None:
         return self.session.get(Task, task_id)
 
-    def get_running_for_device_for_update(
+    def get_running_for_device_for_session_read(
         self, *, task_id: UUID, device_id: UUID, now: datetime,
     ) -> Task | None:
         """Lock a live task belonging to this device before releasing task-scoped data."""
@@ -72,8 +72,16 @@ class TaskRepository:
                 Task.status == TaskStatus.RUNNING.value,
                 Task.lease_until.is_not(None),
                 Task.lease_until >= now,
-            ).with_for_update(),
+            ).with_for_update(read=True, nowait=True)
+            .execution_options(populate_existing=True),
         )
+
+    def lock_shop_for_session_read(self, *, task_id: UUID, shop_id: UUID) -> bool:
+        return self.session.scalar(
+            select(TaskShop.shop_id)
+            .where(TaskShop.task_id == task_id, TaskShop.shop_id == shop_id)
+            .with_for_update(read=True, nowait=True),
+        ) is not None
 
     def get_for_actor(
         self,
@@ -352,6 +360,18 @@ class TaskRepository:
             .with_for_update()
         )
         return self.session.scalar(statement)
+
+    def get_enabled_device_for_session_read(self, device_id: UUID) -> Device | None:
+        return self.session.scalar(
+            select(Device)
+            .where(
+                Device.device_id == device_id,
+                Device.enabled.is_(True),
+                Device.deleted_at.is_(None),
+            )
+            .with_for_update(read=True, nowait=True)
+            .execution_options(populate_existing=True),
+        )
 
     def get_task_target_device(
         self,

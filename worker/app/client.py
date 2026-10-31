@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
@@ -98,6 +98,19 @@ class WorkerApiClient:
                 "PRECHECK_SESSION_NETWORK_ERROR", "Task session request failed", 0,
             ) from None
         if not response.is_success:
+            if response.status_code == 409:
+                try:
+                    body = response.json()
+                except ValueError:
+                    body = None
+                if isinstance(body, dict) and body.get("code") == "PRECHECK_SESSION_AUTHORIZATION_BUSY":
+                    # The caller may retry this acquisition; never retry a
+                    # platform request or repeat it silently here.
+                    raise WorkerApiError(
+                        "PRECHECK_SESSION_AUTHORIZATION_BUSY",
+                        "Task session authorization is temporarily busy",
+                        response.status_code,
+                    )
             # Do not reflect untrusted platform/server content into Worker logs.
             raise WorkerApiError(
                 "PRECHECK_SESSION_UNAVAILABLE", "Task session is unavailable",
@@ -113,6 +126,11 @@ class WorkerApiClient:
         if result.shop_id != shop_id:
             raise WorkerApiError(
                 "PRECHECK_SESSION_RESPONSE_INVALID", "Task session response is invalid",
+                response.status_code,
+            )
+        if result.task_lease_until <= datetime.now(UTC):
+            raise WorkerApiError(
+                "PRECHECK_SESSION_LEASE_EXPIRED", "Task session lease has expired",
                 response.status_code,
             )
         return result

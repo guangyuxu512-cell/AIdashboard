@@ -151,6 +151,14 @@ class ShopRepository:
             .with_for_update(),
         )
 
+    def get_for_session_read(self, shop_id: UUID) -> Shop | None:
+        return self.session.scalar(
+            select(Shop)
+            .where(Shop.shop_id == shop_id, Shop.deleted_at.is_(None))
+            .with_for_update(read=True, nowait=True)
+            .execution_options(populate_existing=True),
+        )
+
     def get_including_deleted(self, shop_id: UUID) -> Shop | None:
         return self.session.get(Shop, shop_id)
 
@@ -211,14 +219,15 @@ class ShopDeviceBindingRepository:
     def get(self, shop_id: UUID, device_id: UUID) -> ShopDeviceBinding | None:
         return self.session.get(ShopDeviceBinding, (shop_id, device_id))
 
-    def get_for_update(
+    def get_for_session_read(
         self, shop_id: UUID, device_id: UUID,
     ) -> ShopDeviceBinding | None:
         return self.session.scalar(
             select(ShopDeviceBinding).where(
                 ShopDeviceBinding.shop_id == shop_id,
                 ShopDeviceBinding.device_id == device_id,
-            ).with_for_update(),
+            ).with_for_update(read=True, nowait=True)
+            .execution_options(populate_existing=True),
         )
 
     def list_enabled_shop_ids_for_device(

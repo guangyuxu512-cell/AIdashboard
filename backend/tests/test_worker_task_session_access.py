@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from uuid import uuid4
@@ -9,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from sqlalchemy.dialects import postgresql
+from sqlalchemy.exc import DBAPIError
 
 from app.core.config import Settings
 from app.core.database import get_database_session
@@ -26,17 +28,23 @@ from app.modules.sessions.auth_context import (
 )
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.exceptions import (
+    ShopSessionReadBusyError,
     ShopSessionNotConfiguredError,
     ShopSessionPayloadInvalidError,
 )
+from app.modules.sessions import worker_task_service as worker_task_service_module
 from app.modules.sessions.worker_task_service import WorkerTaskSessionService
+from app.modules.sessions.repository import ShopSessionRepository
 from app.modules.shops.enums import ShopPlatform
+from app.modules.shops.repository import ShopDeviceBindingRepository, ShopRepository
 from app.modules.tasks.exceptions import TaskNotFoundError
+from app.modules.tasks.repository import TaskRepository
 from app.modules.tasks.worker_api import claim_task, get_worker_task_session_service, router
 from app.modules.workers import auth as worker_auth
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.security import hash_worker_token
+from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.service import WorkerPrincipal, WorkerService
 from tests.support import FakeSession
 
@@ -77,6 +85,10 @@ class Fixture:
         )
         self.granted = True
         self.locked = False
+        self.locked_grants = SimpleNamespace(
+            user=True, team=True, membership=True, module=True, device=True, shop=True,
+        )
+        self.task_shop_locked = True
         self.audit = []
         self.settings = Settings(worker_precheck_session_access_enabled=True)
         self.service = WorkerTaskSessionService(
@@ -90,22 +102,32 @@ class Fixture:
     def get_enabled_device(self, device_id):
         return object() if self.enabled and device_id == self.device_id else None
 
-    def get_credential_for_update(self, device_id):
+    def set_lock_timeout(self):
+        pass
+
+    def get_enabled_device_for_session_read(self, device_id):
+        return self.get_enabled_device(device_id)
+
+    def lock_shop_for_session_read(self, *, task_id, shop_id):
+        return (self.task_shop_locked and task_id == self.task_id
+                and shop_id == self.shop_id and shop_id in self.task.shop_ids)
+
+    def get_credential_for_session_read(self, device_id):
         return self.worker_credential if device_id == self.device_id else None
 
-    def get_running_for_device_for_update(self, *, task_id, device_id, now):
+    def get_running_for_device_for_session_read(self, *, task_id, device_id, now):
         if (task_id == self.task_id and device_id == self.task.target_device_id
                 and self.task.status == "running" and self.task.lease_until
                 and self.task.lease_until > now):
             return self.task
         return None
 
-    def get_for_update(self, *args):
+    def get_for_session_read(self, *args):
         if len(args) == 1:
             return self.shop if args[0] == self.shop_id else None
         return self.binding if args == (self.shop_id, self.device_id) else None
 
-    def get_by_shop_for_update(self, shop_id):
+    def get_by_shop_for_session_read(self, shop_id):
         return self.stored if shop_id == self.shop_id else None
 
     def get_auth_context(self, shop_id, platform):
@@ -122,6 +144,7 @@ class Fixture:
             self.user_id, self.team_id, self.device_id, self.shop_id,
         )
         self.locked = True
+        return self.locked_grants
 
     def require_module_access(self, actor, module):
         assert actor == self.actor and module.value == "task"
@@ -202,6 +225,72 @@ def test_revoked_team_access_is_denied():
     assert not f.audit and f.session.commits == 0
 
 
+@pytest.mark.parametrize("missing", ["user", "team", "membership", "module", "device", "shop"])
+def test_missing_locked_authorization_row_fails_closed(missing):
+    f = Fixture()
+    setattr(f.locked_grants, missing, False)
+    with pytest.raises((TaskNotFoundError, TeamResourceAccessDeniedError)):
+        f.read()
+    assert not f.audit and f.session.commits == 0
+
+
+def test_missing_locked_task_shop_link_fails_closed():
+    f = Fixture()
+    f.task_shop_locked = False
+    with pytest.raises(TaskNotFoundError):
+        f.read()
+    assert not f.audit and f.session.commits == 0
+
+
+def test_super_account_does_not_require_membership_or_team_module_rows():
+    f = Fixture()
+    f.actor = replace(f.actor, is_super_account=True)
+    f.locked_grants.membership = False
+    f.locked_grants.module = False
+    assert f.read().shop_id == f.shop_id
+
+
+@pytest.mark.parametrize("missing", ["device", "shop"])
+def test_super_account_still_requires_locked_team_resource_grants(missing):
+    f = Fixture()
+    f.actor = replace(f.actor, is_super_account=True)
+    setattr(f.locked_grants, missing, False)
+    with pytest.raises(TeamResourceAccessDeniedError):
+        f.read()
+    assert not f.audit and f.session.commits == 0
+
+
+def test_authorization_lock_contention_rolls_back_without_releasing_session():
+    f = Fixture()
+
+    class LockBusy(Exception):
+        sqlstate = "55P03"
+
+    def unavailable(**kwargs):
+        raise DBAPIError("SELECT synthetic lock", {}, LockBusy(), False)
+
+    f.service.authorization_locks = SimpleNamespace(set_lock_timeout=lambda: None, lock=unavailable)
+    with pytest.raises(ShopSessionReadBusyError):
+        f.read()
+    assert f.session.rollbacks == 1 and not f.audit and f.session.commits == 0
+
+
+def test_unrelated_database_errors_are_not_classified_as_lock_contention():
+    f = Fixture()
+
+    class OtherDatabaseError(Exception):
+        sqlstate = "23505"
+
+    def fail(**kwargs):
+        raise DBAPIError("SELECT synthetic query", {}, OtherDatabaseError(), False)
+
+    f.service.authorization_locks = SimpleNamespace(set_lock_timeout=lambda: None, lock=fail)
+    with pytest.raises(DBAPIError) as error:
+        f.read()
+    assert error.value.orig.sqlstate == "23505"
+    assert not f.audit and f.session.commits == 0
+
+
 @pytest.mark.parametrize("change", ["revoked", "rotated"])
 def test_worker_credential_change_after_authentication_blocks_session(change):
     f = Fixture()
@@ -210,7 +299,7 @@ def test_worker_credential_change_after_authentication_blocks_session(change):
     repository = SimpleNamespace(
         get_device=lambda device_id: object(),
         get_credential=lambda device_id: credential,
-        get_credential_for_update=lambda device_id: credential,
+        get_credential_for_session_read=lambda device_id: credential,
     )
     f.principal = WorkerService(f.session, repository=repository).authenticate(
         f.device_id, token,
@@ -272,6 +361,28 @@ def test_audit_commit_failure_does_not_release_session():
         f.read()
 
 
+def test_expired_lease_during_audit_commit_does_not_release_session(monkeypatch):
+    f = Fixture()
+    start = datetime.now(UTC)
+    f.task.lease_until = start + timedelta(seconds=1)
+
+    class Clock:
+        calls = 0
+
+        @classmethod
+        def now(cls, timezone):
+            assert timezone is UTC
+            cls.calls += 1
+            return start if cls.calls <= 2 else start + timedelta(seconds=2)
+
+    monkeypatch.setattr(worker_task_service_module, "datetime", Clock)
+    with pytest.raises(TaskNotFoundError):
+        f.read()
+    # The authorized read was audited before the lease expired, but no
+    # session was returned to the caller after the delayed audit commit.
+    assert f.session.commits == 1 and len(f.audit) == 1
+
+
 def test_http_response_reveals_cookie_only_on_authenticated_wire_without_caching():
     f = Fixture()
     app = FastAPI()
@@ -301,6 +412,29 @@ def test_http_without_worker_authentication_is_rejected():
     assert not f.audit
 
 
+def test_http_reports_lock_contention_without_sensitive_data():
+    f = Fixture()
+
+    class LockBusy(Exception):
+        sqlstate = "55P03"
+
+    def unavailable(**kwargs):
+        raise DBAPIError("SELECT synthetic lock", {}, LockBusy(), False)
+
+    f.service.authorization_locks = SimpleNamespace(set_lock_timeout=lambda: None, lock=unavailable)
+    app = FastAPI()
+    install_exception_handlers(app)
+    app.include_router(router)
+    app.dependency_overrides[get_worker_task_session_service] = lambda: f.service
+    app.dependency_overrides[get_worker_principal] = lambda: f.principal
+    with TestClient(app) as client:
+        response = client.post(f"/api/v1/worker/tasks/{f.task_id}/shop-sessions/{f.shop_id}")
+    assert response.status_code == 409
+    assert response.json()["code"] == "PRECHECK_SESSION_AUTHORIZATION_BUSY"
+    assert "test-secret" not in response.text
+    assert f.session.rollbacks == 1 and not f.audit
+
+
 @pytest.mark.parametrize("change", ["revoked", "rotated"])
 def test_http_rechecks_worker_credential_before_releasing_session(monkeypatch, change):
     f = Fixture()
@@ -318,7 +452,7 @@ def test_http_rechecks_worker_credential_before_releasing_session(monkeypatch, c
     repository = SimpleNamespace(
         get_device=lambda device_id: object(),
         get_credential=lambda device_id: credential,
-        get_credential_for_update=lock_credential,
+        get_credential_for_session_read=lock_credential,
     )
     f.service.worker_credentials = repository
     monkeypatch.setattr(
@@ -369,7 +503,35 @@ def test_sensitive_authorization_checks_lock_all_existing_grant_rows():
         user_id=uuid4(), team_id=uuid4(), device_id=uuid4(), shop_id=uuid4(),
     )
     assert len(session.statements) == 6
-    assert all("FOR UPDATE" in statement for statement in session.statements)
+    assert all("FOR SHARE NOWAIT" in statement for statement in session.statements)
     for table, statement in zip(("users", "teams", "team_memberships", "team_module_accesses",
                                  "team_device_accesses", "team_shop_accesses"), session.statements):
         assert f"FROM {table}" in statement
+
+
+def test_sensitive_resource_reads_use_nonblocking_shared_locks():
+    class RecordingSession:
+        def __init__(self):
+            self.statements = []
+        def scalar(self, statement):
+            self.statements.append(statement)
+            return None
+
+    session = RecordingSession()
+    task_id, device_id, shop_id = uuid4(), uuid4(), uuid4()
+    tasks = TaskRepository(session)
+    tasks.get_enabled_device_for_session_read(device_id)
+    tasks.get_running_for_device_for_session_read(
+        task_id=task_id, device_id=device_id, now=datetime.now(UTC),
+    )
+    tasks.lock_shop_for_session_read(task_id=task_id, shop_id=shop_id)
+    WorkerRepository(session).get_credential_for_session_read(device_id)
+    ShopRepository(session).get_for_session_read(shop_id)
+    ShopDeviceBindingRepository(session).get_for_session_read(shop_id, device_id)
+    ShopSessionRepository(session).get_by_shop_for_session_read(shop_id)
+
+    assert len(session.statements) == 7
+    assert all("FOR SHARE NOWAIT" in str(stmt.compile(dialect=postgresql.dialect()))
+               for stmt in session.statements)
+    for index in (0, 1, 3, 4, 5, 6):
+        assert session.statements[index].get_execution_options()["populate_existing"] is True

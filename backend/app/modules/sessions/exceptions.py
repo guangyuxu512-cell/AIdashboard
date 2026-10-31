@@ -31,6 +31,12 @@ class ShopSessionAuthenticationInvalidError(AppError):
     status_code = 401
 
 
+class ShopSessionReadBusyError(AppError):
+    code = "PRECHECK_SESSION_AUTHORIZATION_BUSY"
+    message = "店铺授权正在变更，请稍后重试"
+    status_code = 409
+
+
 class SessionRefreshLeaseConflictError(AppError):
     code = "SESSION_REFRESH_IN_PROGRESS"
     message = "该店铺正在其他窗口恢复登录会话"

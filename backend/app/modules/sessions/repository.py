@@ -18,11 +18,12 @@ class ShopSessionRepository:
             select(ShopSession).where(ShopSession.shop_id == shop_id),
         )
 
-    def get_by_shop_for_update(self, shop_id: UUID) -> ShopSession | None:
+    def get_by_shop_for_session_read(self, shop_id: UUID) -> ShopSession | None:
         return self.session.scalar(
             select(ShopSession).where(
                 ShopSession.shop_id == shop_id,
-            ).with_for_update(),
+            ).with_for_update(read=True, nowait=True)
+            .execution_options(populate_existing=True),
         )
 
     def add(self, shop_session: ShopSession) -> None:

@@ -83,3 +83,43 @@ def test_session_client_does_not_follow_https_downgrade():
                 await WorkerApiClient(settings, http).read_precheck_shop_session(uuid4(), uuid4())
         assert requests == ["https"]
     asyncio.run(run())
+
+
+def test_session_client_rejects_session_received_after_lease_expires():
+    async def run():
+        shop_id = uuid4()
+        def handler(request):
+            return httpx.Response(200, json={
+                "shop_id": str(shop_id), "platform": "douyin", "session_version": 1,
+                "task_lease_until": (datetime.now(UTC) - timedelta(seconds=1)).isoformat(),
+                "cookies": [{"name": "sessionid", "value": "synthetic-expired-cookie"}],
+            })
+        settings = WorkerSettings(server_url="https://central.example.test", device_id=uuid4(),
+                                  device_token=SecretStr("synthetic-token"))
+        async with httpx.AsyncClient(base_url="https://central.example.test",
+                transport=httpx.MockTransport(handler)) as http:
+            with pytest.raises(WorkerApiError, match="LEASE_EXPIRED") as error:
+                await WorkerApiClient(settings, http).read_precheck_shop_session(uuid4(), shop_id)
+            assert "synthetic-expired-cookie" not in str(error.value)
+    asyncio.run(run())
+
+
+def test_session_client_exposes_retryable_authorization_contention_without_server_text():
+    async def run():
+        requests = []
+        def handler(request):
+            requests.append(request)
+            return httpx.Response(409, json={
+                "code": "PRECHECK_SESSION_AUTHORIZATION_BUSY",
+                "message": "synthetic-sensitive-server-text",
+            })
+        settings = WorkerSettings(server_url="https://central.example.test", device_id=uuid4(),
+                                  device_token=SecretStr("synthetic-token"))
+        async with httpx.AsyncClient(base_url="https://central.example.test",
+                transport=httpx.MockTransport(handler)) as http:
+            with pytest.raises(WorkerApiError) as error:
+                await WorkerApiClient(settings, http).read_precheck_shop_session(uuid4(), uuid4())
+        assert error.value.code == "PRECHECK_SESSION_AUTHORIZATION_BUSY"
+        assert "synthetic-sensitive-server-text" not in str(error.value)
+        assert len(requests) == 1
+    asyncio.run(run())

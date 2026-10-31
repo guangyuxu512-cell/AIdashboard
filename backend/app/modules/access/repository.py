@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import dataclass
 from uuid import UUID
 
-from sqlalchemy import delete, func, or_, select, update
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, func, or_, select, text, update
+from sqlalchemy.orm import Session, load_only
 
 from app.modules.access.models import (
     MembershipModuleAccess,
@@ -21,24 +22,45 @@ from app.modules.users.models import User
 MembershipWithTeam = tuple[TeamMembership, Team]
 
 
+@dataclass(frozen=True)
+class ExecutionAuthorizationLocks:
+    user: bool
+    team: bool
+    membership: bool
+    module: bool
+    device: bool
+    shop: bool
+
+
 class ExecutionAuthorizationLockRepository:
     """Stabilize existing authorization rows during a sensitive Task read.
 
-    This only locks rows; the existing authorization services remain responsible
-    for checking whether they exist and are enabled. A committed revocation is
-    observed by the subsequent checks under PostgreSQL READ COMMITTED.
+    Read locks stabilize authorization while allowing parallel prechecks.
+    The caller must fail closed for required rows that were not locked.
     """
 
     def __init__(self, session: Session) -> None:
         self.session = session
 
+    def set_lock_timeout(self) -> None:
+        # NOWAIT applies to row locks only; also bound table/implicit lock waits.
+        if self.session.get_bind().dialect.name == "postgresql":
+            self.session.execute(text("SET LOCAL lock_timeout = '1s'"))
+
     def lock(
         self, *, user_id: UUID, team_id: UUID, device_id: UUID, shop_id: UUID,
-    ) -> None:
+    ) -> ExecutionAuthorizationLocks:
         statements = (
-            select(User.user_id).where(User.user_id == user_id),
-            select(Team.team_id).where(Team.team_id == team_id),
-            select(TeamMembership.membership_id).where(
+            select(User).options(load_only(
+                User.user_id, User.enabled, User.is_super_account, User.display_name,
+            )).where(User.user_id == user_id),
+            select(Team).options(load_only(Team.team_id, Team.enabled)).where(
+                Team.team_id == team_id,
+            ),
+            select(TeamMembership).options(load_only(
+                TeamMembership.membership_id, TeamMembership.user_id,
+                TeamMembership.team_id, TeamMembership.enabled,
+            )).where(
                 TeamMembership.user_id == user_id,
                 TeamMembership.team_id == team_id,
             ),
@@ -55,8 +77,14 @@ class ExecutionAuthorizationLockRepository:
                 TeamShopAccess.shop_id == shop_id,
             ),
         )
-        for statement in statements:
-            self.session.scalar(statement.with_for_update())
+        locked = [
+            self.session.scalar(
+                statement.with_for_update(read=True, nowait=True)
+                .execution_options(populate_existing=True),
+            ) is not None
+            for statement in statements
+        ]
+        return ExecutionAuthorizationLocks(*locked)
 
 
 class TeamRepository:

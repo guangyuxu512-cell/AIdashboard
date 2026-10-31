@@ -35,14 +35,14 @@ class WorkerRepository:
         )
         return self.session.scalar(statement)
 
-    def get_credential_for_update(self, device_id: UUID) -> WorkerDeviceCredential | None:
+    def get_credential_for_session_read(self, device_id: UUID) -> WorkerDeviceCredential | None:
         # The authentication dependency may already have loaded this object.
         # Refresh it after acquiring the lock so a committed revocation or
         # rotation cannot be hidden by the SQLAlchemy identity map.
         return self.session.scalar(
             select(WorkerDeviceCredential)
             .where(WorkerDeviceCredential.device_id == device_id)
-            .with_for_update()
+            .with_for_update(read=True, nowait=True)
             .execution_options(populate_existing=True),
         )
 
