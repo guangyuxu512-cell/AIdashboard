@@ -33,8 +33,11 @@ from app.modules.sessions.worker_task_service import WorkerTaskSessionService
 from app.modules.shops.enums import ShopPlatform
 from app.modules.tasks.exceptions import TaskNotFoundError
 from app.modules.tasks.worker_api import claim_task, get_worker_task_session_service, router
+from app.modules.workers import auth as worker_auth
 from app.modules.workers.auth import get_worker_principal
-from app.modules.workers.service import WorkerPrincipal
+from app.modules.workers.exceptions import WorkerAuthenticationError
+from app.modules.workers.security import hash_worker_token
+from app.modules.workers.service import WorkerPrincipal, WorkerService
 from tests.support import FakeSession
 
 
@@ -42,7 +45,11 @@ class Fixture:
     def __init__(self) -> None:
         self.device_id, self.task_id, self.shop_id = uuid4(), uuid4(), uuid4()
         self.user_id, self.team_id = uuid4(), uuid4()
-        self.principal = WorkerPrincipal(device_id=self.device_id)
+        self.token_hash = hash_worker_token("ccw_synthetic_fixture_token")
+        self.principal = WorkerPrincipal(
+            device_id=self.device_id, credential_hash=self.token_hash,
+        )
+        self.worker_credential = SimpleNamespace(enabled=True, token_hash=self.token_hash)
         self.session = FakeSession()
         self.enabled = True
         self.task = SimpleNamespace(
@@ -77,11 +84,14 @@ class Fixture:
             settings=self.settings, task_repository=self, shop_repository=self,
             binding_repository=self, session_repository=self, accessor=self,
             actor_service=self, module_service=self, team_service=self,
-            audit_service=self, authorization_locks=self,
+            audit_service=self, authorization_locks=self, worker_repository=self,
         )
 
     def get_enabled_device(self, device_id):
         return object() if self.enabled and device_id == self.device_id else None
+
+    def get_credential_for_update(self, device_id):
+        return self.worker_credential if device_id == self.device_id else None
 
     def get_running_for_device_for_update(self, *, task_id, device_id, now):
         if (task_id == self.task_id and device_id == self.task.target_device_id
@@ -192,6 +202,44 @@ def test_revoked_team_access_is_denied():
     assert not f.audit and f.session.commits == 0
 
 
+@pytest.mark.parametrize("change", ["revoked", "rotated"])
+def test_worker_credential_change_after_authentication_blocks_session(change):
+    f = Fixture()
+    token = "ccw_synthetic_worker_token"
+    credential = SimpleNamespace(enabled=True, token_hash=hash_worker_token(token))
+    repository = SimpleNamespace(
+        get_device=lambda device_id: object(),
+        get_credential=lambda device_id: credential,
+        get_credential_for_update=lambda device_id: credential,
+    )
+    f.principal = WorkerService(f.session, repository=repository).authenticate(
+        f.device_id, token,
+    )
+    assert token not in repr(f.principal)
+    assert hash_worker_token(token) not in repr(f.principal)
+    f.service.worker_credentials = repository
+    if change == "revoked":
+        credential.enabled = False
+    else:
+        credential.token_hash = hash_worker_token("ccw_synthetic_rotated_token")
+
+    with pytest.raises(WorkerAuthenticationError):
+        f.read()
+    assert not f.audit and f.session.commits == 0
+
+
+@pytest.mark.parametrize("missing", ["authentication_snapshot", "credential"])
+def test_missing_worker_credential_proof_fails_closed(missing):
+    f = Fixture()
+    if missing == "authentication_snapshot":
+        f.principal = WorkerPrincipal(device_id=f.device_id)
+    else:
+        f.worker_credential = None
+    with pytest.raises(WorkerAuthenticationError):
+        f.read()
+    assert not f.audit and f.session.commits == 0
+
+
 @pytest.mark.parametrize("case", ["missing", "wrong_identity", "no_identity"])
 def test_unavailable_or_ambiguous_shop_session_is_not_returned(case):
     f = Fixture()
@@ -251,6 +299,45 @@ def test_http_without_worker_authentication_is_rejected():
     assert response.status_code == 401
     assert "test-secret" not in response.text
     assert not f.audit
+
+
+@pytest.mark.parametrize("change", ["revoked", "rotated"])
+def test_http_rechecks_worker_credential_before_releasing_session(monkeypatch, change):
+    f = Fixture()
+    token = "ccw_synthetic_http_token"
+    credential = SimpleNamespace(enabled=True, token_hash=hash_worker_token(token))
+
+    def lock_credential(device_id):
+        assert device_id == f.device_id
+        if change == "revoked":
+            credential.enabled = False
+        else:
+            credential.token_hash = hash_worker_token("ccw_synthetic_new_token")
+        return credential
+
+    repository = SimpleNamespace(
+        get_device=lambda device_id: object(),
+        get_credential=lambda device_id: credential,
+        get_credential_for_update=lock_credential,
+    )
+    f.service.worker_credentials = repository
+    monkeypatch.setattr(
+        worker_auth, "WorkerService",
+        lambda session: WorkerService(session, repository=repository),
+    )
+    app = FastAPI()
+    install_exception_handlers(app)
+    app.include_router(router)
+    app.dependency_overrides[get_database_session] = lambda: f.session
+    app.dependency_overrides[get_worker_task_session_service] = lambda: f.service
+    with TestClient(app) as client:
+        response = client.post(
+            f"/api/v1/worker/tasks/{f.task_id}/shop-sessions/{f.shop_id}",
+            headers={"Authorization": f"Bearer {token}", "X-Device-ID": str(f.device_id)},
+        )
+    assert response.status_code == 401
+    assert "test-secret" not in response.text
+    assert not f.audit and f.session.commits == 0
 
 
 @pytest.mark.parametrize("is_precheck", [True, False])

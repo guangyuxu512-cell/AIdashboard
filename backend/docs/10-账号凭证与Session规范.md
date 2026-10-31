@@ -7,7 +7,8 @@ Worker Bearer Token 与 `X-Device-ID` 认证的设备，通过
 `POST /api/v1/worker/tasks/{task_id}/shop-sessions/{shop_id}` 请求自身正在执行的
 `product.precheck` 任务所绑定的一家抖店 Session Cookie。Task 的创建人须仍具备团队与任务模块权限，
 团队仍须授权该设备和店铺，设备、店铺及绑定须启用，任务租约须未过期，Session 身份必须与店铺的平台 ID 相符。
-读取前锁定权限、设备、任务、店铺、绑定和 Session，重新校验后提交只含任务、设备和版本的审计记录；
+读取前锁定设备、Worker 凭证、任务、权限、店铺、绑定和 Session；Worker 凭证在锁内重新读取，
+若已经撤销或轮换则拒绝，不把认证阶段的旧状态当作当前状态。随后提交只含任务、设备和版本的审计记录；
 审计提交失败则不返回 Cookie。响应不允许缓存。Session 状态按现有 Accessor 判定；`expires_at` 仍只作提醒，
 最终有效性以平台验证为准。已下发到执行机的会话无法靠服务端撤销来保证即时抹除。
 

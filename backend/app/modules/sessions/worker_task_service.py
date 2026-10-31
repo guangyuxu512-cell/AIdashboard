@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from hmac import compare_digest
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -28,6 +29,8 @@ from app.modules.shops.repository import ShopDeviceBindingRepository, ShopReposi
 from app.modules.tasks.exceptions import TaskNotFoundError
 from app.modules.tasks.precheck_contract import PRODUCT_PRECHECK_SKILL_ID
 from app.modules.tasks.repository import TaskRepository
+from app.modules.workers.exceptions import WorkerAuthenticationError
+from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.service import WorkerPrincipal
 
 
@@ -50,6 +53,7 @@ class WorkerTaskSessionService:
         team_service: TeamAuthorizationService | None = None,
         authorization_locks: ExecutionAuthorizationLockRepository | None = None,
         audit_service: AuditLogService | None = None,
+        worker_repository: WorkerRepository | None = None,
     ) -> None:
         self.session = session
         self.settings = settings or get_settings()
@@ -63,6 +67,7 @@ class WorkerTaskSessionService:
         self.teams = team_service or TeamAuthorizationService(session)
         self.authorization_locks = authorization_locks or ExecutionAuthorizationLockRepository(session)
         self.audit = audit_service or AuditLogService(session)
+        self.worker_credentials = worker_repository or WorkerRepository(session)
 
     def read(
         self, principal: WorkerPrincipal, *, task_id: UUID, shop_id: UUID,
@@ -73,6 +78,14 @@ class WorkerTaskSessionService:
             raise TaskNotFoundError()
         if self.tasks.get_enabled_device(principal.device_id) is None:
             raise TaskNotFoundError()
+        credential = self.worker_credentials.get_credential_for_update(principal.device_id)
+        if (
+            principal.credential_hash is None
+            or credential is None
+            or not credential.enabled
+            or not compare_digest(principal.credential_hash, credential.token_hash)
+        ):
+            raise WorkerAuthenticationError()
         task = self.tasks.get_running_for_device_for_update(
             task_id=task_id, device_id=principal.device_id, now=checked_at,
         )

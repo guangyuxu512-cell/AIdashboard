@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 import logging
 from uuid import UUID
@@ -47,6 +47,9 @@ logger = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class WorkerPrincipal:
     device_id: UUID
+    # An internal snapshot is needed to recheck rotation before a sensitive read.
+    # It is neither a bearer token nor part of any API response or representation.
+    credential_hash: str | None = field(default=None, repr=False, compare=False)
 
 
 class WorkerService:
@@ -155,7 +158,9 @@ class WorkerService:
             or self.repository.get_device(credential.device_id) is None
         ):
             raise WorkerAuthenticationError()
-        return WorkerPrincipal(device_id=credential.device_id)
+        return WorkerPrincipal(
+            device_id=credential.device_id, credential_hash=credential.token_hash,
+        )
 
     def get_provisioning(self, principal: WorkerPrincipal) -> WorkerProvisioningRead:
         device = self.repository.get_device(principal.device_id)
@@ -177,7 +182,9 @@ class WorkerService:
             or not verify_worker_token(token, credential.token_hash)
         ):
             raise WorkerAuthenticationError()
-        return WorkerPrincipal(device_id=device_id)
+        return WorkerPrincipal(
+            device_id=device_id, credential_hash=credential.token_hash,
+        )
 
     def heartbeat(
         self,
