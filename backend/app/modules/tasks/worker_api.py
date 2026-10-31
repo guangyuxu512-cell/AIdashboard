@@ -1,16 +1,20 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Response, status
+from fastapi import APIRouter, Depends, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
+from app.core.logging.request import get_request_id
 from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.assets.api import asset_content_response, get_asset_service
 from app.modules.assets.service import AssetService
 from app.modules.credentials.service import CredentialService
+from app.modules.sessions.worker_task_contract import WorkerTaskSessionRead
+from app.modules.sessions.worker_task_service import WorkerTaskSessionService
+from app.modules.tasks.precheck_contract import PRODUCT_PRECHECK_SKILL_ID
 from app.modules.tasks.schemas import (
     TaskComplete,
     TaskEventBatchResult,
@@ -48,6 +52,13 @@ def get_worker_task_service(
     )
 
 
+def get_worker_task_session_service(
+    session: Annotated[Session, Depends(get_database_session)],
+    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
+) -> WorkerTaskSessionService:
+    return WorkerTaskSessionService(session, cipher)
+
+
 @router.post(
     "/claim",
     response_model=WorkerTaskRead,
@@ -68,6 +79,7 @@ def claim_task(
         input=task.input_json,
         lease_until=task.lease_until,
         accounts=claimed.accounts,
+        shop_ids=(task.shop_ids if task.skill_id == PRODUCT_PRECHECK_SKILL_ID else None),
         assets=[
             WorkerTaskAssetRead(
                 asset_id=asset.asset_id,
@@ -83,6 +95,32 @@ def claim_task(
             for position, asset in enumerate(claimed.assets)
         ],
     )
+
+
+@router.post(
+    "/{task_id}/shop-sessions/{shop_id}",
+    response_model=WorkerTaskSessionRead,
+    summary="Read the session for a live authorized product precheck task",
+)
+def read_task_shop_session(
+    task_id: UUID,
+    shop_id: UUID,
+    request: Request,
+    response: Response,
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[
+        WorkerTaskSessionService, Depends(get_worker_task_session_service)
+    ],
+) -> WorkerTaskSessionRead:
+    result = service.read(
+        principal,
+        task_id=task_id,
+        shop_id=shop_id,
+        request_id=get_request_id(request),
+    )
+    response.headers["Cache-Control"] = "no-store, private"
+    response.headers["Pragma"] = "no-cache"
+    return result
 
 
 @router.get("/{task_id}/assets/{asset_id}", response_class=StreamingResponse)

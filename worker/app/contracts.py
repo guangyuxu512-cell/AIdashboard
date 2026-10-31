@@ -1,10 +1,10 @@
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, JsonValue
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, JsonValue, SecretStr
 
 from app.skills.registry import SkillDescriptor
 
@@ -46,6 +46,32 @@ class WorkerTask(BaseModel):
     lease_until: datetime
     accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
     assets: list[TaskAsset] = Field(default_factory=list)
+    shop_ids: list[UUID] | None = None
+
+
+class TaskShopSessionCookie(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True, frozen=True)
+
+    name: str = Field(min_length=1)
+    value: SecretStr
+    domain: str | None = None
+    path: str = "/"
+    secure: bool = False
+    http_only: bool = Field(default=False, alias="httpOnly")
+    same_site: str | None = Field(default=None, alias="sameSite")
+    expiration_date: float | None = Field(default=None, alias="expirationDate")
+
+
+class TaskShopSession(BaseModel):
+    """In-memory task-bound session; never serialize to runtime files or events."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    shop_id: UUID
+    platform: Literal["douyin"]
+    session_version: int = Field(gt=0)
+    task_lease_until: AwareDatetime
+    cookies: tuple[TaskShopSessionCookie, ...] = Field(min_length=1, repr=False)
 
 
 class ProviderInventoryReport(BaseModel):
@@ -87,6 +113,7 @@ class SkillProcessInput(BaseModel):
     params: dict[str, Any]
     paths: SkillProcessPaths
     accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
+    shop_ids: list[UUID] | None = None
 
 
 class RuntimeEventType(StrEnum):

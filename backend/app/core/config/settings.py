@@ -46,6 +46,8 @@ class Settings(BaseSettings):
     )
     worker_online_timeout_seconds: int = Field(default=45, ge=15, le=300)
     worker_task_lease_seconds: int = Field(default=60, ge=30, le=600)
+    # Opt-in only: a claimed product precheck Task may request its own shops' sessions.
+    worker_precheck_session_access_enabled: bool = False
     worker_reconcile_interval_seconds: int = Field(default=10, ge=1, le=60)
     task_event_retention_days: int = Field(default=90, ge=1, le=3650)
     task_event_retention_sweep_interval_seconds: int = Field(

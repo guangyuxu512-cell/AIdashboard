@@ -1,5 +1,18 @@
 # Skill 执行规范
 
+## 商品预检开发候选
+
+`product.precheck` 尚未注册到生产 Registry。本候选为 Worker Task 和 Skill Context 增加可选的
+有序非秘密 `shop_ids`；旧任务和原 `accounts` 不变。Python Executor 的 input.json 仍只存普通参数、
+账号契约和非秘密店铺 ID，禁止存入预检 Session。Worker 客户端提供仅 HTTPS 的任务会话读取，返回值中的
+Cookie 使用 SecretStr 且不写日志；此方法尚未接入运行中的 Skill。Worker 父进程到 Skill 的安全会话桥、商品云库批次
+读取/结果回写以及抖店类目/属性适配尚未实现。
+
+`app.skills.product_precheck.batch` 将每件带修订标识的商品仅分配给一家店铺，保持每店队列顺序与
+结果原顺序，显式限制单店 1–5 和总并发 1–25。100 件/5 店可得到每店 20 件；每店 5、总计 25 只是
+可配置上限，首次真实验证须从较低并发开始，依据平台反馈调整。单项异常返回固定安全错误码并继续；
+回调返回仅表示函数已完成，不等于平台预检成功，最终分类及详细安全诊断由平台适配器负责。
+
 一个 Skill 表示一个明确、稳定的执行能力。`classification` 只分为：
 
 - `internal`：Worker 基础设施、测试或 Provider 运行能力；

@@ -21,6 +21,44 @@ from app.modules.users.models import User
 MembershipWithTeam = tuple[TeamMembership, Team]
 
 
+class ExecutionAuthorizationLockRepository:
+    """Stabilize existing authorization rows during a sensitive Task read.
+
+    This only locks rows; the existing authorization services remain responsible
+    for checking whether they exist and are enabled. A committed revocation is
+    observed by the subsequent checks under PostgreSQL READ COMMITTED.
+    """
+
+    def __init__(self, session: Session) -> None:
+        self.session = session
+
+    def lock(
+        self, *, user_id: UUID, team_id: UUID, device_id: UUID, shop_id: UUID,
+    ) -> None:
+        statements = (
+            select(User.user_id).where(User.user_id == user_id),
+            select(Team.team_id).where(Team.team_id == team_id),
+            select(TeamMembership.membership_id).where(
+                TeamMembership.user_id == user_id,
+                TeamMembership.team_id == team_id,
+            ),
+            select(TeamModuleAccess.team_id).where(
+                TeamModuleAccess.team_id == team_id,
+                TeamModuleAccess.module_code == "task",
+            ),
+            select(TeamDeviceAccess.team_id).where(
+                TeamDeviceAccess.team_id == team_id,
+                TeamDeviceAccess.device_id == device_id,
+            ),
+            select(TeamShopAccess.team_id).where(
+                TeamShopAccess.team_id == team_id,
+                TeamShopAccess.shop_id == shop_id,
+            ),
+        )
+        for statement in statements:
+            self.session.scalar(statement.with_for_update())
+
+
 class TeamRepository:
     def __init__(self, session: Session) -> None:
         self.session = session

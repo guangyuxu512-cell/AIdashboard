@@ -61,6 +61,20 @@ class TaskRepository:
     def get(self, task_id: UUID) -> Task | None:
         return self.session.get(Task, task_id)
 
+    def get_running_for_device_for_update(
+        self, *, task_id: UUID, device_id: UUID, now: datetime,
+    ) -> Task | None:
+        """Lock a live task belonging to this device before releasing task-scoped data."""
+        return self.session.scalar(
+            select(Task).where(
+                Task.task_id == task_id,
+                Task.target_device_id == device_id,
+                Task.status == TaskStatus.RUNNING.value,
+                Task.lease_until.is_not(None),
+                Task.lease_until >= now,
+            ).with_for_update(),
+        )
+
     def get_for_actor(
         self,
         *,

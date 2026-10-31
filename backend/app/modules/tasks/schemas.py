@@ -110,6 +110,8 @@ class WorkerTaskRead(BaseModel):
     lease_until: datetime
     accounts: list[TaskAccountPayload] = Field(default_factory=list, repr=False)
     assets: list[WorkerTaskAssetRead] = Field(default_factory=list)
+    # Only the product.precheck capability receives these non-secret IDs.
+    shop_ids: list[UUID] | None = None
 
 
 class TaskLeaseRead(BaseModel):

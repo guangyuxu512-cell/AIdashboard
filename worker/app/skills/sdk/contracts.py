@@ -104,6 +104,8 @@ class SkillContext:
         default_factory=list,
         repr=False,
     )
+    # Non-secret shop IDs associated with a task; never contains a Session.
+    shop_ids: tuple[UUID, ...] = ()
     _cancellation: _CancellationState = field(
         default_factory=_CancellationState,
         repr=False,

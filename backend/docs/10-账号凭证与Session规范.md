@@ -1,5 +1,20 @@
 # 账号凭证与 Session 规范
 
+## 商品云库预检的任务会话通道（开发候选，默认关闭）
+
+`BACKEND_WORKER_PRECHECK_SESSION_ACCESS_ENABLED` 默认为 `false`。启用时，仅允许经过现有
+Worker Bearer Token 与 `X-Device-ID` 认证的设备，通过
+`POST /api/v1/worker/tasks/{task_id}/shop-sessions/{shop_id}` 请求自身正在执行的
+`product.precheck` 任务所绑定的一家抖店 Session Cookie。Task 的创建人须仍具备团队与任务模块权限，
+团队仍须授权该设备和店铺，设备、店铺及绑定须启用，任务租约须未过期，Session 身份必须与店铺的平台 ID 相符。
+读取前锁定权限、设备、任务、店铺、绑定和 Session，重新校验后提交只含任务、设备和版本的审计记录；
+审计提交失败则不返回 Cookie。响应不允许缓存。Session 状态按现有 Accessor 判定；`expires_at` 仍只作提醒，
+最终有效性以平台验证为准。已下发到执行机的会话无法靠服务端撤销来保证即时抹除。
+
+该接口须由可信、加密的传输链路承载；不得将 Cookie 传给页面、写入业务任务输入、日志或任务结果。
+现有 Python Skill 子进程使用磁盘输入文件，此通道不能直接写入该文件；本机安全进程桥仍待实现和验证。
+此候选只提供必要基础设施，不注册预检 Skill、不访问真实店铺、不证明跨设备 Session 可用，不能直接开启生产。
+
 ## 1. 领域关系
 
 ```text

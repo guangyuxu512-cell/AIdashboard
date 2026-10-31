@@ -68,6 +68,7 @@ class BusinessSkillRunner:
                 account.model_dump(mode="json")
                 for account in process_input.accounts
             ],
+            shop_ids=tuple(process_input.shop_ids or ()),
             paths=SkillContextPaths(images=process_input.paths.images),
         )
         try:

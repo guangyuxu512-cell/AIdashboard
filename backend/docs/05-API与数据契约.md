@@ -177,6 +177,16 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 
 ## Credential / Session Metadata Contract
 
+### 任务绑定的商品预检 Session（候选、默认关闭）
+
+`POST /api/v1/worker/tasks/{task_id}/shop-sessions/{shop_id}` 无请求体，使用当前 Worker Bearer 与
+`X-Device-ID`；成功返回 `shop_id`、`platform`、`session_version`、`task_lease_until`、
+`cookies`（每项包含 `name/value/domain/path/secure/httpOnly/sameSite/expirationDate`）。
+响应 `Cache-Control: no-store, private`。未经认证为 401；任务不存在、已结束或不属于设备、店铺
+不属于任务、开关关闭时为 404；当前人员、团队或资源权限不符时拒绝；Session 未配置、无效或身份不匹配
+使用现有 Session 错误契约。成功记录 `session.read_for_task` 审计。Cookie 内容不得进入日志或结果，
+在公开网络启用前必须配置受信任 HTTPS。完整权限及未完成项见 `10-账号凭证与Session规范.md`。
+
 阶段 3A 增加：
 
 - `GET /api/v1/shops/{shop_id}/credential`：仅返回脱敏账号、配置/启用状态、验证码渠道和更新时间。

@@ -261,6 +261,20 @@ def test_context_log_progress_and_result_use_existing_runtime_contract(
     assert "must-not-leak" not in result.model_dump_json()
 
 
+def test_nonsecret_precheck_shop_ids_reach_skill_context() -> None:
+    shops = [uuid4(), uuid4()]
+    skill = ProgressSkill()
+    _, definition = make_registered(skill)
+    payload = process_input(uuid4(), {"steps": 1}).model_copy(update={"shop_ids": shops})
+    result = asyncio.run(BusinessSkillRunner(
+        device_id=uuid4(), event_bus=RuntimeEventBus(),
+    ).execute(definition, payload))  # type: ignore[arg-type]
+    assert result.status is ExecutionStatus.SUCCESS
+    assert skill.context is not None
+    assert skill.context.shop_ids == tuple(shops)
+    assert skill.context.accounts == []
+
+
 def test_skill_execution_error_keeps_code_retryable_and_safe_event() -> None:
     class ExpectedFailureSkill(ProgressSkill):
         async def run(

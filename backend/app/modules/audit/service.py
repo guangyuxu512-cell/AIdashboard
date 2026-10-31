@@ -20,6 +20,23 @@ class AuditLogService:
     ) -> None:
         self.repository = repository or AuditLogRepository(session)
 
+    def record_worker_session_access(
+        self, *, request_id: str, actor: ActorContext, shop_id: UUID,
+        device_id: UUID, task_id: UUID, session_version: int,
+    ) -> None:
+        self.record_access_management_action(
+            request_id=request_id,
+            actor=actor,
+            action=AuditAction.READ_TASK_SHOP_SESSION,
+            target_type=AuditTargetType.SHOP,
+            target_id=shop_id,
+            details={
+                "device_id": str(device_id),
+                "task_id": str(task_id),
+                "session_version": session_version,
+            },
+        )
+
     def record_access_management_action(
         self,
         *,

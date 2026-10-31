@@ -211,6 +211,16 @@ class ShopDeviceBindingRepository:
     def get(self, shop_id: UUID, device_id: UUID) -> ShopDeviceBinding | None:
         return self.session.get(ShopDeviceBinding, (shop_id, device_id))
 
+    def get_for_update(
+        self, shop_id: UUID, device_id: UUID,
+    ) -> ShopDeviceBinding | None:
+        return self.session.scalar(
+            select(ShopDeviceBinding).where(
+                ShopDeviceBinding.shop_id == shop_id,
+                ShopDeviceBinding.device_id == device_id,
+            ).with_for_update(),
+        )
+
     def list_enabled_shop_ids_for_device(
         self,
         device_id: UUID,

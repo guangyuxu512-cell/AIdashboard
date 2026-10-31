@@ -12,10 +12,12 @@ from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.exceptions import (
+    TaskInputInvalidError,
     TaskShopDeviceBindingInvalidError,
     TaskShopInvalidError,
 )
 from app.modules.tasks.schemas import TaskCreate
+from app.modules.tasks.precheck_contract import PRODUCT_PRECHECK_SKILL_ID
 from app.modules.tasks.service import TaskService
 from app.modules.workers.models import DeviceSkillCapability
 from tests.support import AllowExecutionResources, FakeSession
@@ -163,6 +165,50 @@ def test_five_shops_create_one_task_and_preserve_user_order() -> None:
     assert task.shop_ids == ordered_shop_ids
     assert [link.position for link in task.shop_links] == list(range(5))
     assert credentials.checked == ordered_shop_ids
+
+
+def test_precheck_creates_one_multi_shop_task_without_shop_passwords() -> None:
+    shops = [make_shop() for _ in range(5)]
+    service, repository, credentials, device = make_service(
+        shops, unavailable_credential_shop_id=shops[0].shop_id,
+    )
+    repository.capability.skill_id = PRODUCT_PRECHECK_SKILL_ID
+    repository.capability.classification = "business"
+    repository.capability.input_schema = {
+        "type": "object", "additionalProperties": False,
+        "properties": {"batch_id": {"type": "string"}}, "required": ["batch_id"],
+    }
+    shop_ids = [shop.shop_id for shop in shops]
+    task = service.create(TaskCreate(
+        target_device_id=device.device_id, shop_ids=shop_ids,
+        skill_id=PRODUCT_PRECHECK_SKILL_ID, input={"batch_id": "test-batch"},
+    ), ACTOR)
+    assert repository.tasks == [task]
+    assert task.shop_ids == shop_ids
+    assert credentials.checked == []
+
+
+def test_precheck_requires_at_least_one_shop() -> None:
+    service, _, _, device = make_service([])
+    with pytest.raises(TaskInputInvalidError):
+        service.create(TaskCreate(
+            target_device_id=device.device_id, skill_id=PRODUCT_PRECHECK_SKILL_ID,
+            input={"batch_id": "test-batch"},
+        ), ACTOR)
+
+
+def test_precheck_claim_does_not_send_shop_passwords(monkeypatch) -> None:
+    shop = make_shop()
+    service, _, credentials, device = make_service([shop])
+    task = SimpleNamespace(
+        skill_id=PRODUCT_PRECHECK_SKILL_ID, shop_ids=[shop.shop_id], asset_ids=[],
+    )
+    monkeypatch.setattr(service, "_claim_without_commit", lambda *args, **kwargs: task)
+    service.asset_repository = SimpleNamespace(list_by_ids=lambda ids: [])
+    from app.modules.workers.service import WorkerPrincipal
+    result = service.claim_with_account(WorkerPrincipal(device_id=device.device_id))
+    assert result is not None and result.task == task and result.accounts == []
+    assert credentials.checked == []
 
 
 def test_no_shop_task_preserves_an_empty_context_without_credentials() -> None:

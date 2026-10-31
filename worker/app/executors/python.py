@@ -71,16 +71,18 @@ class PythonExecutor:
                 paths,
                 self._failure(error.code, error.message),
             )
-        self.runtime.write_json(
-            paths.input,
-            SkillProcessInput(
-                task_id=task.task_id,
-                skill_id=task.skill_id,
-                params=task.input,
-                accounts=task.accounts,
-                paths=SkillProcessPaths(images=self.images_dir),
-            ).model_dump(mode="json"),
+        process_input = SkillProcessInput(
+            task_id=task.task_id,
+            skill_id=task.skill_id,
+            params=task.input,
+            accounts=task.accounts,
+            paths=SkillProcessPaths(images=self.images_dir),
+            shop_ids=task.shop_ids,
         )
+        input_payload = process_input.model_dump(
+            mode="json", exclude={"shop_ids"} if task.shop_ids is None else set(),
+        )
+        self.runtime.write_json(paths.input, input_payload)
         self.runtime.write_status(paths, status="running")
         self.event_bus.emit(
             task.task_id,

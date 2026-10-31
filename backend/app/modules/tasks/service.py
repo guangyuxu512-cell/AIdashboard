@@ -47,6 +47,7 @@ from app.modules.tasks.exceptions import (
     TaskWorkerOfflineError,
 )
 from app.modules.tasks.models import Task, TaskAsset, TaskShop
+from app.modules.tasks.precheck_contract import PRODUCT_PRECHECK_SKILL_ID
 from app.modules.tasks.repository import TaskRepository
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
@@ -249,7 +250,13 @@ class TaskService:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:
             raise TaskDeviceDisabledError()
-        self._validate_shop_context(data.target_device_id, data.shop_ids)
+        if data.skill_id == PRODUCT_PRECHECK_SKILL_ID and not data.shop_ids:
+            raise TaskInputInvalidError("商品预检任务至少需要一个授权店铺")
+        self._validate_shop_context(
+            data.target_device_id,
+            data.shop_ids,
+            require_credentials=data.skill_id != PRODUCT_PRECHECK_SKILL_ID,
+        )
         self._validate_asset_context(data.asset_ids, team_id=team_id)
         if require_worker_online:
             runtime = self.repository.get_device_runtime(data.target_device_id)
@@ -340,6 +347,8 @@ class TaskService:
         self,
         device_id: UUID,
         shop_ids: list[UUID],
+        *,
+        require_credentials: bool = True,
     ) -> None:
         if not shop_ids:
             return
@@ -368,7 +377,8 @@ class TaskService:
             raise TaskShopDeviceBindingInvalidError(
                 details={"shop_ids": [str(shop_id) for shop_id in unbound_shop_ids]},
             )
-        self._require_credential_service().ensure_task_accounts_available(shop_ids)
+        if require_credentials:
+            self._require_credential_service().ensure_task_accounts_available(shop_ids)
 
     def _validate_provider_dependency(
         self,
@@ -724,7 +734,7 @@ class TaskService:
                         getattr(runtime, "worker_version", None),
                     ),
                 )
-                if task.shop_ids
+                if task.shop_ids and task.skill_id != PRODUCT_PRECHECK_SKILL_ID
                 else []
             )
             assets_by_id = {

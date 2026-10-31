@@ -9,6 +9,7 @@ from app.contracts import (
     ProviderInventoryReport,
     RuntimeEvent,
     SkillCapabilitySnapshot,
+    TaskShopSession,
     WorkerTask,
 )
 
@@ -76,6 +77,45 @@ class WorkerApiClient:
         response = await self.client.get(download_path)
         self._raise_for_error(response)
         return response.content
+
+    async def read_precheck_shop_session(
+        self, task_id: UUID, shop_id: UUID,
+    ) -> TaskShopSession:
+        """Read one authorized session into Worker memory over HTTPS only."""
+        if self.client.base_url.scheme != "https":
+            raise WorkerApiError(
+                "PRECHECK_SESSION_HTTPS_REQUIRED",
+                "Task session access requires HTTPS",
+                0,
+            )
+        try:
+            response = await self.client.post(
+                f"/api/v1/worker/tasks/{task_id}/shop-sessions/{shop_id}",
+                follow_redirects=False,
+            )
+        except httpx.HTTPError:
+            raise WorkerApiError(
+                "PRECHECK_SESSION_NETWORK_ERROR", "Task session request failed", 0,
+            ) from None
+        if not response.is_success:
+            # Do not reflect untrusted platform/server content into Worker logs.
+            raise WorkerApiError(
+                "PRECHECK_SESSION_UNAVAILABLE", "Task session is unavailable",
+                response.status_code,
+            )
+        try:
+            result = TaskShopSession.model_validate(response.json())
+        except ValueError:
+            raise WorkerApiError(
+                "PRECHECK_SESSION_RESPONSE_INVALID", "Task session response is invalid",
+                response.status_code,
+            ) from None
+        if result.shop_id != shop_id:
+            raise WorkerApiError(
+                "PRECHECK_SESSION_RESPONSE_INVALID", "Task session response is invalid",
+                response.status_code,
+            )
+        return result
 
     async def renew(self, task_id: UUID) -> None:
         response = await self.client.post(
