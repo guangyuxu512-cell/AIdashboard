@@ -6,6 +6,7 @@ Skill supplies the authorized platform operation and persists its own results.
 from __future__ import annotations
 
 import asyncio
+import re
 from collections import deque
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
@@ -19,11 +20,16 @@ T = TypeVar("T")
 @dataclass(frozen=True)
 class ProductRevision:
     product_id: str
-    revision: str
+    revision: int
+    source_fingerprint: str
 
     def __post_init__(self) -> None:
-        if not self.product_id.strip() or not self.revision.strip():
-            raise ValueError("product_id and revision are required")
+        if (not isinstance(self.product_id, str) or not self.product_id.strip()
+                or type(self.revision) is not int or self.revision < 0):
+            raise ValueError("product_id and a nonnegative revision are required")
+        if (not isinstance(self.source_fingerprint, str)
+                or re.fullmatch(r"[0-9a-f]{64}", self.source_fingerprint) is None):
+            raise ValueError("source_fingerprint must be a SHA-256 hex digest")
 
 
 @dataclass(frozen=True)
