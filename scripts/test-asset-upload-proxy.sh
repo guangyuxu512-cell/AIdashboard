@@ -54,6 +54,13 @@ class Receiver(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path.startswith("/internal/applications/v1/"):
+            return self.reply(200, json.dumps({
+                "backend": "transport-fixture", "path": self.path,
+                "proto": self.headers.get("X-Forwarded-Proto"),
+                "authorized": self.headers.get("Authorization") == "Bearer synthetic-proxy-token",
+                "application": self.headers.get("X-Application-ID"),
+            }), "application/json")
         self.reply(200, str(Receiver.arrivals))
 
     def do_POST(self):
@@ -183,5 +190,19 @@ for origin in "$http_origin" "$https_origin"; do
         cmp "$test_root/pc.html" "$test_root/non-mobile.html"
     done
 done
+
+# Software Session access must use the host TLS proxy directly: the frontend
+# proxy does not forward this prefix.  A spoofed incoming proto must be replaced
+# by the trusted host TLS proxy before reaching the backend transport fixture.
+app_path='/internal/applications/v1/shops/00000000-0000-0000-0000-000000000001/session?sample=1'
+curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" --fail \
+    -H 'Authorization: Bearer synthetic-proxy-token' -H 'X-Application-ID: synthetic-app' \
+    -H 'X-Forwarded-Proto: http' "$https_origin$app_path" -o "$test_root/app.json"
+expected_app='{"backend": "transport-fixture", "path": "/internal/applications/v1/shops/00000000-0000-0000-0000-000000000001/session?sample=1", "proto": "https", "authorized": true, "application": "synthetic-app"}'
+test "$(cat "$test_root/app.json")" = "$expected_app"
+curl "${curl_options[@]}" --fail "$http_origin/index.html" -o "$test_root/http-index.html"
+curl "${curl_options[@]}" --fail "$http_origin$app_path" -o "$test_root/http-app.html"
+cmp "$test_root/http-index.html" "$test_root/http-app.html"
 printf 'PASS: production inner and host TLS Nginx preserve multipart bytes through 10 MiB; over-12 MiB bodies return 413 without forwarding (transport fixture only)\n'
 printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/auth preserved, missing/invalid auth stays 401, adjacent prefixes stay frontend\n'
+printf 'PASS: application Session path reaches the backend only through host TLS and overwrites a spoofed proto (transport fixture only)\n'

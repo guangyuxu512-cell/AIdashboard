@@ -30,7 +30,7 @@ PlatformCredential ──< ShopCredentialBinding >── Shop ── ShopSession
 
 Session payload 与密码共用成熟的加密基础设施，但在领域上互相独立。普通 API 只返回元数据，绝不返回 Cookie、payload 或密文。
 
-Shop List 只投影 ShopSession 的状态机器值，不返回 version、Cookie、Token 或 Profile。Shop 被软移除时 Credential、ShopCredentialBinding 与 ShopSession 全部保留；普通业务入口因 Shop 已移除而返回 `SHOP_NOT_FOUND`，内部审计与恢复数据仍可追溯。
+Shop List 只投影 ShopSession 的状态机器值，不返回 version、Cookie、Token 或 Profile。Shop 被软移除时 Credential、ShopCredentialBinding 与 ShopSession 全部保留；普通业务入口因 Shop 已移除而返回 `SHOP_NOT_FOUND`，内部审计与恢复数据仍可追溯。独立软件的受限服务接口是单独的身份和契约，见 `application-shop-session-v1.md`，不是普通管理端读取 API。
 
 ## 4. 并发版本
 

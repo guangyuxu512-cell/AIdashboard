@@ -2,6 +2,8 @@
 
 Pydantic Schema / OpenAPI 为权威来源。
 
+独立软件的受限店铺清单与 Session 契约见 `application-shop-session-v1.md`；该接口不依赖 Worker。
+
 ## 商品数据手动采集与只读查询 V1
 
 实现契约见26号文档，Schema 为 `modules/product_data/schemas.py`。查询和采集资源均使用当前人员
