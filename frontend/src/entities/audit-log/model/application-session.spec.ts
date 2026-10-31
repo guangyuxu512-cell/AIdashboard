@@ -23,6 +23,6 @@ describe('application Session audit', () => {
     }
     expect(getAuditActionLabel(row.action)).toBe('软件读取店铺会话')
     expect(getAuditTargetLabel(row)).toBe('店铺会话 · 12345678')
-    expect(getAuditSummary(row)).toBe('授权人：管理员')
+    expect(getAuditSummary(row)).toBe('配置授权人：管理员')
   })
 })

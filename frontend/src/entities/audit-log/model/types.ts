@@ -86,7 +86,7 @@ export function getAuditTargetLabel(log: AuditLogViewModel): string {
 
 export function getAuditSummary(log: AuditLogViewModel): string {
   if (log.action === 'application.read_shop_session') {
-    return `授权人：${log.actorDisplayName}`
+    return `配置授权人：${log.actorDisplayName}`
   }
   if (log.action === 'access_management.reset_member_password') {
     return '已重置密码'
