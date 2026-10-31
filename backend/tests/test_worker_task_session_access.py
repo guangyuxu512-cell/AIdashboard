@@ -2,13 +2,14 @@ import json
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from uuid import uuid4
+from typing import Any
+from uuid import UUID, uuid4
 
 import pytest
 from cryptography.fernet import Fernet
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy.dialects import postgresql
 from sqlalchemy.exc import DBAPIError
 
@@ -39,7 +40,9 @@ from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.repository import ShopDeviceBindingRepository, ShopRepository
 from app.modules.tasks.exceptions import TaskNotFoundError
 from app.modules.tasks.repository import TaskRepository
-from app.modules.tasks.worker_api import claim_task, get_worker_task_session_service, router
+from app.modules.tasks.worker_api import (
+    claim_task, get_worker_task_service, get_worker_task_session_service, router,
+)
 from app.modules.workers import auth as worker_auth
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.exceptions import WorkerAuthenticationError
@@ -490,6 +493,72 @@ def test_claim_exposes_nonsecret_shop_ids_only_for_precheck(is_precheck):
         assert payload["shop_ids"] == [str(f.shop_id)]
     else:
         assert "shop_ids" not in payload
+
+
+@pytest.mark.parametrize("populated", [False, True])
+def test_ordinary_claim_http_response_is_accepted_by_baseline_worker(populated):
+    # Wire contract copied from dev 877f131's Worker before shop_ids existed.
+    # Exercise the FastAPI route, not only Pydantic model_dump in isolation.
+    class LegacyAccount(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        shop_id: UUID
+        shop_name: str | None = None
+        platform_code: str
+        login_identifier: str
+        secret: str = Field(repr=False)
+        preferred_verification_channel: str | None = None
+
+    class LegacyAsset(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        asset_id: UUID
+        filename: str
+        position: int = Field(ge=0)
+        content_type: str
+        size_bytes: int = Field(gt=0)
+        sha256: str = Field(min_length=64, max_length=64)
+        download_path: str
+
+    class LegacyTask(BaseModel):
+        model_config = ConfigDict(extra="forbid")
+        task_id: UUID
+        skill_id: str
+        input: dict[str, Any]
+        lease_until: datetime
+        accounts: list[LegacyAccount] = Field(default_factory=list, repr=False)
+        assets: list[LegacyAsset] = Field(default_factory=list)
+
+    # Local classes under postponed annotations may need explicit rebuilding.
+    LegacyTask.model_rebuild(_types_namespace={
+        "LegacyAccount": LegacyAccount, "LegacyAsset": LegacyAsset,
+    })
+    f = Fixture()
+    task = SimpleNamespace(
+        task_id=f.task_id, skill_id="system.echo", input_json={"message": "test"},
+        lease_until=f.task.lease_until, shop_ids=[f.shop_id],
+    )
+    accounts = [{
+        "shop_id": f.shop_id, "platform_code": "douyin", "login_identifier": "synthetic",
+        "secret": "synthetic", "preferred_verification_channel": "manual",
+    }] if populated else []
+    assets = [SimpleNamespace(
+        asset_id=uuid4(), original_filename="test.jpg", content_type="image/jpeg",
+        size_bytes=1, sha256="a" * 64,
+    )] if populated else []
+    service = SimpleNamespace(claim_with_account=lambda principal: SimpleNamespace(
+        task=task, accounts=accounts, assets=assets,
+    ))
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_worker_principal] = lambda: f.principal
+    app.dependency_overrides[get_worker_task_service] = lambda: service
+    with TestClient(app) as client:
+        response = client.post("/api/v1/worker/tasks/claim")
+    assert response.status_code == 200
+    payload = response.json()
+    assert "shop_ids" not in payload
+    parsed = LegacyTask.model_validate(payload)
+    assert parsed.task_id == f.task_id
+    assert len(parsed.accounts) == len(accounts) and len(parsed.assets) == len(assets)
 
 
 def test_sensitive_authorization_checks_lock_all_existing_grant_rows():

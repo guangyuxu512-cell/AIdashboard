@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Event
@@ -15,10 +16,10 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, load_only
 
 from app.core.config import Settings
-from app.core.exceptions import AppError
 from app.core.security import SecretCipher
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
+from app.modules.access.exceptions import TeamAccessDeniedError, TeamResourceAccessDeniedError
 from app.modules.access.models import Team, TeamMembership
 from app.modules.access.module_access import ModuleCode
 from app.modules.access.repository import (
@@ -26,6 +27,7 @@ from app.modules.access.repository import (
 )
 from app.modules.access.schemas import TeamAuthorizationUpdate
 from app.modules.access.service import AccessManagementService
+from app.modules.audit.service import AuditLogService
 from app.modules.sessions.exceptions import ShopSessionReadBusyError
 from app.modules.sessions.worker_task_service import WorkerTaskSessionService
 from app.modules.users.models import User
@@ -50,7 +52,9 @@ def isolated_engine():
     admin = create_engine(url)
     with admin.begin() as conn:
         conn.execute(text(f'CREATE SCHEMA "{schema}"'))
-    engine = create_engine(url, connect_args={"options": f"-csearch_path={schema}"})
+    engine = create_engine(url, connect_args={
+        "options": f"-csearch_path={schema} -cstatement_timeout=10000",
+    })
 
     @event.listens_for(engine, "connect")
     def verify_connection_isolation(dbapi_connection, _connection_record):
@@ -527,10 +531,91 @@ def test_real_session_read_before_revoke_is_audited_and_later_read_is_denied(
         service = WorkerTaskSessionService(
             session, cipher, settings=Settings(worker_precheck_session_access_enabled=True),
         )
-        with pytest.raises(AppError):
+        with pytest.raises(TeamResourceAccessDeniedError):
             service.read(
                 principal, task_id=ids["task_id"], shop_id=ids["shop_id"],
                 request_id="synthetic-after-revoke",
+            )
+        assert _session_audit_count(session, ids["task_id"]) == 1
+
+
+def test_real_session_read_holds_grants_until_audit_commits(
+    isolated_engine, real_service_fixture,
+):
+    ids, token, secret, cipher = real_service_fixture
+    read_ready, continue_read, revoke_ready = Event(), Event(), Event()
+    backend_pids = {}
+
+    class PausingAuditService(AuditLogService):
+        def record_worker_session_access(self, **kwargs):
+            super().record_worker_session_access(**kwargs)
+            read_ready.set()
+            if not continue_read.wait(timeout=10):
+                raise TimeoutError("synthetic read test did not resume")
+
+    class ObservedTeamModuleRepository(TeamModuleAccessRepository):
+        def replace_codes(self, team_id, module_codes):
+            revoke_ready.set()
+            return super().replace_codes(team_id, module_codes)
+
+    def read_session():
+        with Session(isolated_engine) as session:
+            backend_pids["reader"] = session.scalar(text("SELECT pg_backend_pid()"))
+            principal = WorkerService(session).authenticate(ids["device_id"], token)
+            result = WorkerTaskSessionService(
+                session, cipher, settings=Settings(worker_precheck_session_access_enabled=True),
+                audit_service=PausingAuditService(session),
+            ).read(
+                principal, task_id=ids["task_id"], shop_id=ids["shop_id"],
+                request_id="synthetic-held-read",
+            )
+            return result.cookies[0].value.get_secret_value()
+
+    def revoke_shop():
+        with Session(isolated_engine) as session:
+            backend_pids["revoker"] = session.scalar(text("SELECT pg_backend_pid()"))
+            return AccessManagementService(
+                session, password_service=None,
+                team_module_access_repository=ObservedTeamModuleRepository(session),
+            ).update_team_authorization(
+                ids["team_id"],
+                TeamAuthorizationUpdate(
+                    module_codes=[ModuleCode.TASK], device_ids=[ids["device_id"]], shop_ids=[],
+                ),
+                actor=_synthetic_actor(ids), request_id="synthetic-held-revoke",
+            )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        read_future = pool.submit(read_session)
+        try:
+            assert read_ready.wait(timeout=10), "read did not reach audit"
+            revoke_future = pool.submit(revoke_shop)
+            assert revoke_ready.wait(timeout=10), "revocation did not reach grant replacement"
+            deadline = time.monotonic() + 3
+            with isolated_engine.connect() as observer:
+                while True:
+                    blockers = observer.scalar(text("SELECT pg_blocking_pids(:pid)"),
+                                               {"pid": backend_pids["revoker"]})
+                    if backend_pids["reader"] in blockers:
+                        break
+                    assert time.monotonic() < deadline, "revocation did not wait on the read"
+                    time.sleep(0.02)
+            assert not revoke_future.done()
+        finally:
+            continue_read.set()
+        assert read_future.result(timeout=10) == secret
+        _modules, _devices, shops = revoke_future.result(timeout=10)
+        assert shops == []
+
+    with Session(isolated_engine) as session:
+        principal = WorkerService(session).authenticate(ids["device_id"], token)
+        service = WorkerTaskSessionService(
+            session, cipher, settings=Settings(worker_precheck_session_access_enabled=True),
+        )
+        with pytest.raises(TeamResourceAccessDeniedError):
+            service.read(
+                principal, task_id=ids["task_id"], shop_id=ids["shop_id"],
+                request_id="synthetic-after-held-revoke",
             )
         assert _session_audit_count(session, ids["task_id"]) == 1
 
@@ -582,7 +667,7 @@ def test_real_team_archive_and_session_read_do_not_deadlock(
         service = WorkerTaskSessionService(
             session, cipher, settings=Settings(worker_precheck_session_access_enabled=True),
         )
-        with pytest.raises(AppError):
+        with pytest.raises(TeamAccessDeniedError):
             service.read(
                 principal, task_id=ids["task_id"], shop_id=ids["shop_id"],
                 request_id="synthetic-archived",
@@ -654,7 +739,7 @@ def test_real_team_authorization_replacement_and_session_read_do_not_deadlock(
             )
             assert result.cookies[0].value.get_secret_value() == secret
         else:
-            with pytest.raises(AppError):
+            with pytest.raises(TeamResourceAccessDeniedError):
                 service.read(
                     principal, task_id=ids["task_id"], shop_id=ids["shop_id"],
                     request_id="synthetic-after-revocation",
