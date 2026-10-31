@@ -30,6 +30,7 @@ from app.modules.access.service import AccessManagementService
 from app.modules.audit.service import AuditLogService
 from app.modules.sessions.exceptions import ShopSessionReadBusyError
 from app.modules.sessions.worker_task_service import WorkerTaskSessionService
+from app.modules.tasks.repository import TaskRepository
 from app.modules.users.models import User
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.security import hash_worker_token
@@ -478,6 +479,43 @@ def test_real_service_commits_audit_with_foreign_keys_before_return(
     assert rows[0]["target_id"] == ids["shop_id"] and rows[0]["actor_user_id"] == ids["user_id"]
     assert rows[0]["team_id"] == ids["team_id"]
     assert secret not in str(rows[0]) and token not in str(rows[0])
+
+
+def test_legacy_worker_skips_queued_precheck_while_compatible_worker_claims_it(
+    isolated_engine, real_service_fixture,
+):
+    ids, _token, _secret, _cipher = real_service_fixture
+    now = datetime.now(UTC)
+    ordinary_id = uuid4()
+    with isolated_engine.begin() as conn:
+        conn.execute(text("""
+            UPDATE tasks SET status='pending', lease_until=NULL, created_at=:created
+            WHERE task_id=:task_id
+        """), {"created": now - timedelta(seconds=1), "task_id": ids["task_id"]})
+        conn.execute(text("""
+            INSERT INTO tasks (task_id, team_id, created_by_user_id, target_device_id,
+                               skill_id, execution_display_name, status, input_json, created_at)
+            VALUES (:task_id, :team_id, :user_id, :device_id, 'system.echo',
+                    'Synthetic ordinary task', 'pending', CAST('{}' AS jsonb), :created)
+        """), ids | {"task_id": ordinary_id, "created": now})
+
+    # Each reader uses the real atomic UPDATE ... SKIP LOCKED claim. The old
+    # Worker passes the older precheck and picks the ordinary task behind it.
+    with Session(isolated_engine) as legacy, Session(isolated_engine) as compatible:
+        ordinary = TaskRepository(legacy).claim_next(
+            device_id=ids["device_id"], now=now, lease_until=now + timedelta(minutes=1),
+        )
+        assert TaskRepository(legacy).claim_next(
+            device_id=ids["device_id"], now=now, lease_until=now + timedelta(minutes=1),
+        ) is None
+        precheck = TaskRepository(compatible).claim_next(
+            device_id=ids["device_id"], now=now, lease_until=now + timedelta(minutes=1),
+            allow_precheck=True,
+        )
+        assert ordinary.task_id == ordinary_id and ordinary.skill_id == "system.echo"
+        assert precheck.task_id == ids["task_id"] and precheck.skill_id == "product.precheck"
+        legacy.commit()
+        compatible.commit()
 
 
 def test_real_audit_failure_never_returns_session(isolated_engine, real_service_fixture):

@@ -1,7 +1,7 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, Header, Request, Response, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -68,8 +68,15 @@ def get_worker_task_session_service(
 def claim_task(
     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
     service: Annotated[TaskService, Depends(get_worker_task_service)],
+    precheck_protocol: Annotated[
+        str | None, Header(alias="X-Worker-Precheck-Protocol")
+    ] = None,
 ) -> WorkerTaskRead | Response:
-    claimed = service.claim_with_account(principal)
+    # A capability snapshot may predate a downgrade. Only an explicitly
+    # compatible Worker may receive this new, strict-model claim shape.
+    claimed = service.claim_with_account(
+        principal, allow_precheck=(precheck_protocol == "1"),
+    )
     if claimed is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     task = claimed.task

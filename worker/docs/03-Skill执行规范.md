@@ -11,6 +11,10 @@ Cookie 使用 SecretStr 且不写日志；此方法尚未接入运行中的 Skil
 `PRECHECK_SESSION_AUTHORIZATION_BUSY`，由上层在确认任务和租约仍有效后决定是否重试会话获取；
 客户端不自动重试，也不泄露服务端返回的任意错误正文。
 
+Claim 默认不携带预检协议头，当前候选因此不会领取预检任务。未来接入时，只能由实际具备兼容 Skill 和
+安全会话通道的运行中 Worker 在该次 Claim 携带 `X-Worker-Precheck-Protocol: 1`；该头不能只根据缓存的
+服务端能力快照或版本号填写。普通任务与旧 Backend 的交互保持不变。
+
 `app.skills.product_precheck.batch` 将每件带商品草稿修订号和来源 SHA-256 指纹的商品仅分配给一家店铺，
 保持每店队列顺序与结果原顺序，显式限制同时处理的商品数单店 1–5、总计 1–25；这不限制单个商品内部
 发出的 HTTP 请求数。100 件/5 店可得到每店 20 件；每店 5、总计 25 只是

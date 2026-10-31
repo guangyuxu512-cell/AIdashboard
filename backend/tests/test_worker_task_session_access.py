@@ -484,7 +484,7 @@ def test_claim_exposes_nonsecret_shop_ids_only_for_precheck(is_precheck):
         task_id=f.task_id, skill_id="product.precheck" if is_precheck else "system.echo",
         input_json={}, lease_until=f.task.lease_until, shop_ids=[f.shop_id],
     )
-    service = SimpleNamespace(claim_with_account=lambda principal: SimpleNamespace(
+    service = SimpleNamespace(claim_with_account=lambda principal, **kwargs: SimpleNamespace(
         task=task, accounts=[], assets=[],
     ))
     result = claim_task(f.principal, service)
@@ -493,6 +493,44 @@ def test_claim_exposes_nonsecret_shop_ids_only_for_precheck(is_precheck):
         assert payload["shop_ids"] == [str(f.shop_id)]
     else:
         assert "shop_ids" not in payload
+
+
+@pytest.mark.parametrize("header, expected", [(None, False), ("0", False), ("2", False), ("1", True)])
+def test_precheck_claim_requires_explicit_current_protocol_header(header, expected):
+    f = Fixture()
+    calls = []
+    service = SimpleNamespace(claim_with_account=lambda principal, *, allow_precheck: (
+        calls.append((principal, allow_precheck)), None,
+    )[1])
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[get_worker_principal] = lambda: f.principal
+    app.dependency_overrides[get_worker_task_service] = lambda: service
+    headers = {} if header is None else {"X-Worker-Precheck-Protocol": header}
+    with TestClient(app) as client:
+        response = client.post("/api/v1/worker/tasks/claim", headers=headers)
+    assert response.status_code == 204
+    assert calls == [(f.principal, expected)]
+
+
+@pytest.mark.parametrize("enabled, offered, expected", [
+    (False, False, False), (False, True, False), (True, False, False), (True, True, True),
+])
+def test_precheck_claim_also_requires_enabled_server_flag(enabled, offered, expected):
+    from app.modules.tasks.service import TaskService
+
+    f = Fixture()
+    calls = []
+    repository = SimpleNamespace(
+        get_enabled_device=lambda device_id: object(),
+        claim_next=lambda **kwargs: calls.append(kwargs),
+    )
+    service = TaskService(
+        f.session, repository=repository,
+        settings=Settings(worker_precheck_session_access_enabled=enabled),
+    )
+    assert service.claim(f.principal, allow_precheck=offered) is None
+    assert calls[0]["allow_precheck"] is expected
 
 
 @pytest.mark.parametrize("populated", [False, True])
@@ -544,7 +582,7 @@ def test_ordinary_claim_http_response_is_accepted_by_baseline_worker(populated):
         asset_id=uuid4(), original_filename="test.jpg", content_type="image/jpeg",
         size_bytes=1, sha256="a" * 64,
     )] if populated else []
-    service = SimpleNamespace(claim_with_account=lambda principal: SimpleNamespace(
+    service = SimpleNamespace(claim_with_account=lambda principal, **kwargs: SimpleNamespace(
         task=task, accounts=accounts, assets=assets,
     ))
     app = FastAPI()

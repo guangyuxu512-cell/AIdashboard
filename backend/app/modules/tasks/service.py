@@ -710,8 +710,9 @@ class TaskService:
         principal: WorkerPrincipal,
         *,
         now: datetime | None = None,
+        allow_precheck: bool = False,
     ) -> Task | None:
-        task = self._claim_without_commit(principal, now=now)
+        task = self._claim_without_commit(principal, now=now, allow_precheck=allow_precheck)
         self.session.commit()
         return task
 
@@ -720,8 +721,9 @@ class TaskService:
         principal: WorkerPrincipal,
         *,
         now: datetime | None = None,
+        allow_precheck: bool = False,
     ) -> ClaimedWorkerTask | None:
-        task = self._claim_without_commit(principal, now=now)
+        task = self._claim_without_commit(principal, now=now, allow_precheck=allow_precheck)
         if task is None:
             self.session.commit()
             return None
@@ -753,6 +755,7 @@ class TaskService:
         principal: WorkerPrincipal,
         *,
         now: datetime | None,
+        allow_precheck: bool,
     ) -> Task | None:
         claimed_at = now or datetime.now(UTC)
         if self.repository.get_enabled_device(principal.device_id) is None:
@@ -765,6 +768,7 @@ class TaskService:
             device_id=principal.device_id,
             now=claimed_at,
             lease_until=lease_until,
+            allow_precheck=(allow_precheck and self.settings.worker_precheck_session_access_enabled),
         )
 
     def _require_credential_service(self) -> CredentialService:

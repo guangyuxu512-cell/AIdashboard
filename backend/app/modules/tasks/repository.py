@@ -23,6 +23,7 @@ from app.modules.access.policy import DataScopePolicy
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TERMINAL_TASK_STATUS_VALUES, TaskStatus
 from app.modules.tasks.models import Task, TaskEvent, TaskShop
+from app.modules.tasks.precheck_contract import PRODUCT_PRECHECK_SKILL_ID
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
@@ -427,6 +428,7 @@ class TaskRepository:
         device_id: UUID,
         now: datetime,
         lease_until: datetime,
+        allow_precheck: bool = False,
     ) -> Task | None:
         candidate = (
             select(Task.task_id)
@@ -441,6 +443,14 @@ class TaskRepository:
                     ),
                 ),
             )
+        )
+        # Older Workers reject shop_ids and must never transition a queued
+        # precheck to RUNNING. Skip it in the same atomic selection so it
+        # cannot block unrelated ordinary tasks for this device.
+        if not allow_precheck:
+            candidate = candidate.where(Task.skill_id != PRODUCT_PRECHECK_SKILL_ID)
+        candidate = (
+            candidate
             .order_by(Task.created_at.asc(), Task.task_id.asc())
             .with_for_update(skip_locked=True)
             .limit(1)
