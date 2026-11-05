@@ -13,7 +13,14 @@ lock_holder=""
 # Worker provisioning needs the Backend health JSON, never the Frontend SPA fallback.
 grep -Fqx '    location = /health {' "$host_nginx_template"
 grep -Fqx '        proxy_pass http://127.0.0.1:${BACKEND_BIND_PORT};' "$host_nginx_template"
-grep -Fq '$BACKEND_BIND_PORT $FRONTEND_BIND_PORT' "$deployment_script"
+grep -Fqx '    location ^~ /rpa/v1/product-images/ {' "$host_nginx_template"
+grep -Fqx '        limit_except GET {' "$host_nginx_template"
+grep -Fqx '        proxy_pass ${PRODUCT_LIBRARY_IMAGE_UPSTREAM};' "$host_nginx_template"
+grep -Fqx '        proxy_set_header Authorization "";' "$host_nginx_template"
+grep -Fqx '        proxy_set_header Cookie "";' "$host_nginx_template"
+grep -Fqx '        proxy_hide_header Set-Cookie;' "$host_nginx_template"
+grep -Fq 'PRODUCT_LIBRARY_IMAGE_UPSTREAM="http://100.91.242.119:3612"' "$deployment_script"
+grep -Fq '$BACKEND_BIND_PORT $FRONTEND_BIND_PORT $PRODUCT_LIBRARY_IMAGE_UPSTREAM' "$deployment_script"
 
 cleanup_test_root() {
     if [[ -n "$lock_holder" ]]; then
