@@ -45,15 +45,22 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 class Receiver(BaseHTTPRequestHandler):
     arrivals = 0
 
-    def reply(self, status, text, content_type="text/plain"):
-        body = (text + "\n").encode()
+    def reply_bytes(self, status, body, content_type):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def reply(self, status, text, content_type="text/plain"):
+        body = (text + "\n").encode()
+        self.reply_bytes(status, body, content_type)
+
     def do_GET(self):
+        if self.path == "/rpa/v1/product-images/00000000000000000000000000000000.png":
+            if self.headers.get("Authorization") or self.headers.get("Cookie"):
+                return self.reply(400, "public image request leaked credentials")
+            return self.reply_bytes(200, b"\x89PNG\r\n\x1a\npublic-rpa-image-fixture", "image/png")
         if self.path.startswith("/internal/applications/v1/"):
             return self.reply(200, json.dumps({
                 "backend": "transport-fixture", "path": self.path,
@@ -100,8 +107,9 @@ docker run --rm -i --network none --read-only --entrypoint envsubst \
     -e PRODUCTION_TLS_CERTIFICATE_PATH=/test-tls/cert.pem \
     -e PRODUCTION_TLS_CERTIFICATE_KEY_PATH=/test-tls/key.pem \
     -e BACKEND_BIND_PORT=18001 -e FRONTEND_BIND_PORT=18080 \
+    -e PRODUCT_LIBRARY_IMAGE_UPSTREAM=http://127.0.0.1:18001 \
     "$frontend_image" \
-    '${PRODUCTION_DOMAIN} ${PRODUCTION_ACME_WEBROOT_DIR} ${PRODUCTION_TLS_CERTIFICATE_PATH} ${PRODUCTION_TLS_CERTIFICATE_KEY_PATH} ${BACKEND_BIND_PORT} ${FRONTEND_BIND_PORT}' \
+    '${PRODUCTION_DOMAIN} ${PRODUCTION_ACME_WEBROOT_DIR} ${PRODUCTION_TLS_CERTIFICATE_PATH} ${PRODUCTION_TLS_CERTIFICATE_KEY_PATH} ${BACKEND_BIND_PORT} ${FRONTEND_BIND_PORT} ${PRODUCT_LIBRARY_IMAGE_UPSTREAM}' \
     < "$repository_root/deploy/production/host-nginx.conf.template" > "$test_root/host.conf"
 host="$(docker run -d --name "$run_id-host" --read-only \
     --network "container:$frontend" --entrypoint nginx \
@@ -203,6 +211,29 @@ test "$(cat "$test_root/app.json")" = "$expected_app"
 curl "${curl_options[@]}" --fail "$http_origin/index.html" -o "$test_root/http-index.html"
 curl "${curl_options[@]}" --fail "$http_origin$app_path" -o "$test_root/http-app.html"
 cmp "$test_root/http-index.html" "$test_root/http-app.html"
+
+# Only the ProductDataCenter-owned image prefix is public.  The real NAS origin
+# is replaced with the same in-memory receiver for this transport-only test.
+image_path='/rpa/v1/product-images/00000000000000000000000000000000.png'
+printf '\211PNG\r\n\032\npublic-rpa-image-fixture' > "$test_root/expected-product-image.png"
+curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" --fail \
+    -H 'Authorization: Bearer must-not-reach-nas' -H 'Cookie: session=must-not-reach-nas' \
+    -D "$test_root/product-image.headers" "$https_origin$image_path" \
+    -o "$test_root/product-image.png"
+tr -d '\r' < "$test_root/product-image.headers" | grep -Eqi '^Content-Type: image/png'
+cmp "$test_root/expected-product-image.png" "$test_root/product-image.png"
+code="$(curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" \
+    -X POST --data-binary 'must-not-reach-nas' -o "$test_root/product-image-post" \
+    -w '%{http_code}' "$https_origin$image_path")"
+test "$code" = 403
+curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" --fail \
+    "$https_origin/index.html" -o "$test_root/https-index.html"
+for path in /rpa/v1/product-images-not-public/sample.png /rpa/v1/products/sample; do
+    curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" --fail \
+        "$https_origin$path" -o "$test_root/non-image-rpa.html"
+    cmp "$test_root/https-index.html" "$test_root/non-image-rpa.html"
+done
 printf 'PASS: production inner and host TLS Nginx preserve multipart bytes through 10 MiB; over-12 MiB bodies return 413 without forwarding (transport fixture only)\n'
 printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/auth preserved, missing/invalid auth stays 401, adjacent prefixes stay frontend\n'
 printf 'PASS: application Session path reaches the backend only through host TLS and overwrites a spoofed proto (transport fixture only)\n'
+printf 'PASS: ProductDataCenter image GET/HEAD uses the exact public HTTPS prefix; writes are denied and adjacent RPA paths stay frontend\n'
