@@ -153,12 +153,16 @@ FRONTEND_BIND_PORT="$(production_env_read FRONTEND_BIND_PORT || printf '18080')"
 BACKEND_ASSET_STORAGE_MODE="$(production_env_read BACKEND_ASSET_STORAGE_MODE || printf 'local')"
 BACKEND_ASSET_STORAGE_VOLUME_SOURCE="$(production_env_read BACKEND_ASSET_STORAGE_VOLUME_SOURCE || true)"
 PRODUCTION_BUILDX_BUILDER="$(production_env_read PRODUCTION_BUILDX_BUILDER || true)"
+# ProductDataCenter keeps its image bytes on NAS.  This fixed private-overlay
+# origin is rendered only into the host Nginx vhost; it is never exposed as an
+# application or database upstream.
+PRODUCT_LIBRARY_IMAGE_UPSTREAM="http://100.91.242.119:3612"
 if [[ -n "$PRODUCTION_BUILDX_BUILDER" && ! "$PRODUCTION_BUILDX_BUILDER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
     echo "Production Buildx builder must be a single name containing only letters, digits, dots, underscores or hyphens" >&2
     exit 2
 fi
 export PRODUCTION_DOMAIN PRODUCTION_TLS_CERTIFICATE_PATH PRODUCTION_TLS_CERTIFICATE_KEY_PATH PRODUCTION_ACME_WEBROOT_DIR
-export BACKEND_BIND_PORT DOUYIN_SIGNER_BIND_PORT FRONTEND_BIND_PORT
+export BACKEND_BIND_PORT DOUYIN_SIGNER_BIND_PORT FRONTEND_BIND_PORT PRODUCT_LIBRARY_IMAGE_UPSTREAM
 nginx_target="$PRODUCTION_NGINX_VHOST_DIR/control-center-production.conf"
 
 if [[ "$BACKEND_DATABASE_URL" != *"/control_center_prod"* ]]; then
@@ -346,7 +350,7 @@ wait_for_http "http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}/mobile/"
 verify_mobile_frontend
 
 rendered_nginx="$release_directory/.control-center-production.conf"
-envsubst '$PRODUCTION_DOMAIN $PRODUCTION_TLS_CERTIFICATE_PATH $PRODUCTION_TLS_CERTIFICATE_KEY_PATH $PRODUCTION_ACME_WEBROOT_DIR $BACKEND_BIND_PORT $FRONTEND_BIND_PORT' \
+envsubst '$PRODUCTION_DOMAIN $PRODUCTION_TLS_CERTIFICATE_PATH $PRODUCTION_TLS_CERTIFICATE_KEY_PATH $PRODUCTION_ACME_WEBROOT_DIR $BACKEND_BIND_PORT $FRONTEND_BIND_PORT $PRODUCT_LIBRARY_IMAGE_UPSTREAM' \
     < "$release_directory/deploy/production/host-nginx.conf.template" \
     > "$rendered_nginx"
 

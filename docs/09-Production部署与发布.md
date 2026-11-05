@@ -57,6 +57,7 @@ Main 先核同一锁有无持有者、服务器 current、三个容器实际 SHA
 Browser HTTPS
   → BaoTa host Nginx :443
   → exact `/health` → Backend :127.0.0.1:18001
+  → exact `/rpa/v1/product-images/` → ProductDataCenter :100.91.242.119:3612 over Tailnet
   → Frontend :127.0.0.1:18080
       → PC `/`
       → Mobile `/mobile/`
@@ -72,6 +73,8 @@ Backend → existing Docker Asset volume (local mode) / verified NAS mount (moun
 - Frontend 保持只读根文件系统；Nginx 官方入口运行时渲染的 `/etc/nginx/conf.d`、缓存、运行时和临时目录使用受限 `tmpfs`，不得因此放宽整个容器的写入权限。`NGINX_ENVSUBST_FILTER` 使用变量名正则，只允许渲染 `FRONTEND_BIND_HOST`、`FRONTEND_BIND_PORT` 与 `BACKEND_BIND_PORT`。
 - 同一个 Frontend image 同时提供 PC 根入口与 Mobile `/mobile/`，不新增容器或端口。`/mobile` 以代理安全的相对 `Location: /mobile/` 重定向，禁止泄漏内部 HTTP scheme 或 `18080` 上游端口；Mobile SPA fallback 只在 `/mobile/` 内生效，缺失的 Mobile JS、CSS、Manifest 或图标必须返回 `404`，不能回退到 PC `index.html`。`/api/` 继续使用同一 Backend proxy；Host Nginx 的精确 `/health` 直接代理到 Backend，避免被 PC SPA fallback 返回 HTML，供 Worker 在不携带 Token 的第一步健康检查使用。
 - 公网入口仅由现有 BaoTa Nginx vhost 管理。本部署的明确决策是直接使用 VPS 公网 IPv4，而非 DNS 域名。Let’s Encrypt 的 IP 证书必须使用 `shortlived` profile，约 160 小时有效；因此 `control-center-production-ip-acme-renew.timer` 每日运行两次，续期后由 host Nginx reload 读取新证书。明文 HTTP 只用于 ACME HTTP-01 challenge 和 HTTPS 重定向，不能作为应用入口。
+- 商品库图片只复用该公网 HTTPS vhost 的精确 `/rpa/v1/product-images/` 前缀，私有上游固定为 ProductDataCenter 在 NAS 上的 Tailnet HTTP 服务 `100.91.242.119:3612`。图片字节仍由商品库自己的 NAS 持久目录管理；中控 Asset Storage 不接收或复制这些文件。该路由必须清除浏览器可能携带的 `Authorization`、`Cookie`，并丢弃上游 `Set-Cookie`，避免中控 Session 进入 NAS 或由图片响应写回公网入口。相邻的 `/rpa/v1/products`、`/rpa/v1/product-images-*`、管理 API、数据库及文件共享端口不得因本路由公开。商品库管理、导出与 RPA 数据包应返回 `https://119.29.188.118/rpa/v1/product-images/...` 同一地址。
+- 上述图片路由随受审 `host-nginx.conf.template` 和正式 main SHA 发布；远程部署只把固定私有上游渲染进 host vhost，`nginx -t` 或 reload 失败继续恢复旧 vhost。容器回归只证明精确前缀、图片字节/类型和相邻路径隔离；生产验收必须从未加入 NAS Tailnet 的实际 RPA 机器使用数据包原始 URL 下载并打开图片，记录 HTTP 状态、Content-Type 和下载结果。局域网、VPS 回环或健康接口成功不能替代该验收。
 - `control-center-backend-prod-assets` 是正式持久卷，独立于开发环境的 `control-center-backend-dev_backend-assets`。正常更新与回滚不删除该卷；切换 NAS 后它仍保留，作为切换前资产的回退来源。
 - PDD 签名继续由 Backend 中现有的隔离 Node 子进程执行。`backend/Dockerfile` 安装 Node.js，且随 `app/platforms/pdd/vendor/anti_content.js` 一起打包；不引入第二套 PDD 服务。
 - Douyin Signer 仍是独立的、只绑定回环地址的容器，生产端口为 `8788`，与开发端口 `8787` 隔离。
