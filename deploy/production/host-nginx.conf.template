@@ -47,6 +47,9 @@ server {
     # ProductDataCenter owns these files on NAS.  Expose only its immutable
     # image-download prefix; the adjacent RPA and management APIs stay private.
     location ^~ /rpa/v1/product-images/ {
+        limit_except GET {
+            deny all;
+        }
         proxy_pass ${PRODUCT_LIBRARY_IMAGE_UPSTREAM};
         proxy_http_version 1.1;
         proxy_set_header Host $proxy_host;

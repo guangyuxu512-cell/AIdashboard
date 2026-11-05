@@ -13,7 +13,7 @@
 
 - 仅商品库自有图片前缀公开；`/rpa/v1/products`、`/rpa/v1/product-images-*` 和管理入口继续落到原 Frontend，不转发 NAS。
 - NAS 图片仍在 ProductDataCenter 自己的持久目录；不复制到中控 Asset Storage。
-- Host Nginx 固定覆盖 `X-Forwarded-Proto: https`，保留客户端链路信息，清除进入 NAS 的 `Authorization`、`Cookie` 并丢弃图片上游 `Set-Cookie`，同时设置 5 秒连接、30 秒读取超时。
+- Host Nginx 只允许 GET/HEAD 下载，固定覆盖 `X-Forwarded-Proto: https`，保留客户端链路信息，清除进入 NAS 的 `Authorization`、`Cookie` 并丢弃图片上游 `Set-Cookie`，同时设置 5 秒连接、30 秒读取超时。
 - 正式部署继续使用原锁、精确 main CI、归档、`nginx -t`、reload 失败恢复旧 vhost 与运行版本核验。
 
 ## 验证计划与发布边界

@@ -222,6 +222,10 @@ curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" --fail \
     -o "$test_root/product-image.png"
 tr -d '\r' < "$test_root/product-image.headers" | grep -Eqi '^Content-Type: image/png'
 cmp "$test_root/expected-product-image.png" "$test_root/product-image.png"
+code="$(curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" \
+    -X POST --data-binary 'must-not-reach-nas' -o "$test_root/product-image-post" \
+    -w '%{http_code}' "$https_origin$image_path")"
+test "$code" = 403
 curl "${curl_options[@]}" --cacert "$test_root/tls/cert.pem" --fail \
     "$https_origin/index.html" -o "$test_root/https-index.html"
 for path in /rpa/v1/product-images-not-public/sample.png /rpa/v1/products/sample; do
@@ -232,4 +236,4 @@ done
 printf 'PASS: production inner and host TLS Nginx preserve multipart bytes through 10 MiB; over-12 MiB bodies return 413 without forwarding (transport fixture only)\n'
 printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/auth preserved, missing/invalid auth stays 401, adjacent prefixes stay frontend\n'
 printf 'PASS: application Session path reaches the backend only through host TLS and overwrites a spoofed proto (transport fixture only)\n'
-printf 'PASS: ProductDataCenter image bytes use the exact public HTTPS prefix; adjacent RPA paths stay frontend\n'
+printf 'PASS: ProductDataCenter image GET/HEAD uses the exact public HTTPS prefix; writes are denied and adjacent RPA paths stay frontend\n'
