@@ -7,7 +7,7 @@ const PROBE_INTERVAL_MS = 5_000
 
 /** Existing-shop login only. The same window and partition are used throughout. */
 export class DouyinUnifiedLogin {
-  private phase: 'compass' | 'merchant' | 'returning' = 'compass'
+  private phase: 'compass' | 'merchant' = 'compass'
   private compassIdentity: ManagementLoginIdentity | null = null
   private lastProbeKey: string | null = null
   private lastProbeAt = 0
@@ -25,10 +25,6 @@ export class DouyinUnifiedLogin {
   async advance(): Promise<PlatformLoginDetectionResult> {
     if (!this.isCurrent() || !this.isPageReady()) return waiting('登录页面正在加载')
     if (this.phase === 'merchant') return this.checkMerchant()
-    if (this.phase === 'returning' &&
-      (!this.onOrigin(this.adapter.loginUrl) || !this.isPageReady())) {
-      return waiting(this.loadFailed ? '返回罗盘未完成，请关闭窗口后重试' : '正在返回罗盘，准备保存登录状态')
-    }
     const navigation = this.navigationSequence()
     const detection = await this.adapter.detectLoginStatus(
       this.window.webContents.session, this.window.webContents.id,
@@ -37,15 +33,10 @@ export class DouyinUnifiedLogin {
       return waiting('登录页面正在跳转')
     if (!detection.readyForCapture || !detection.identity)
       return detection
-    if (this.phase === 'compass') {
-      this.compassIdentity = detection.identity
-      this.phase = 'merchant'
-      this.navigate(MERCHANT_PAGE)
-      return waiting('已识别罗盘店铺，正在确认商品后台登录状态')
-    }
-    if (detection.identity.platformShopId !== this.compassIdentity?.platformShopId)
-      return waiting('罗盘店铺发生变化，请切换回目标店铺后重新登录')
-    return detection
+    this.compassIdentity = detection.identity
+    this.phase = 'merchant'
+    this.navigate(MERCHANT_PAGE)
+    return waiting('已识别罗盘店铺，正在确认商品后台登录状态')
   }
 
   private async checkMerchant(): Promise<PlatformLoginDetectionResult> {
@@ -74,11 +65,9 @@ export class DouyinUnifiedLogin {
       return { ...waiting('本次商品后台验证未完成，原登录状态保留；请检查窗口后重新打开'), requestFailed: true }
     if (result.status !== 'confirmed' || !result.platformShopId)
       return waiting('商品后台身份尚未确认，请按当前窗口提示操作')
-    if (result.platformShopId !== this.compassIdentity?.platformShopId)
+    if (!this.compassIdentity || result.platformShopId !== this.compassIdentity.platformShopId)
       return waiting('商品后台与罗盘不是同一家店，请在当前窗口切换到目标店铺')
-    this.phase = 'returning'
-    this.navigate(this.adapter.loginUrl)
-    return waiting('已确认同一店铺，正在保存完整登录状态')
+    return { identity: this.compassIdentity, readyForCapture: true, message: '已确认同一店铺，正在保存完整登录状态' }
   }
 
   private onOrigin(url: string): boolean {

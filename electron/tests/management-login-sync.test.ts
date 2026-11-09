@@ -521,10 +521,10 @@ test('unsettled loadURL still permits one verified capture after DOM readiness a
   state.adapter.detectMerchantIdentity = async () => ({ status: 'confirmed', platformShopId: 'matching-test-shop' })
   state.adapter.captureSession = async () => {
     captures++
-    assert.equal(state.windows[0]!.url, state.adapter.loginUrl)
+    assert.equal(state.windows[0]!.url, 'https://fxg.jinritemai.com/ffa/g/create')
     return {
       payload: Buffer.from(JSON.stringify({ schema: 'management-login.session.v1', platform: 'douyin',
-        cookies: [{ name: 'synthetic-compass' }, { name: 'synthetic-merchant' }], storage: { origin: state.adapter.loginUrl } })),
+        cookies: [{ name: 'synthetic-compass' }, { name: 'synthetic-merchant' }], storage: { origin: 'https://fxg.jinritemai.com' } })),
       capturedAt: '2026-10-11T09:00:00Z', cookieCount: 2,
     }
   }
@@ -533,15 +533,12 @@ test('unsettled loadURL still permits one verified capture after DOM readiness a
     state.windows[0]!.loading = true
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
     assert.equal(state.windows[0]!.url, 'https://fxg.jinritemai.com/ffa/g/create')
-    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
-    assert.equal(state.windows[0]!.url, state.adapter.loginUrl)
-    state.windows[0]!.loading = true
     state.windows[0]!.webContents.emit('did-start-navigation', {
-      isMainFrame: true, isSameDocument: false, url: state.adapter.loginUrl,
+      isMainFrame: true, isSameDocument: false, url: state.windows[0]!.url,
     })
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
     assert.equal(captures, 0)
-    state.windows[0]!.webContents.emit('did-navigate', {}, state.adapter.loginUrl, 200)
+    state.windows[0]!.webContents.emit('did-navigate', {}, state.windows[0]!.url, 200)
     state.windows[0]!.webContents.emit('dom-ready')
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
     assert.equal(captures, 1)
@@ -551,6 +548,8 @@ test('unsettled loadURL still permits one verified capture after DOM readiness a
     const received = saved as unknown as Record<string, unknown>
     assert.equal(received.merchantIdentityCheckRequired, true)
     assert.equal((received.cookies as unknown[]).length, 2)
+    assert.equal((received.storage as { origin: string }).origin, 'https://fxg.jinritemai.com')
+    assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl, 'https://fxg.jinritemai.com/ffa/g/create'])
     assert.deepEqual(methods, ['GET', 'POST'])
   } finally {
     load.resolve()

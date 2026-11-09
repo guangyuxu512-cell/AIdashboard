@@ -28,10 +28,9 @@ test('two shop windows keep their own session and never exchange identities', as
   }
   const flows = windows.map((window) => new DouyinUnifiedLogin(window, adapter, () => true, () => 0, () => true, () => {}))
   for (const flow of flows) assert.equal((await flow.advance()).readyForCapture, false)
-  for (const flow of flows) assert.equal((await flow.advance()).readyForCapture, false)
   assert.equal((await flows[0]!.advance()).identity?.platformShopId, 'shop-a')
   assert.equal((await flows[1]!.advance()).identity?.platformShopId, 'shop-b')
   for (const visit of visits) assert.deepEqual(visit, [
-    'https://fxg.jinritemai.com/ffa/g/create', adapter.loginUrl,
+    'https://fxg.jinritemai.com/ffa/g/create',
   ])
 })
