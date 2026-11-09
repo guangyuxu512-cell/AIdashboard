@@ -28,6 +28,7 @@ import type {
   ManagementLoginFocusInput,
 } from '../types'
 import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
+import { DouyinUnifiedLogin } from './douyin-unified-login'
 import { PddPlatformAuthAdapter } from './pdd-platform-auth-adapter'
 import { shouldPreserveCapturedLogin } from './management-login-lifecycle'
 import {
@@ -70,6 +71,7 @@ interface LoginAttempt {
   lastProbeDiagnosticFingerprint?: string
   disposePageDiagnostics?: () => void
   finishPendingStatus?: () => void
+  unifiedLogin?: DouyinUnifiedLogin | null
 }
 
 type LoginCloseReason =
@@ -148,6 +150,12 @@ export class ManagementLoginService {
   private readonly allowDevTools: boolean
   private readonly profileMappingStore: ManagementLoginProfileMappingStore
   private readonly onDiagnostic?: (record: LoginDiagnostic) => void
+  private readonly createUnifiedLogin: (
+    window: BrowserWindow,
+    adapter: PlatformAuthAdapter,
+    isCurrent: () => boolean,
+    navigationSequence: () => number,
+  ) => DouyinUnifiedLogin | null
   private readonly adapters = new Map<
     ManagementLoginPlatform,
     PlatformAuthAdapter
@@ -165,6 +173,12 @@ export class ManagementLoginService {
     adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
     onDiagnostic?: (record: LoginDiagnostic) => void
     metadataTimeoutMs?: number
+    createUnifiedLogin?: (
+      window: BrowserWindow,
+      adapter: PlatformAuthAdapter,
+      isCurrent: () => boolean,
+      navigationSequence: () => number,
+    ) => DouyinUnifiedLogin | null
   }) {
     this.backendBaseUrl =
       options?.backendBaseUrl ??
@@ -172,6 +186,9 @@ export class ManagementLoginService {
       'http://127.0.0.1:8000/'
     this.allowDevTools = options?.allowDevTools ?? true
     this.onDiagnostic = options?.onDiagnostic
+    this.createUnifiedLogin = options?.createUnifiedLogin ??
+      ((window, adapter, isCurrent, navigationSequence) =>
+        new DouyinUnifiedLogin(window, adapter, isCurrent, navigationSequence))
     this.metadataTimeoutMs =
       options?.metadataTimeoutMs ?? LOGIN_METADATA_TIMEOUT_MS
     this.createWindow =
@@ -403,6 +420,7 @@ export class ManagementLoginService {
       attempt.recovery = input.recovery
       attempt.refreshFailure = undefined
       attempt.identity = null
+      attempt.unifiedLogin = undefined
       attempt.status = 'waiting'
       attempt.message = '继续检测原窗口登录状态'
     }
@@ -566,10 +584,18 @@ export class ManagementLoginService {
       try {
         const adapter = this.requireAdapter(attempt.platform)
         this.report(attempt, phase, 'start')
-        const detection = await adapter.detectLoginStatus(
-          loginWindow.webContents.session,
-          loginWindow.webContents.id,
-        )
+        if (attempt.platform === 'douyin' && attempt.recovery && attempt.unifiedLogin === undefined) {
+          attempt.unifiedLogin = this.createUnifiedLogin(
+            loginWindow,
+            adapter,
+            () => this.attempts.get(attemptId) === attempt && attempt.status === 'waiting' &&
+              attempt.window === loginWindow && !loginWindow.isDestroyed(),
+            () => attempt.navigationSequence,
+          )
+        }
+        const detection = attempt.unifiedLogin
+          ? await attempt.unifiedLogin.advance()
+          : await adapter.detectLoginStatus(loginWindow.webContents.session, loginWindow.webContents.id)
         if (
           this.attempts.get(attemptId) !== attempt ||
           attempt.status !== 'waiting' ||
@@ -581,7 +607,7 @@ export class ManagementLoginService {
         if (detection.readyForCapture) {
           phase = 'capture'
           this.report(attempt, phase, 'start')
-          const capturedSession = await adapter.captureSession(
+          let capturedSession = await adapter.captureSession(
             loginWindow.webContents.session,
             loginWindow.webContents.id,
             detection.identity,
@@ -596,6 +622,7 @@ export class ManagementLoginService {
             capturedSession.payload.fill(0)
             return this.toStatus(attempt)
           }
+          if (attempt.unifiedLogin) capturedSession = requireMerchantIdentityValidation(capturedSession)
           let identity = detection.identity
           if (attempt.platform === 'pdd') {
             const fingerprint = sessionFingerprint(capturedSession)
@@ -815,6 +842,18 @@ export class ManagementLoginService {
     )
       throw new Error('本次登录验证次数已用尽，请取消后重新登录')
     const headers = await this.authorizedHeaders(attempt)
+    if (attempt.unifiedLogin) {
+      await loginDeadline(async (signal) => {
+        const metadata = await fetch(
+          this.backendUrl(`/api/v1/shops/${recovery.shopId}/session`),
+          { headers, signal },
+        )
+        if (!metadata.ok) throw new Error('商家后台验证能力未就绪，原登录状态保留')
+        const body = (await metadata.json()) as { merchant_identity_validation_supported?: unknown }
+        if (body?.merchant_identity_validation_supported !== true)
+          throw new Error('商家后台验证能力未就绪，原登录状态保留')
+      }, this.metadataTimeoutMs)
+    }
     if (
       this.attempts.get(attemptId) !== attempt ||
       attempt.status !== 'identified'
@@ -1337,6 +1376,22 @@ export class LoginOpeningError extends Error {
   constructor(readonly code: string) {
     // Only this fixed safe marker crosses Electron's serialized error boundary.
     super(`SHOP_LOGIN_${code}`)
+  }
+}
+
+function requireMerchantIdentityValidation(captured: CapturedManagementSession): CapturedManagementSession {
+  try {
+    const value: unknown = JSON.parse(captured.payload.toString('utf8'))
+    if (typeof value !== 'object' || value === null || Array.isArray(value))
+      throw new Error('invalid')
+    return {
+      ...captured,
+      payload: Buffer.from(JSON.stringify({ ...value, merchantIdentityCheckRequired: true }), 'utf8'),
+    }
+  } catch {
+    throw new Error('商家后台验证未准备完成，原登录状态保留')
+  } finally {
+    captured.payload.fill(0)
   }
 }
 

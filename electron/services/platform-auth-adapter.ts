@@ -17,6 +17,11 @@ export interface PlatformLoginDetectionResult {
   probes?: LoginAccountProbe[]
 }
 
+export interface MerchantIdentityResult {
+  status: 'confirmed' | 'unverified' | 'unavailable'
+  platformShopId?: string
+}
+
 export interface PlatformAuthAdapter {
   readonly platformCode: ManagementLoginPlatform
   readonly loginUrl: string
@@ -25,6 +30,8 @@ export interface PlatformAuthAdapter {
     session: Session,
     webContentsId: number,
   ): Promise<PlatformLoginDetectionResult>
+  detectMerchantIdentity?(webContentsId: number): Promise<MerchantIdentityResult>
+  merchantCookieFingerprint?(session: Session): Promise<string>
   captureSession(
     session: Session,
     webContentsId: number,

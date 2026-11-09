@@ -7,7 +7,10 @@ import { createRequire } from 'node:module'
 import type { Session } from 'electron'
 import type { DouyinPlatformAuthAdapter } from '../services/douyin-platform-auth-adapter'
 
-function adapter(fetch: (...args: unknown[]) => Promise<unknown>) {
+function adapter(
+  fetch: (...args: unknown[]) => Promise<unknown>,
+  location = { protocol: 'https:', hostname: 'fxg.jinritemai.com' },
+) {
   const sourcePath = path.join(
     __dirname,
     '../services/douyin-platform-auth-adapter.js',
@@ -19,7 +22,7 @@ function adapter(fetch: (...args: unknown[]) => Promise<unknown>) {
   const contents = {
     isDestroyed: () => false,
     executeJavaScript: (script: string) =>
-      vm.runInNewContext(script, { fetch, URL, Date }),
+      vm.runInNewContext(script, { fetch, URL, Date, location, AbortSignal }),
   }
   vm.runInNewContext(readFileSync(sourcePath, 'utf8'), {
     exports,
@@ -30,6 +33,37 @@ function adapter(fetch: (...args: unknown[]) => Promise<unknown>) {
   })
   return new exports.DouyinPlatformAuthAdapter!()
 }
+
+test('merchant identity probe uses only the fixed same-origin endpoint and requires an exact ID', async () => {
+  const paths: unknown[] = []
+  const client = adapter(async (path) => {
+    paths.push(path)
+    return { ok: true, json: async () => ({ code: 0, data: { id: 'shop-a' } }) }
+  })
+  const result = await client.detectMerchantIdentity(42)
+  assert.equal(result.status, 'confirmed')
+  assert.equal(result.platformShopId, 'shop-a')
+  assert.deepEqual(paths, ['/common/index/index'])
+})
+
+test('unknown merchant code and unsafe numeric identity never become a confirmed shop', async () => {
+  for (const body of [
+    { code: 10008, data: {} },
+    { code: 0, data: { id: 9223372036854776000 } },
+    { code: '0', data: { id: 'shop-a' } },
+  ]) {
+    const client = adapter(async () => ({ ok: true, json: async () => body }))
+    assert.equal((await client.detectMerchantIdentity(42)).status, 'unverified')
+  }
+})
+
+test('merchant identity never probes from an unrelated origin', async () => {
+  let requests = 0
+  const client = adapter(async () => { requests++; throw new Error('unexpected') },
+    { protocol: 'https:', hostname: 'example.invalid' })
+  assert.equal((await client.detectMerchantIdentity(42)).status, 'unverified')
+  assert.equal(requests, 0)
+})
 const loginSession = {
   cookies: {
     get: async () => [

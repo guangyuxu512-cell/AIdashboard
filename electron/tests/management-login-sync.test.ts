@@ -41,12 +41,15 @@ class WindowStub extends EventEmitter {
   focused = 0
   loadFailure: Error | null = null
   loading = false
+  url = ''
+  loadedUrls: string[] = []
   webContents = Object.assign(new EventEmitter(), {
     id: 42,
     session: loginSession,
     setWindowOpenHandler() {},
     isDestroyed: () => this.destroyed,
     isLoadingMainFrame: () => this.loading,
+    getURL: () => this.url,
   })
   isDestroyed() {
     return this.destroyed
@@ -58,8 +61,10 @@ class WindowStub extends EventEmitter {
   focus() {
     this.focused++
   }
-  async loadURL() {
+  async loadURL(url: string) {
     if (this.loadFailure) throw this.loadFailure
+    this.url = url
+    this.loadedUrls.push(url)
   }
   close() {
     if (!this.destroyed) {
@@ -78,6 +83,7 @@ function setup(
     onDiagnostic?: (record: ManagementLoginDiagnostic) => void
     metadataTimeoutMs?: number
     detectionResult?: PlatformLoginDetectionResult
+    unified?: boolean
   },
 ) {
   const windows: WindowStub[] = []
@@ -110,6 +116,9 @@ function setup(
   }
   const service = new ManagementLoginService({
     adapters: new Map([['douyin', adapter]]),
+    // The common lifecycle suite isolates existing behavior; unified-login
+    // navigation and validation have their own focused tests.
+    ...(failures?.unified ? {} : { createUnifiedLogin: () => null }),
     createWindow() {
       const window = new WindowStub()
       window.loadFailure = failures?.load ?? null
@@ -324,6 +333,165 @@ test('unknown attempts reject instead of returning a fabricated closed or null s
   await assert.rejects(state.service.getStatus('unknown-attempt'), /不存在/)
   assert.equal(state.windows.length, 0)
   assert.equal(state.captures(), 0)
+})
+
+test('existing Douyin login visits merchant in the same window, then captures once on Compass and retains it', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  let saved: Record<string, unknown> | null = null
+  globalThis.fetch = async (_url, init) => {
+    const method = init?.method ?? 'GET'
+    methods.push(method)
+    if (method === 'GET') return Response.json({ merchant_identity_validation_supported: true })
+    if (method === 'POST') {
+      const body = JSON.parse(String(init?.body)) as { session_payload_base64: string }
+      saved = JSON.parse(Buffer.from(body.session_payload_base64, 'base64').toString('utf8')) as Record<string, unknown>
+      return Response.json({ shop_id: shopId, status: 'valid', version: 4,
+        validated_at: '2026-10-11T09:00:01Z', used_cached_validation: false, cookie_updates_applied: 0 })
+    }
+    return new Response(null, { status: 204 })
+  }
+  const state = setup(undefined, { unified: true })
+  let captures = 0
+  state.adapter.merchantCookieFingerprint = async () => 'synthetic-fingerprint'
+  state.adapter.detectMerchantIdentity = async () => ({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+  state.adapter.captureSession = async () => {
+    captures++
+    assert.equal(state.windows[0]!.url, state.adapter.loginUrl)
+    return {
+      payload: Buffer.from(JSON.stringify({ schema: 'management-login.session.v1', platform: 'douyin',
+        cookies: [{ name: 'synthetic-compass' }, { name: 'synthetic-merchant' }], storage: { origin: state.adapter.loginUrl } })),
+      capturedAt: '2026-10-11T09:00:00Z', cookieCount: 2,
+    }
+  }
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
+    assert.equal(state.windows[0]!.url, 'https://fxg.jinritemai.com/ffa/g/create')
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
+    assert.equal(state.windows[0]!.url, state.adapter.loginUrl)
+    state.windows[0]!.loading = true
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
+    assert.equal(captures, 0)
+    state.windows[0]!.loading = false
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
+    assert.equal(captures, 1)
+    await state.service.refresh(opened.attemptId)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.ok(saved)
+    const received = saved as unknown as Record<string, unknown>
+    assert.equal(received.merchantIdentityCheckRequired, true)
+    assert.equal((received.cookies as unknown[]).length, 2)
+    assert.deepEqual(methods, ['GET', 'POST'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('merchant mismatch and unavailable identity never capture or replace the previous session on cancel', async () => {
+  for (const merchant of [
+    { status: 'confirmed' as const, platformShopId: 'different-shop' },
+    { status: 'unverified' as const },
+    { status: 'unavailable' as const },
+  ]) {
+    const originalFetch = globalThis.fetch
+    const methods: string[] = []
+    globalThis.fetch = async (_url, init) => {
+      methods.push(init?.method ?? 'GET')
+      return new Response(null, { status: 204 })
+    }
+    const state = setup(undefined, { unified: true })
+    state.adapter.merchantCookieFingerprint = async () => 'unchanged'
+    state.adapter.detectMerchantIdentity = async () => merchant
+    try {
+      const opened = await state.service.open(state.parent, input)
+      await state.service.getStatus(opened.attemptId)
+      const waiting = await state.service.getStatus(opened.attemptId)
+      assert.equal(waiting.status, 'waiting')
+      assert.equal(waiting.sessionCaptured, false)
+      assert.equal(state.captures(), 0)
+      await state.service.close(opened.attemptId)
+      assert.deepEqual(methods, ['DELETE'])
+    } finally {
+      await state.service.closeAll()
+      globalThis.fetch = originalFetch
+    }
+  }
+})
+
+test('an older server cannot silently accept an unchecked combined session', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    const method = init?.method ?? 'GET'
+    methods.push(method)
+    return method === 'GET' ? Response.json({}) : new Response(null, { status: 204 })
+  }
+  const state = setup(undefined, { unified: true })
+  state.adapter.merchantCookieFingerprint = async () => 'synthetic'
+  state.adapter.detectMerchantIdentity = async () => ({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+  state.adapter.captureSession = async () => ({
+    payload: Buffer.from(JSON.stringify({ schema: 'management-login.session.v1', platform: 'douyin', cookies: [] })),
+    capturedAt: '2026-10-11T09:00:00Z', cookieCount: 1,
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    await state.service.getStatus(opened.attemptId)
+    await state.service.getStatus(opened.attemptId)
+    await assert.rejects(state.service.refresh(opened.attemptId), /验证能力未就绪/)
+    assert.deepEqual(methods, ['GET', 'DELETE'])
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('cancelling during merchant identification ignores a late same-shop result', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup(undefined, { unified: true })
+  const probe = deferred<{ status: 'confirmed'; platformShopId: string }>()
+  state.adapter.merchantCookieFingerprint = async () => 'synthetic'
+  state.adapter.detectMerchantIdentity = () => probe.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    const pending = state.service.getStatus(opened.attemptId)
+    await nextTurn()
+    await state.service.close(opened.attemptId)
+    assert.equal((await pending).status, 'closed')
+    probe.resolve({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+    await nextTurn()
+    assert.equal(state.captures(), 0)
+    assert.equal(state.windows[0]!.loadedUrls.length, 2)
+    assert.deepEqual(methods, ['DELETE'])
+  } finally {
+    probe.resolve({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('first Douyin onboarding still captures and closes without merchant navigation', async () => {
+  const state = setup(undefined, { unified: true })
+  state.adapter.detectMerchantIdentity = async () => { throw new Error('unexpected merchant probe') }
+  try {
+    const opened = await state.service.open(state.parent, { platform: 'douyin', teamId })
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'identified')
+    assert.equal(state.captures(), 1)
+    assert.equal(state.windows[0]!.destroyed, true)
+    assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl])
+  } finally {
+    await state.service.closeAll()
+  }
 })
 
 test('existing-shop super context without a team omits the header on metadata/save/release and preserves single capture/CAS/retained focus', async () => {

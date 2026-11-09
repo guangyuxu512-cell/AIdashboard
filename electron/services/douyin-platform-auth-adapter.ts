@@ -1,9 +1,11 @@
 import { webContents, type Cookie, type Session } from 'electron'
+import { createHash } from 'node:crypto'
 import { safeAccountProbes, type LoginAccountProbe } from './login-diagnostics'
 
 import type { ManagementLoginIdentity } from '../types'
 import type {
   CapturedManagementSession,
+  MerchantIdentityResult,
   PlatformAuthAdapter,
   PlatformLoginDetectionResult,
 } from './platform-auth-adapter'
@@ -35,6 +37,48 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
   readonly loginUrl =
     'https://compass.jinritemai.com/shop/search/drainage-terms'
   readonly loginWindowTitle = '抖店登录'
+
+  async merchantCookieFingerprint(loginSession: Session): Promise<string> {
+    const cookies = await this.getPlatformCookies(loginSession)
+    const hash = createHash('sha256')
+    for (const cookie of cookies.sort((a, b) =>
+      `${a.domain}\u0000${a.path}\u0000${a.name}`.localeCompare(
+        `${b.domain}\u0000${b.path}\u0000${b.name}`,
+      ),
+    )) {
+      hash.update(JSON.stringify([cookie.domain, cookie.path, cookie.name, cookie.value]))
+    }
+    return hash.digest('hex')
+  }
+
+  async detectMerchantIdentity(webContentsId: number): Promise<MerchantIdentityResult> {
+    const contents = webContents.fromId(webContentsId)
+    if (!contents || contents.isDestroyed()) return { status: 'unavailable' }
+    try {
+      return (await contents.executeJavaScript(
+        `(async () => {
+          try {
+            if (location.protocol !== 'https:' || location.hostname !== 'fxg.jinritemai.com')
+              return { status: 'unverified' };
+            const response = await fetch('/common/index/index', {
+              credentials: 'include', headers: { accept: 'application/json, text/plain, */*' },
+              signal: AbortSignal.timeout(4000),
+            });
+            if (!response.ok) return { status: 'unavailable' };
+            const body = await response.json();
+            if (body?.code !== 0) return { status: 'unverified' };
+            const value = body?.data?.id;
+            const id = typeof value === 'string' ? value.trim()
+              : Number.isSafeInteger(value) && value > 0 ? String(value) : '';
+            return id ? { status: 'confirmed', platformShopId: id } : { status: 'unverified' };
+          } catch { return { status: 'unavailable' }; }
+        })()`,
+        true,
+      )) as MerchantIdentityResult
+    } catch {
+      return { status: 'unavailable' }
+    }
+  }
 
   async detectLoginStatus(
     loginSession: Session,
