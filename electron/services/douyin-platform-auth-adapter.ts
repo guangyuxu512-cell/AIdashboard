@@ -55,7 +55,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     const contents = webContents.fromId(webContentsId)
     if (!contents || contents.isDestroyed()) return { status: 'unavailable' }
     try {
-      return (await contents.executeJavaScript(
+      return (await contents.mainFrame.executeJavaScript(
         `(async () => {
           try {
             if (location.protocol !== 'https:' || location.hostname !== 'fxg.jinritemai.com')
@@ -97,7 +97,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
 
     // Run the verified account request inside the authenticated page context.
     // Only identity fields, HTTP status and response key names cross into Main.
-    const probe = (await contents.executeJavaScript(
+    const probe = (await contents.mainFrame.executeJavaScript(
       `(async () => {
         const probes = [];
         let probeIndex = -1;
@@ -132,6 +132,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
             const response = await fetch(endpoint, {
               credentials: 'include',
               headers: { accept: 'application/json, text/plain, */*' },
+              signal: AbortSignal.timeout(4000),
             });
             currentStatus = response.status;
             const text = await response.text();
@@ -194,6 +195,8 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     return {
       identity: null,
       readyForCapture: false,
+      requestFailed: probe.requestFailed || probe.status === 429 || probe.status >= 500 ||
+        (probe.status >= 400 && probe.status !== 401 && probe.status !== 403),
       message: `${diagnostic}；平台 Cookie ${cookies.length} 个，正在继续识别`,
       pageContextAvailable: true,
       probes: safeAccountProbes(probe.probes),
@@ -217,7 +220,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
       throw new Error('登录窗口已经关闭')
     }
     // Fixed adapter-owned script. Renderer cannot supply JavaScript or inspect its result.
-    const storage = (await contents.executeJavaScript(
+    const storage = (await contents.mainFrame.executeJavaScript(
       `(() => {
         const copy = (storage) => {
           const result = {};

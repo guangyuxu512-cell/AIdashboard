@@ -71,7 +71,7 @@ export class DouyinUnifiedLogin {
       return waiting('登录页面正在跳转')
     this.lastProbeKey = `${this.navigationSequence()}:${after}`
     if (result.status === 'unavailable')
-      return waiting('本次商品后台验证未完成，原登录状态保留；请检查窗口后重新打开')
+      return { ...waiting('本次商品后台验证未完成，原登录状态保留；请检查窗口后重新打开'), requestFailed: true }
     if (result.status !== 'confirmed' || !result.platformShopId)
       return waiting('商品后台身份尚未确认，请按当前窗口提示操作')
     if (result.platformShopId !== this.compassIdentity?.platformShopId)

@@ -71,6 +71,7 @@ interface LoginAttempt {
   pageReady: boolean
   pageCommitted: boolean
   pageNavigationUrl: string | null
+  captureEpoch: number
   lastProbeDiagnosticFingerprint?: string
   disposePageDiagnostics?: () => void
   disposePageReadiness?: () => void
@@ -93,6 +94,7 @@ const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
 const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
 export const LOGIN_METADATA_TIMEOUT_MS = 15_000
 const LOGIN_OPEN_TIMEOUT_MS = 30_000
+const DOUYIN_DETECTION_TIMEOUT_MS = 15_000
 const MAX_REFRESH_ATTEMPTS = 3
 
 interface OnboardingApiResponse {
@@ -179,6 +181,7 @@ export class ManagementLoginService {
     adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
     onDiagnostic?: (record: LoginDiagnostic) => void
     metadataTimeoutMs?: number
+    detectionTimeoutMs?: number
     createUnifiedLogin?: (
       window: BrowserWindow,
       adapter: PlatformAuthAdapter,
@@ -199,6 +202,7 @@ export class ManagementLoginService {
         new DouyinUnifiedLogin(window, adapter, isCurrent, navigationSequence, isPageReady, beginNavigation))
     this.metadataTimeoutMs =
       options?.metadataTimeoutMs ?? LOGIN_METADATA_TIMEOUT_MS
+    this.detectionTimeoutMs = options?.detectionTimeoutMs ?? DOUYIN_DETECTION_TIMEOUT_MS
     this.createWindow =
       options?.createWindow ?? ((config) => new BrowserWindow(config))
     this.fromPartition =
@@ -393,6 +397,7 @@ export class ManagementLoginService {
         pageReady: false,
         pageCommitted: false,
         pageNavigationUrl: null,
+        captureEpoch: 0,
         platform: input.platform,
         teamId: input.teamId,
         appSession: parent.webContents.session,
@@ -588,11 +593,24 @@ export class ManagementLoginService {
       finishPendingStatus = () => resolve(this.toStatus(attempt))
     })
     attempt.finishPendingStatus = finishPendingStatus
-    const pending = Promise.race([this.detectStatus(attemptId), ended])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadlines = [this.detectStatus(attemptId), ended]
+    if (attempt.platform === 'douyin' && attempt.recovery) {
+      deadlines.push(new Promise((resolve) => {
+        timer = setTimeout(() => {
+          if (this.attempts.get(attemptId) === attempt && attempt.status === 'waiting') {
+            this.finishDetectionUncompleted(attempt, '本次店铺登录识别超时，原登录状态保留；请检查窗口后重试')
+          }
+          resolve(this.toStatus(attempt))
+        }, this.detectionTimeoutMs)
+      }))
+    }
+    const pending = Promise.race(deadlines)
     this.polls.set(attemptId, pending)
     try {
       return await pending
     } finally {
+      if (timer) clearTimeout(timer)
       if (this.polls.get(attemptId) === pending) this.polls.delete(attemptId)
       if (attempt.finishPendingStatus === finishPendingStatus)
         attempt.finishPendingStatus = undefined
@@ -615,6 +633,7 @@ export class ManagementLoginService {
         return this.toStatus(attempt)
       }
       const navigationSequence = attempt.navigationSequence
+      const captureEpoch = attempt.captureEpoch
       try {
         const adapter = this.requireAdapter(attempt.platform)
         this.report(attempt, phase, 'start')
@@ -623,7 +642,7 @@ export class ManagementLoginService {
             loginWindow,
             adapter,
             () => this.attempts.get(attemptId) === attempt && attempt.status === 'waiting' &&
-              attempt.window === loginWindow && !loginWindow.isDestroyed(),
+              attempt.captureEpoch === captureEpoch && attempt.window === loginWindow && !loginWindow.isDestroyed(),
             () => attempt.navigationSequence,
             () => attempt.pageReady,
             (url) => this.beginPageNavigation(attempt, url),
@@ -635,6 +654,7 @@ export class ManagementLoginService {
         if (
           this.attempts.get(attemptId) !== attempt ||
           attempt.status !== 'waiting' ||
+          attempt.captureEpoch !== captureEpoch ||
           attempt.window !== loginWindow ||
           loginWindow.isDestroyed()
         )
@@ -642,6 +662,10 @@ export class ManagementLoginService {
         if (attempt.navigationSequence !== navigationSequence || !attempt.pageReady)
           return this.toStatus(attempt)
         this.reportDetection(attempt, detection)
+        if (attempt.unifiedLogin && detection.requestFailed) {
+          this.finishDetectionUncompleted(attempt, '本次店铺登录验证未完成，原登录状态保留；请检查窗口后重试')
+          return this.toStatus(attempt)
+        }
         if (detection.readyForCapture) {
           phase = 'capture'
           this.report(attempt, phase, 'start')
@@ -654,6 +678,7 @@ export class ManagementLoginService {
           if (
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
+            attempt.captureEpoch !== captureEpoch ||
             attempt.window !== loginWindow ||
             loginWindow.isDestroyed() ||
             attempt.navigationSequence !== navigationSequence ||
@@ -720,6 +745,7 @@ export class ManagementLoginService {
           if (
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
+            attempt.captureEpoch !== captureEpoch ||
             attempt.window !== loginWindow ||
             loginWindow.isDestroyed() ||
             attempt.navigationSequence !== navigationSequence ||
@@ -745,6 +771,7 @@ export class ManagementLoginService {
           attempt.message = detection.message
         }
       } catch (error) {
+        if (attempt.captureEpoch !== captureEpoch) return this.toStatus(attempt)
         this.report(attempt, phase, 'error', diagnosticError(error))
         if (attempt.window !== loginWindow || loginWindow.isDestroyed()) {
           return this.toStatus(attempt)
@@ -1042,6 +1069,17 @@ export class ManagementLoginService {
     attempt.capturedSession = null
   }
 
+  private finishDetectionUncompleted(attempt: LoginAttempt, message: string): void {
+    attempt.captureEpoch++
+    attempt.unifiedLogin = undefined
+    attempt.identity = null
+    this.clearCapturedSession(attempt)
+    attempt.status = 'failed'
+    attempt.refreshFailure = { code: 'validation_incomplete', canContinue: true }
+    attempt.message = message
+    void this.releaseRecoveryLease(attempt)
+  }
+
   private finishCompletedAttempt(
     attempt: LoginAttempt,
     message: string,
@@ -1144,6 +1182,7 @@ export class ManagementLoginService {
   }
 
   private readonly metadataTimeoutMs: number
+  private readonly detectionTimeoutMs: number
   private reportDetection(
     attempt: LoginAttempt,
     detection: PlatformLoginDetectionResult,

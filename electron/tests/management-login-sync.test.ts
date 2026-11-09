@@ -91,6 +91,7 @@ function setup(
     capture?: Error
     onDiagnostic?: (record: ManagementLoginDiagnostic) => void
     metadataTimeoutMs?: number
+    detectionTimeoutMs?: number
     detectionResult?: PlatformLoginDetectionResult
     unified?: boolean
     loadHold?: Promise<void>
@@ -142,6 +143,7 @@ function setup(
     fromPartition: () => loginSession,
     onDiagnostic: failures?.onDiagnostic,
     metadataTimeoutMs: failures?.metadataTimeoutMs,
+    detectionTimeoutMs: failures?.detectionTimeoutMs,
     profileMappingStore: profileMappingStore ?? {
       async load() {
         return null
@@ -576,7 +578,7 @@ test('merchant mismatch and unavailable identity never capture or replace the pr
       const opened = await state.service.open(state.parent, input)
       await state.service.getStatus(opened.attemptId)
       const waiting = await state.service.getStatus(opened.attemptId)
-      assert.equal(waiting.status, 'waiting')
+      assert.equal(waiting.status, merchant.status === 'unavailable' ? 'failed' : 'waiting')
       assert.equal(waiting.sessionCaptured, false)
       assert.equal(state.captures(), 0)
       await state.service.close(opened.attemptId)
@@ -585,6 +587,53 @@ test('merchant mismatch and unavailable identity never capture or replace the pr
       await state.service.closeAll()
       globalThis.fetch = originalFetch
     }
+  }
+})
+
+test('a real Compass request failure stops this attempt without retries or invalidating the old session', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup(undefined, { unified: true })
+  let probes = 0
+  state.adapter.detectLoginStatus = async () => {
+    probes++
+    return { readyForCapture: false, identity: null, requestFailed: true, message: 'request failed' }
+  }
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const failed = await state.service.getStatus(opened.attemptId)
+    assert.equal(failed.status, 'failed')
+    assert.equal(failed.refreshFailure?.code, 'validation_incomplete')
+    assert.match(failed.message, /原登录状态保留/)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    assert.equal(probes, 1)
+    assert.equal(state.captures(), 0)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.deepEqual(methods, ['DELETE'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a normal not-yet-identified page remains available for user login', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const state = setup(undefined, { unified: true })
+  state.adapter.detectLoginStatus = async () => ({
+    readyForCapture: false, identity: null, requestFailed: false, message: 'waiting for login',
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
   }
 })
 
@@ -642,6 +691,90 @@ test('cancelling during merchant identification ignores a late same-shop result'
     assert.deepEqual(methods, ['DELETE'])
   } finally {
     probe.resolve({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('detection timeout releases the lease, does not retry, and ignores a late old result after rearming', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const stale = deferred<PlatformLoginDetectionResult>()
+  const state = setup(undefined, { detectionTimeoutMs: 20 })
+  let calls = 0
+  state.adapter.detectLoginStatus = () => { calls++; return stale.promise }
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const result = await state.service.getStatus(opened.attemptId)
+    assert.equal(result.status, 'failed')
+    assert.equal(result.refreshFailure?.code, 'validation_incomplete')
+    assert.match(result.message, /超时.*原登录状态保留/)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    assert.equal(calls, 1)
+    assert.deepEqual(methods, ['DELETE'])
+    const ready: PlatformLoginDetectionResult = { readyForCapture: true, message: '', identity: {
+      platform: 'douyin', platformShopId: 'matching-test-shop', shopDisplayName: 'fixture',
+    } }
+    state.adapter.detectLoginStatus = async () => ready
+    await state.service.open(state.parent, { ...input, attemptId: opened.attemptId,
+      recovery: { ...input.recovery!, leaseId: 'a0d6e855-59c1-4a61-8e57-69b5b3e81898' } })
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
+    stale.resolve(ready)
+    await nextTurn()
+    assert.equal(state.captures(), 1)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
+    assert.equal(methods.includes('POST'), false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('timed-out merchant probe cannot navigate after the same window is rearmed', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const probe = deferred<{ status: 'confirmed'; platformShopId: string }>()
+  const state = setup(undefined, { unified: true, detectionTimeoutMs: 20 })
+  state.adapter.merchantCookieFingerprint = async () => 'synthetic'
+  state.adapter.detectMerchantIdentity = () => probe.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    await state.service.open(state.parent, { ...input, attemptId: opened.attemptId,
+      recovery: { ...input.recovery!, leaseId: 'a0d6e855-59c1-4a61-8e57-69b5b3e81898' } })
+    probe.resolve({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+    await nextTurn()
+    assert.equal(state.windows[0]!.loadedUrls.length, 2)
+    assert.equal(state.captures(), 0)
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a captured buffer arriving after the detection deadline is erased and never saved', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const capture = deferred<CapturedManagementSession>()
+  const state = setup(undefined, { detectionTimeoutMs: 20 })
+  state.adapter.captureSession = () => capture.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    const payload = Buffer.from('synthetic-private-fixture')
+    capture.resolve({ payload, capturedAt: '2026-11-09T00:00:00Z', cookieCount: 1 })
+    await nextTurn()
+    assert.ok(payload.every((byte) => byte === 0))
+    assert.equal((await state.service.getStatus(opened.attemptId)).sessionCaptured, false)
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
     await state.service.closeAll()
     globalThis.fetch = originalFetch
   }

@@ -13,6 +13,7 @@ export interface PlatformLoginDetectionResult {
   identity: ManagementLoginIdentity | null
   readyForCapture: boolean
   message: string
+  requestFailed?: boolean
   pageContextAvailable?: boolean
   probes?: LoginAccountProbe[]
 }
