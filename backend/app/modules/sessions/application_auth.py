@@ -44,6 +44,24 @@ class ApplicationSessionBusyError(AppError):
     status_code = 409
 
 
+class ApplicationSessionPurposeInvalidError(AppError):
+    code = "APPLICATION_SESSION_PURPOSE_INVALID"
+    message = "不支持所请求的 Session 用途"
+    status_code = 400
+
+
+class ApplicationMerchantIdentityUnverifiedError(AppError):
+    code = "APPLICATION_MERCHANT_IDENTITY_UNVERIFIED"
+    message = "商家店铺身份未确认，未提供店铺会话"
+    status_code = 409
+
+
+class ApplicationMerchantValidationUnavailableError(AppError):
+    code = "APPLICATION_MERCHANT_VALIDATION_UNAVAILABLE"
+    message = "商家店铺身份验证暂不可用"
+    status_code = 503
+
+
 class ClientGrant(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 

@@ -79,3 +79,13 @@ JSON 契约：
 批量预检。现有中控签名器的离线样例只能说明代码可生成测试签名，不能证明真实店铺 Session
 在 NAS 及抖店平台有效。签名器在商品库运行环境的部署方式、真实请求、访问代理/TLS 的配置、
 并发/限流和版本兼容都须继续验证。本候选默认关闭，未生产部署；无 Schema 变更。
+
+## 商家用途与版本元数据候选
+
+以上为 V1 历史说明。新增商家用途仅在请求头 `X-Session-Purpose: merchant` 时生效，不改变无该头的通用 V1 响应；未知用途拒绝。
+
+- `GET /shops` 商家用途成功响应头为 `X-Session-Metadata-Version: 1`，每店增加 `session_version`；无 Session 或 `not_configured` 为 `null`，其余为真实版本并保留原 `session_status`。该查询不解密 Session、不请求平台，版本元数据不代表商家身份已验证。
+- `GET /shops/{shop_id}/session` 商家用途先释放数据库锁，以同一未修改的快照读取当前罗盘和商家身份；平台探测总预算 4 秒，不合并响应中的 Set-Cookie。之后重新校验软件授权、店铺、身份、会话状态、版本及快照，审计成功后才下发原 JSON，并加 `X-Merchant-Identity-Verified: 1`。成功标记不随通用响应出现。
+- 10008、明确错店或缺少可确认 ID 均返回 409 `APPLICATION_MERCHANT_IDENTITY_UNVERIFIED`；网络、超时、非预期平台失败返回 503 `APPLICATION_MERCHANT_VALIDATION_UNAVAILABLE`。认证/授权错误沿用原契约；10008 不作未登录结论。
+- 商品库只使用此次同店验证后、绑定店铺和 Session 版本的新缓存；旧缓存和缺少元数据标记的旧中控响应不得命中。产品客户端必须先发布“缺成功标记即拒绝”，再部署中控；旧客户端或回滚旧版本仍能使用原通用出口，已交付的旧 Session 不能由中控撤回。
+- 并发冷请求各自核验，未新增结果缓存、全局重试或 single-flight。正常业务更新也可能递增版本使缓存失效。上述平台预算不包含全链路网络和数据库延迟；与商品库 8 秒总超时的真实兼容需要集成验证。

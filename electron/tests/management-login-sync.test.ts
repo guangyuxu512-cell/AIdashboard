@@ -101,6 +101,8 @@ function setup(
   const merchantMenus: MenuItemConstructorOptions[][] = []
   const merchantNavigationFailures: BrowserWindow[] = []
   let captures = 0
+  let profile: Awaited<ReturnType<ManagementLoginProfileMappingStore['load']>> =
+    null
   const adapter: PlatformAuthAdapter = {
     platformCode: 'douyin',
     loginUrl: 'https://test.example/login',
@@ -121,7 +123,13 @@ function setup(
     async captureSession() {
       if (failures?.capture) throw failures.capture
       captures++
-      const payload = Buffer.from('isolated-candidate')
+      const payload = Buffer.from(
+        JSON.stringify({
+          schema: 'management-login.session.v1',
+          platform: 'douyin',
+          cookies: [{ name: 'fixture', value: 'fixture' }],
+        }),
+      )
       buffers.push(payload)
       return { payload, capturedAt: '2026-10-11T09:00:00Z', cookieCount: 1 }
     },
@@ -147,9 +155,32 @@ function setup(
     metadataTimeoutMs: failures?.metadataTimeoutMs,
     profileMappingStore: profileMappingStore ?? {
       async load() {
-        return null
+        return profile
       },
-      async save() {},
+      async save(_shopId, platform, partition) {
+        profile = {
+          platform,
+          partition,
+          updatedAt: 'fixture',
+          ...(profile?.merchantVerificationToken
+            ? { merchantVerificationToken: profile.merchantVerificationToken }
+            : {}),
+        }
+      },
+      async requireMerchantVerification(_shopId, partition) {
+        profile = {
+          platform: 'douyin',
+          partition,
+          updatedAt: 'fixture',
+          merchantVerificationToken: 'bcdd74b1-a41c-43ad-a274-09f8dffcf1f9',
+        }
+      },
+      async clearMerchantVerification(_shopId, _partition, token) {
+        if (!profile || profile.merchantVerificationToken !== token)
+          return false
+        delete profile.merchantVerificationToken
+        return true
+      },
     },
   })
   return {
@@ -1559,6 +1590,249 @@ test('merchant menu failure does not undo an already successful shop synchroniza
     assert.equal(saves, 1)
     assert.equal(state.captures(), 1)
     assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+async function reopenAfterMerchantEntry(state: ReturnType<typeof setup>) {
+  const first = await state.service.open(state.parent, input)
+  assert.equal(
+    (await state.service.getStatus(first.attemptId)).status,
+    'identified',
+  )
+  await state.service.refresh(first.attemptId)
+  const submenu = state.merchantMenus[0]![0]!.submenu
+  assert.ok(Array.isArray(submenu))
+  ;(submenu[0]!.click as () => void)()
+  await nextTurn()
+  state.windows[0]!.close()
+  const second = await state.service.open(state.parent, input)
+  assert.equal(
+    (await state.service.getStatus(second.attemptId)).status,
+    'identified',
+  )
+  return second
+}
+
+for (const outcome of ['match', 'mismatch', 'unknown', 'old-server'] as const) {
+  test(`merchant protected reopen: ${outcome} cannot bypass server validation`, async () => {
+    const originalFetch = globalThis.fetch
+    let posts = 0
+    let accepted = 0
+    let metadataChecks = 0
+    globalThis.fetch = async (_url, init) => {
+      if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+      if (init?.method !== 'POST') {
+        metadataChecks++
+        return Response.json({
+          merchant_identity_validation_supported: outcome !== 'old-server',
+        })
+      }
+      posts++
+      if (posts === 2) {
+        const body = JSON.parse(String(init.body)) as {
+          session_payload_base64: string
+        }
+        const payload = JSON.parse(
+          Buffer.from(body.session_payload_base64, 'base64').toString('utf8'),
+        ) as { merchantIdentityCheckRequired?: boolean }
+        assert.equal(payload.merchantIdentityCheckRequired, true)
+        if (outcome === 'mismatch')
+          return Response.json(
+            { code: 'PLATFORM_IDENTITY_MISMATCH' },
+            { status: 409 },
+          )
+        if (outcome === 'unknown')
+          return Response.json(
+            { code: 'PLATFORM_RESPONSE_INVALID' },
+            { status: 502 },
+          )
+      }
+      if (posts === 3) {
+        const body = JSON.parse(String(init.body)) as {
+          session_payload_base64: string
+        }
+        const payload = JSON.parse(
+          Buffer.from(body.session_payload_base64, 'base64').toString('utf8'),
+        ) as { merchantIdentityCheckRequired?: boolean }
+        assert.equal(payload.merchantIdentityCheckRequired, undefined)
+      }
+      accepted++
+      return Response.json({
+        shop_id: shopId,
+        status: 'valid',
+        version: 4,
+        validated_at: '2026-10-11T09:00:01Z',
+        cookie_updates_applied: 0,
+        used_cached_validation: false,
+      })
+    }
+    const state = setup()
+    try {
+      const second = await reopenAfterMerchantEntry(state)
+      if (outcome === 'match') {
+        assert.equal(
+          (await state.service.refresh(second.attemptId)).status,
+          'valid',
+        )
+        assert.equal(accepted, 2)
+        assert.equal(state.windows[1]!.destroyed, false)
+        state.windows[1]!.close()
+        const ordinary = await state.service.open(state.parent, input)
+        assert.equal(
+          (await state.service.getStatus(ordinary.attemptId)).status,
+          'identified',
+        )
+        await state.service.refresh(ordinary.attemptId)
+        assert.equal(accepted, 3)
+        assert.equal(metadataChecks, 1)
+      } else {
+        await assert.rejects(state.service.refresh(second.attemptId))
+        const status = await state.service.getStatus(second.attemptId)
+        assert.equal(status.status, 'failed')
+        assert.match(status.message, /原登录状态保留/)
+        assert.equal(status.refreshFailure?.canContinue, false)
+        assert.equal(status.sessionCaptured, false)
+        assert.equal(accepted, 1)
+        assert.equal(posts, outcome === 'old-server' ? 1 : 2)
+        assert.equal(state.merchantMenus.length, 2)
+      }
+    } finally {
+      await state.service.closeAll()
+      globalThis.fetch = originalFetch
+    }
+  })
+}
+
+test('closing while capability check is pending cannot submit a late candidate', async () => {
+  const originalFetch = globalThis.fetch
+  const waiting = deferred<Response>()
+  let posts = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+    if (init?.method !== 'POST') return waiting.promise
+    posts++
+    return Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      cookie_updates_applied: 0,
+      used_cached_validation: false,
+    })
+  }
+  const state = setup()
+  try {
+    const second = await reopenAfterMerchantEntry(state)
+    const refresh = state.service.refresh(second.attemptId)
+    await nextTurn()
+    state.windows[1]!.close()
+    waiting.resolve(
+      Response.json({ merchant_identity_validation_supported: true }),
+    )
+    await assert.rejects(refresh)
+    assert.equal(posts, 1)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('merchant entry does not navigate if persisting the protection flag fails', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () =>
+    Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      cookie_updates_applied: 0,
+      used_cached_validation: false,
+    })
+  const state = setup({
+    async load() {
+      return null
+    },
+    async save() {},
+    async requireMerchantVerification() {
+      throw new Error('synthetic storage failure')
+    },
+  })
+  try {
+    const first = await state.service.open(state.parent, input)
+    await state.service.getStatus(first.attemptId)
+    await state.service.refresh(first.attemptId)
+    const submenu = state.merchantMenus[0]![0]!.submenu
+    assert.ok(Array.isArray(submenu))
+    ;(submenu[0]!.click as () => void)()
+    await nextTurn()
+    assert.deepEqual(state.windows[0]!.loadedUrls, [
+      'https://test.example/login',
+    ])
+    assert.equal(state.merchantNavigationFailures.length, 1)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('an already captured candidate adopts a newly required profile check before submission', async () => {
+  const originalFetch = globalThis.fetch
+  let marked = false
+  let currentPartition = ''
+  let posts = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'DELETE') return new Response(null, { status: 204 })
+    if (init?.method !== 'POST')
+      return Response.json({ merchant_identity_validation_supported: true })
+    posts++
+    const body = JSON.parse(String(init.body)) as {
+      session_payload_base64: string
+    }
+    const payload = JSON.parse(
+      Buffer.from(body.session_payload_base64, 'base64').toString('utf8'),
+    ) as { merchantIdentityCheckRequired?: boolean }
+    assert.equal(payload.merchantIdentityCheckRequired, true)
+    return Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      cookie_updates_applied: 0,
+      used_cached_validation: false,
+    })
+  }
+  const state = setup({
+    async load() {
+      return marked
+        ? {
+            platform: 'douyin',
+            partition: currentPartition,
+            updatedAt: 'fixture',
+            merchantVerificationToken: 'bcdd74b1-a41c-43ad-a274-09f8dffcf1f9',
+          }
+        : null
+    },
+    async save() {},
+    async requireMerchantVerification() {},
+    async clearMerchantVerification() {
+      return true
+    },
+  })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'identified',
+    )
+    currentPartition = state.service['attempts'].get(
+      opened.attemptId,
+    )!.partition
+    marked = true
+    await state.service.refresh(opened.attemptId)
+    assert.equal(posts, 1)
   } finally {
     await state.service.closeAll()
     globalThis.fetch = originalFetch

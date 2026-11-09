@@ -16,6 +16,7 @@ class ApplicationShopRead(BaseModel):
     display_name: str
     platform: ShopPlatform
     session_status: ShopSessionStatus | None
+    session_version: int | None = Field(default=None, ge=1)
 
 
 class ApplicationCookie(StoredSessionCookie):

@@ -1,4 +1,5 @@
 import { promises as fs } from 'node:fs'
+import { randomUUID } from 'node:crypto'
 
 import {
   isManagementLoginPlatform,
@@ -9,6 +10,7 @@ export interface ManagementLoginProfileMapping {
   platform: ManagementLoginPlatform
   partition: string
   updatedAt: string
+  merchantVerificationToken?: string
 }
 
 export type ManagementLoginProfileMappings = Record<
@@ -32,6 +34,12 @@ export interface ManagementLoginProfileMappingStore {
     platform: ManagementLoginPlatform,
     partition: string,
   ): Promise<void>
+  requireMerchantVerification?(shopId: string, partition: string): Promise<void>
+  clearMerchantVerification?(
+    shopId: string,
+    partition: string,
+    token: string,
+  ): Promise<boolean>
 }
 
 const defaultFileSystem: ManagementLoginProfileFileSystem = {
@@ -56,7 +64,16 @@ export class ManagementLoginProfileStore implements ManagementLoginProfileMappin
   ): Promise<ManagementLoginProfileMapping | null> {
     return this.runExclusively(async () => {
       const mappings = await this.readMappings(this.resolveFilePath())
-      return parseManagementLoginProfile(mappings[shopId], platform)
+      const mapping = parseManagementLoginProfile(mappings[shopId], platform)
+      if (!mapping || mapping.merchantVerificationToken) return mapping
+      const sharedToken = Object.values(mappings).find(
+        (entry) =>
+          entry.partition === mapping.partition &&
+          entry.merchantVerificationToken,
+      )?.merchantVerificationToken
+      return sharedToken
+        ? { ...mapping, merchantVerificationToken: sharedToken }
+        : mapping
     })
   }
 
@@ -68,29 +85,93 @@ export class ManagementLoginProfileStore implements ManagementLoginProfileMappin
     return this.runExclusively(async () => {
       const filePath = this.resolveFilePath()
       const mappings = await this.readMappings(filePath)
+      const merchantVerificationToken = Object.values(mappings).find(
+        (mapping) =>
+          mapping.partition === partition &&
+          mapping.merchantVerificationToken !== undefined,
+      )?.merchantVerificationToken
       mappings[shopId] = {
         platform,
         partition,
         updatedAt: this.now().toISOString(),
+        ...(merchantVerificationToken ? { merchantVerificationToken } : {}),
       }
-
-      const temporaryPath = `${filePath}.tmp`
-      const contents = JSON.stringify(mappings, null, 2)
-      try {
-        await this.fileSystem.writeFile(temporaryPath, contents, 'utf8')
-      } catch (error) {
-        throw new Error(
-          `无法写入本地登录环境映射（${describeFileError(error)}），原文件未被覆盖`,
-        )
-      }
-      try {
-        await this.fileSystem.rename(temporaryPath, filePath)
-      } catch (error) {
-        throw new Error(
-          `无法替换本地登录环境映射（${describeFileError(error)}），原文件未被覆盖`,
-        )
-      }
+      await this.writeMappings(filePath, mappings)
     })
+  }
+
+  async requireMerchantVerification(
+    shopId: string,
+    partition: string,
+  ): Promise<void> {
+    return this.runExclusively(async () => {
+      const filePath = this.resolveFilePath()
+      const mappings = await this.readMappings(filePath)
+      const existing = mappings[shopId]
+      if (
+        existing &&
+        (existing.platform !== 'douyin' || existing.partition !== partition)
+      ) {
+        throw new Error('本机登录环境已变化，请重新打开店铺登录窗口')
+      }
+      mappings[shopId] = existing ?? {
+        platform: 'douyin',
+        partition,
+        updatedAt: this.now().toISOString(),
+      }
+      // A partition may already be shared by legacy mappings; protect each
+      // such target, not just the shop whose menu was clicked.
+      const token = randomUUID()
+      for (const mapping of Object.values(mappings)) {
+        if (mapping.partition === partition)
+          mapping.merchantVerificationToken = token
+      }
+      await this.writeMappings(filePath, mappings)
+    })
+  }
+
+  async clearMerchantVerification(
+    shopId: string,
+    partition: string,
+    token: string,
+  ): Promise<boolean> {
+    return this.runExclusively(async () => {
+      const filePath = this.resolveFilePath()
+      const mappings = await this.readMappings(filePath)
+      const mapping = mappings[shopId]
+      if (
+        !mapping ||
+        mapping.platform !== 'douyin' ||
+        mapping.partition !== partition ||
+        mapping.merchantVerificationToken !== token
+      )
+        return false
+      delete mapping.merchantVerificationToken
+      await this.writeMappings(filePath, mappings)
+      return true
+    })
+  }
+
+  private async writeMappings(
+    filePath: string,
+    mappings: ManagementLoginProfileMappings,
+  ): Promise<void> {
+    const temporaryPath = `${filePath}.tmp`
+    const contents = JSON.stringify(mappings, null, 2)
+    try {
+      await this.fileSystem.writeFile(temporaryPath, contents, 'utf8')
+    } catch (error) {
+      throw new Error(
+        `无法写入本地登录环境映射（${describeFileError(error)}），原文件未被覆盖`,
+      )
+    }
+    try {
+      await this.fileSystem.rename(temporaryPath, filePath)
+    } catch (error) {
+      throw new Error(
+        `无法替换本地登录环境映射（${describeFileError(error)}），原文件未被覆盖`,
+      )
+    }
   }
 
   private async readMappings(
@@ -176,7 +257,10 @@ function parseStoredManagementLoginProfile(
     !isManagementLoginPlatform(value.platform) ||
     typeof value.partition !== 'string' ||
     !/^persist:management-login-[0-9a-f-]{36}$/i.test(value.partition) ||
-    typeof value.updatedAt !== 'string'
+    typeof value.updatedAt !== 'string' ||
+    (value.merchantVerificationToken !== undefined &&
+      (typeof value.merchantVerificationToken !== 'string' ||
+        !/^[0-9a-f-]{36}$/i.test(value.merchantVerificationToken)))
   ) {
     return null
   }
@@ -184,6 +268,9 @@ function parseStoredManagementLoginProfile(
     platform: value.platform,
     partition: value.partition,
     updatedAt: value.updatedAt,
+    ...(typeof value.merchantVerificationToken === 'string'
+      ? { merchantVerificationToken: value.merchantVerificationToken }
+      : {}),
   }
 }
 

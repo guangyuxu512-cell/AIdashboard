@@ -116,3 +116,23 @@ def test_authorized_direct_session_and_database_audit_and_lock(database, tmp_pat
                 principal, shop_id=shop_id, request_id=str(uuid4()),
             )
         writer.rollback()
+
+    # Prove platform I/O happens after the shared row locks are released, and
+    # a version changed during that I/O cannot be returned to the caller.
+    async def change_version_during_probe(_context, _target):
+        with database.begin() as connection:
+            changed = connection.execute(
+                text("UPDATE shop_sessions SET version=version+1 WHERE shop_id=:id"),
+                {"id": shop_id},
+            )
+            assert changed.rowcount == 1
+
+    with Session(database) as reader:
+        service = ApplicationSessionService(
+            reader, authenticator, cipher=cipher,
+            merchant_verifier=change_version_during_probe,
+        )
+        with pytest.raises(ApplicationSessionBusyError):
+            service.read_session(
+                principal, shop_id=shop_id, request_id=str(uuid4()), merchant=True,
+            )
