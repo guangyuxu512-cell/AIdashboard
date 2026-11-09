@@ -16,6 +16,7 @@ export interface ShopSessionMetadataReadDto {
   expires_at: string | null
   refresh_in_progress: boolean
   refresh_lease_expires_at: string | null
+  merchant_identity_validation_supported: boolean
 }
 
 export interface ShopSessionHealthReadDto {

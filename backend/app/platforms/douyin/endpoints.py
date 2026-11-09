@@ -29,6 +29,13 @@ SHOP_INFO_V2_ENDPOINT = DouyinEndpoint(
     headers=(("accept", "application/json, text/plain, */*"),),
 )
 
+MERCHANT_IDENTITY_ENDPOINT = DouyinEndpoint(
+    host="fxg.jinritemai.com",
+    path="/common/index/index",
+    method="GET",
+    referer="https://fxg.jinritemai.com/ffa/g/create",
+)
+
 
 PRODUCT_LIST_ENDPOINT = DouyinEndpoint(
     host="fxg.jinritemai.com",

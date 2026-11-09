@@ -18,7 +18,8 @@ from app.modules.sessions.exceptions import (
 )
 from app.modules.sessions.models import ShopSession
 from app.modules.sessions.refresh_service import ShopSessionRefreshService, safe_refresh_diagnostic_details
-from app.modules.sessions.health_service import ValidatedSessionCandidate
+from app.modules.sessions.health_service import ShopSessionHealthService, ValidatedSessionCandidate
+from app.modules.sessions.auth_context import ShopSessionAccessor
 from app.modules.sessions.schemas import (
     CompleteShopSessionRefreshCommand,
     ShopSessionMetadataRead,
@@ -33,6 +34,10 @@ from app.platforms.exceptions import (
     PlatformRequestTimeoutError,
     PlatformResponseInvalidError,
 )
+from app.platforms.douyin.merchant_identity import (
+    MerchantIdentityMismatch, MerchantIdentityUnverified, MerchantValidationUnavailable,
+)
+from app.platforms.schemas import PlatformShopIdentity
 
 
 class FakeShopRepository:
@@ -48,6 +53,9 @@ class FakeRepository:
         self.stored = stored
 
     def get_by_shop(self, shop_id: UUID) -> ShopSession | None:
+        return self.stored if self.stored.shop_id == shop_id else None
+
+    def get_metadata_by_shop(self, shop_id: UUID) -> ShopSession | None:
         return self.stored if self.stored.shop_id == shop_id else None
 
     def acquire_refresh_lease(
@@ -192,6 +200,52 @@ def captured_payload() -> bytes:
             "cookies": [{"name": "sessionid", "value": "secret"}],
         },
     ).encode()
+
+
+@pytest.mark.parametrize("outcome", ["match", "mismatch", "unknown", "network"])
+def test_explicit_merchant_refresh_preserves_old_session_on_rejection(outcome) -> None:
+    service, stored, storage = make_service()
+
+    class Accessor:
+        context_from_payload = staticmethod(ShopSessionAccessor.context_from_payload)
+        merge_payload_cookies = staticmethod(ShopSessionAccessor.merge_payload_cookies)
+
+    class Connector:
+        def fetch_shop_identity(self, _shop_id, _context):
+            return PlatformShopIdentity(platform_shop_id="shop-1", shop_display_name="fixture")
+
+    def verify(_context, _target, **_kwargs):
+        if outcome == "mismatch":
+            raise MerchantIdentityMismatch()
+        if outcome == "unknown":
+            raise MerchantIdentityUnverified()
+        if outcome == "network":
+            raise MerchantValidationUnavailable()
+
+    service.health_service = ShopSessionHealthService(
+        FakeSession(), Accessor(), {ShopPlatform.DOUYIN: Connector()},  # type: ignore[arg-type,dict-item]
+        session_service=storage, shop_repository=service.shop_repository,  # type: ignore[arg-type]
+        settings=Settings(_env_file=None), merchant_verifier=verify,
+    )
+    lease = service.acquire(stored.shop_id)
+    before = (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at)
+    document = json.loads(captured_payload())
+    document["merchantIdentityCheckRequired"] = True
+    command = CompleteShopSessionRefreshCommand(
+        lease_id=lease.lease_id, expected_version=lease.expected_version,
+        session_payload_base64=SecretStr(base64.b64encode(json.dumps(document).encode()).decode()),
+        captured_at=datetime.now(UTC),
+    )
+    if outcome == "match":
+        assert service.complete(stored.shop_id, command).version == 4
+        assert storage.payload is not None
+    else:
+        expected = {"mismatch": PlatformIdentityMismatchError, "unknown": PlatformResponseInvalidError,
+                    "network": PlatformRequestFailedError}[outcome]
+        with pytest.raises(expected):
+            service.complete(stored.shop_id, command)
+        assert storage.payload is None
+        assert (stored.payload_encrypted, stored.version, stored.status, stored.captured_at, stored.validated_at) == before
 
 
 def test_refresh_lease_blocks_concurrent_attempt_and_recovers_after_expiry() -> None:

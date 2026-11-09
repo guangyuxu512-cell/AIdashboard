@@ -186,7 +186,7 @@ class ShopSessionRefreshService:
         if self.shop_repository.get(shop_id) is None:
             raise ShopNotFoundError()
         now = datetime.now(UTC)
-        if self.repository.get_by_shop(shop_id) is None:
+        if self.repository.get_metadata_by_shop(shop_id) is None:
             self.session_service.reserve_for_refresh(shop_id, now)
         lease_id = uuid4()
         expires_at = now + timedelta(
@@ -201,7 +201,7 @@ class ShopSessionRefreshService:
             self.session.rollback()
             raise SessionRefreshLeaseConflictError()
         self.session.commit()
-        current = self.repository.get_by_shop(shop_id)
+        current = self.repository.get_metadata_by_shop(shop_id)
         if current is None:
             raise ShopSessionNotConfiguredError()
         return ShopSessionRefreshLeaseRead(
@@ -248,7 +248,7 @@ class ShopSessionRefreshService:
         command: CompleteShopSessionRefreshCommand,
         recheck_authorization: Callable[[], None] | None,
     ) -> ShopSessionHealthRead:
-        stored = self.repository.get_by_shop(shop_id)
+        stored = self.repository.get_metadata_by_shop(shop_id)
         shop = self.shop_repository.get(shop_id)
         if stored is None:
             raise ShopSessionNotConfiguredError()

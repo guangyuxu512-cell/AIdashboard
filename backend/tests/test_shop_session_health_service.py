@@ -31,6 +31,11 @@ from app.platforms.exceptions import (
     PlatformSignerFailedError,
 )
 from app.platforms.schemas import PlatformShopIdentity
+from app.platforms.douyin.merchant_identity import (
+    MerchantIdentityMismatch,
+    MerchantIdentityUnverified,
+    MerchantValidationUnavailable,
+)
 from tests.support import FakeSession
 
 
@@ -311,6 +316,64 @@ def candidate_input() -> tuple[bytes, StoredManagementSessionPayload]:
         "cookies": [{"name": "synthetic", "value": "SYNTHETIC_PRIVATE_CANARY"}],
     }
     return json.dumps(document).encode(), StoredManagementSessionPayload.model_validate(document)
+
+
+@pytest.mark.parametrize("updates", [False, True])
+def test_explicit_merchant_candidate_checks_actual_final_snapshot(updates):
+    service, shop_id, _, _, storage = make_service(identity(cookie_update=updates))
+    original, _ = candidate_input()
+    document = json.loads(original)
+    document["merchantIdentityCheckRequired"] = True
+    payload = json.dumps(document).encode()
+    parsed = StoredManagementSessionPayload.model_validate(document)
+    seen = []
+
+    def verify(context, target, *, compass_already_verified):
+        assert target == "platform-shop-1"
+        assert compass_already_verified is not updates
+        assert any(cookie.name == "sessionid" for cookie in context.cookies) is updates
+        seen.append(True)
+
+    service.merchant_verifier = verify
+    result = service.validate_candidate(shop_id, ShopPlatform.DOUYIN, "platform-shop-1", 1, payload, parsed)
+    assert seen == [True]
+    assert result.cookie_updates_applied == (1 if updates else 0)
+    assert storage.store_calls == 0
+
+
+@pytest.mark.parametrize("failure,expected", [
+    (MerchantIdentityMismatch(), PlatformIdentityMismatchError),
+    (MerchantIdentityUnverified(), PlatformResponseInvalidError),
+    (MerchantValidationUnavailable(), PlatformRequestFailedError),
+])
+def test_explicit_merchant_mismatch_unknown_or_failure_never_writes(failure, expected):
+    service, shop_id, accessor, _, storage = make_service(identity())
+    original, _ = candidate_input()
+    document = json.loads(original)
+    document["merchantIdentityCheckRequired"] = True
+    parsed = StoredManagementSessionPayload.model_validate(document)
+
+    def verify(*_args, **_kwargs):
+        raise failure
+
+    service.merchant_verifier = verify
+    before = storage.metadata.model_dump()
+    with pytest.raises(expected):
+        service.validate_candidate(shop_id, ShopPlatform.DOUYIN, "platform-shop-1", 1, json.dumps(document).encode(), parsed)
+    assert storage.store_calls == 0
+    assert storage.metadata.model_dump() == before
+    assert accessor.marked == []
+
+
+def test_ordinary_compass_candidate_does_not_request_merchant_identity():
+    service, shop_id, _, _, _ = make_service(identity())
+    payload, parsed = candidate_input()
+
+    def unexpected(*_args, **_kwargs):
+        raise AssertionError("unexpected merchant check")
+
+    service.merchant_verifier = unexpected
+    service.validate_candidate(shop_id, ShopPlatform.DOUYIN, "platform-shop-1", 1, payload, parsed)
 
 
 @pytest.mark.parametrize(("step", "connector_calls"), [

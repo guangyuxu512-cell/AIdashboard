@@ -3,7 +3,7 @@ from uuid import UUID
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 from app.modules.sessions.enums import ShopSessionStatus
 from app.modules.sessions.models import ShopSession
@@ -16,6 +16,21 @@ class ShopSessionRepository:
     def get_by_shop(self, shop_id: UUID) -> ShopSession | None:
         return self.session.scalar(
             select(ShopSession).where(ShopSession.shop_id == shop_id),
+        )
+
+    def get_metadata_by_shop(self, shop_id: UUID) -> ShopSession | None:
+        # Metadata requests must never transfer or implicitly lazy-load the
+        # encrypted Session. Full readers continue to use get_by_shop().
+        return self.session.scalar(
+            select(ShopSession)
+            .options(load_only(
+                ShopSession.session_id, ShopSession.shop_id, ShopSession.version,
+                ShopSession.status, ShopSession.source_device_id,
+                ShopSession.captured_at, ShopSession.validated_at, ShopSession.expires_at,
+                ShopSession.refresh_lease_id, ShopSession.refresh_lease_expires_at,
+                raiseload=True,
+            ))
+            .where(ShopSession.shop_id == shop_id),
         )
 
     def add(self, shop_session: ShopSession) -> None:

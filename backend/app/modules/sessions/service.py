@@ -43,7 +43,7 @@ class ShopSessionService:
 
     def get_metadata(self, shop_id: UUID) -> ShopSessionMetadataRead:
         self._ensure_shop_exists(shop_id)
-        shop_session = self.repository.get_by_shop(shop_id)
+        shop_session = self.repository.get_metadata_by_shop(shop_id)
         if shop_session is None:
             return ShopSessionMetadataRead(
                 session_id=None,
@@ -91,7 +91,7 @@ class ShopSessionService:
             raise SessionEncryptionUnavailableError()
 
         payload_encrypted = self.cipher.encrypt_bytes(payload)
-        existing = self.repository.get_by_shop(command.shop_id)
+        existing = self.repository.get_metadata_by_shop(command.shop_id)
         if existing is None:
             if command.expected_version != 0:
                 raise SessionVersionConflictError()
@@ -111,8 +111,10 @@ class ShopSessionService:
             except IntegrityError as error:
                 self.session.rollback()
                 raise SessionVersionConflictError() from error
-            self.session.refresh(shop_session)
-            return self._to_metadata(shop_session)
+            created = self.repository.get_metadata_by_shop(command.shop_id)
+            if created is None:
+                raise SessionVersionConflictError()
+            return self._to_metadata(created)
 
         if not self.repository.update_if_version(
             shop_id=command.shop_id,
@@ -128,7 +130,7 @@ class ShopSessionService:
             self.session.rollback()
             raise SessionVersionConflictError()
         self.session.commit()
-        updated = self.repository.get_by_shop(command.shop_id)
+        updated = self.repository.get_metadata_by_shop(command.shop_id)
         if updated is None:
             raise SessionVersionConflictError()
         return self._to_metadata(updated)
