@@ -1071,6 +1071,7 @@ export class ManagementLoginService {
         loginWindow,
         attempt.recoveryShopId,
         attempt.partition,
+        true,
       )
     }
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
@@ -1090,6 +1091,7 @@ export class ManagementLoginService {
     loginWindow: BrowserWindow,
     shopId: string,
     partition: string,
+    keepVisible = false,
   ): void {
     try {
       let opening = false
@@ -1138,6 +1140,7 @@ export class ManagementLoginService {
         },
       ])
       loginWindow.setMenu(menu)
+      if (keepVisible) loginWindow.setAutoHideMenuBar(false)
       loginWindow.setMenuBarVisibility(true)
     } catch {
       // A nonessential menu failure cannot undo an already successful sync.

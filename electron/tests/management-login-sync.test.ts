@@ -3,6 +3,7 @@ import test from 'node:test'
 import { EventEmitter } from 'node:events'
 import type {
   BrowserWindow,
+  BrowserWindowConstructorOptions,
   Menu,
   MenuItemConstructorOptions,
   Session,
@@ -42,11 +43,18 @@ const loginSession = {
 } as unknown as Session
 
 class WindowStub extends EventEmitter {
+  constructor(readonly options: BrowserWindowConstructorOptions = {}) {
+    super()
+    this.menuAutoHide = options.autoHideMenuBar ?? false
+  }
   destroyed = false
   focused = 0
   loadedUrls: string[] = []
   menuSetCount = 0
   menuBarVisible = false
+  menuAutoHide: boolean
+  menuAutoHideChanges: boolean[] = []
+  autoHideFailure: Error | null = null
   loadFailure: Error | null = null
   loading = false
   webContents = Object.assign(new EventEmitter(), {
@@ -71,6 +79,11 @@ class WindowStub extends EventEmitter {
   }
   setMenuBarVisibility(visible: boolean) {
     this.menuBarVisible = visible
+  }
+  setAutoHideMenuBar(hide: boolean) {
+    this.menuAutoHideChanges.push(hide)
+    if (this.autoHideFailure) throw this.autoHideFailure
+    this.menuAutoHide = hide
   }
   async loadURL(url: string) {
     if (this.loadFailure) throw this.loadFailure
@@ -136,8 +149,8 @@ function setup(
   }
   const service = new ManagementLoginService({
     adapters: new Map([['douyin', adapter]]),
-    createWindow() {
-      const window = new WindowStub()
+    createWindow(options) {
+      const window = new WindowStub(options)
       window.loadFailure = failures?.load ?? null
       windows.push(window)
       return window as unknown as BrowserWindow
@@ -1494,6 +1507,9 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     assert.equal(state.captures(), 1)
     assert.equal(state.windows[0]!.destroyed, false)
     assert.equal(state.merchantMenus.length, 0)
+    assert.equal(state.windows[0]!.options.autoHideMenuBar, true)
+    assert.equal(state.windows[0]!.menuAutoHide, true)
+    assert.deepEqual(state.windows[0]!.menuAutoHideChanges, [])
     await Promise.all([
       state.service.refresh(opened.attemptId),
       state.service.refresh(opened.attemptId),
@@ -1503,6 +1519,8 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     assert.equal(state.merchantMenus.length, 1)
     assert.equal(state.windows[0]!.menuSetCount, 1)
     assert.equal(state.windows[0]!.menuBarVisible, true)
+    assert.equal(state.windows[0]!.menuAutoHide, false)
+    assert.deepEqual(state.windows[0]!.menuAutoHideChanges, [false])
     assert.deepEqual(state.windows[0]!.loadedUrls, [
       'https://test.example/login',
     ])
@@ -1590,6 +1608,102 @@ test('merchant menu failure does not undo an already successful shop synchroniza
     assert.equal(saves, 1)
     assert.equal(state.captures(), 1)
     assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('menu visibility failure preserves the successful receipt and retained shop window', async () => {
+  const originalFetch = globalThis.fetch
+  let saves = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'POST') saves++
+    return Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      cookie_updates_applied: 0,
+      used_cached_validation: false,
+    })
+  }
+  const state = setup()
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    state.windows[0]!.autoHideFailure = new Error('synthetic menu failure')
+    const result = await state.service.refresh(opened.attemptId)
+    assert.equal(result.status, 'valid')
+    assert.equal(result.sessionVersion, 4)
+    assert.equal(saves, 1)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal(state.windows[0]!.menuSetCount, 1)
+    assert.deepEqual(state.windows[0]!.menuAutoHideChanges, [false])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('successful PDD recovery keeps its existing window menu behavior', async () => {
+  const originalFetch = globalThis.fetch
+  let identityCalls = 0
+  let saves = 0
+  globalThis.fetch = async (url, init) => {
+    if (String(url).includes('/pdd/identity')) {
+      identityCalls++
+      return Response.json({
+        platform_shop_id: 'pdd-fixture',
+        shop_display_name: 'PDD fixture',
+      })
+    }
+    if (init?.method === 'POST') saves++
+    return Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      cookie_updates_applied: 0,
+      used_cached_validation: false,
+    })
+  }
+  const state = setup()
+  const adapter: PlatformAuthAdapter = {
+    ...state.adapter,
+    platformCode: 'pdd',
+    async detectLoginStatus() {
+      return {
+        readyForCapture: true,
+        message: 'identified',
+        identity: {
+          platform: 'pdd',
+          platformShopId: 'pdd-fixture',
+          shopDisplayName: 'PDD fixture',
+        },
+      }
+    },
+  }
+  state.service['adapters'].set('pdd', adapter)
+  try {
+    const opened = await state.service.open(state.parent, {
+      ...input,
+      platform: 'pdd',
+    })
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'identified',
+    )
+    assert.equal(
+      (await state.service.refresh(opened.attemptId)).status,
+      'valid',
+    )
+    assert.equal(identityCalls, 1)
+    assert.equal(saves, 1)
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal(state.windows[0]!.menuSetCount, 0)
+    assert.equal(state.windows[0]!.menuAutoHide, true)
+    assert.deepEqual(state.windows[0]!.menuAutoHideChanges, [])
   } finally {
     await state.service.closeAll()
     globalThis.fetch = originalFetch
@@ -1698,6 +1812,8 @@ for (const outcome of ['match', 'mismatch', 'unknown', 'old-server'] as const) {
         assert.equal(accepted, 1)
         assert.equal(posts, outcome === 'old-server' ? 1 : 2)
         assert.equal(state.merchantMenus.length, 2)
+        assert.equal(state.windows[1]!.menuAutoHide, true)
+        assert.deepEqual(state.windows[1]!.menuAutoHideChanges, [])
       }
     } finally {
       await state.service.closeAll()
@@ -1858,6 +1974,8 @@ test('first onboarding capture still auto-closes; premature close clears candida
     })
     assert.equal(status.sessionCaptured, true)
     assert.equal(state.windows[0]!.destroyed, true)
+    assert.equal(state.windows[0]!.menuAutoHide, true)
+    assert.deepEqual(state.windows[0]!.menuAutoHideChanges, [])
     const recovery = await state.service.open(state.parent, input)
     await state.service.getStatus(recovery.attemptId)
     await assert.rejects(
