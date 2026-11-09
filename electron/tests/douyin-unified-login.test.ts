@@ -26,7 +26,7 @@ test('two shop windows keep their own session and never exchange identities', as
     async detectMerchantIdentity(id) { return { status: 'confirmed', platformShopId: id === 1 ? 'shop-a' : 'shop-b' } },
     async captureSession() { throw new Error('capture belongs to service') },
   }
-  const flows = windows.map((window) => new DouyinUnifiedLogin(window, adapter, () => true, () => 0))
+  const flows = windows.map((window) => new DouyinUnifiedLogin(window, adapter, () => true, () => 0, () => true, () => {}))
   for (const flow of flows) assert.equal((await flow.advance()).readyForCapture, false)
   for (const flow of flows) assert.equal((await flow.advance()).readyForCapture, false)
   assert.equal((await flows[0]!.advance()).identity?.platformShopId, 'shop-a')

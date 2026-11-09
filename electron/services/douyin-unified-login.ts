@@ -18,19 +18,24 @@ export class DouyinUnifiedLogin {
     private readonly adapter: PlatformAuthAdapter,
     private readonly isCurrent: () => boolean,
     private readonly navigationSequence: () => number,
+    private readonly isPageReady: () => boolean,
+    private readonly beginNavigation: (url: string) => void,
   ) {}
 
   async advance(): Promise<PlatformLoginDetectionResult> {
-    if (!this.isCurrent()) return waiting('登录已取消')
+    if (!this.isCurrent() || !this.isPageReady()) return waiting('登录页面正在加载')
     if (this.phase === 'merchant') return this.checkMerchant()
     if (this.phase === 'returning' &&
-      (!this.onOrigin(this.adapter.loginUrl) || this.window.webContents.isLoadingMainFrame())) {
+      (!this.onOrigin(this.adapter.loginUrl) || !this.isPageReady())) {
       return waiting(this.loadFailed ? '返回罗盘未完成，请关闭窗口后重试' : '正在返回罗盘，准备保存登录状态')
     }
+    const navigation = this.navigationSequence()
     const detection = await this.adapter.detectLoginStatus(
       this.window.webContents.session, this.window.webContents.id,
     )
-    if (!this.isCurrent() || !detection.readyForCapture || !detection.identity)
+    if (!this.isCurrent() || !this.isPageReady() || this.navigationSequence() !== navigation)
+      return waiting('登录页面正在跳转')
+    if (!detection.readyForCapture || !detection.identity)
       return detection
     if (this.phase === 'compass') {
       this.compassIdentity = detection.identity
@@ -44,22 +49,26 @@ export class DouyinUnifiedLogin {
   }
 
   private async checkMerchant(): Promise<PlatformLoginDetectionResult> {
-    if (!this.onOrigin(MERCHANT_PAGE) || this.window.webContents.isLoadingMainFrame()) {
+    if (!this.onOrigin(MERCHANT_PAGE) || !this.isPageReady()) {
       return waiting(this.loadFailed ? '商品后台打开未完成，请关闭窗口后重试' : '正在打开商品后台；如需登录，请在当前窗口完成')
     }
     if (!this.adapter.detectMerchantIdentity || !this.adapter.merchantCookieFingerprint)
       return waiting('商品后台身份验证不可用，原登录状态保留')
     const session = this.window.webContents.session
+    const navigation = this.navigationSequence()
     const before = await this.adapter.merchantCookieFingerprint(session)
-    if (!this.isCurrent()) return waiting('登录已取消')
+    if (!this.isCurrent() || !this.isPageReady() || this.navigationSequence() !== navigation)
+      return waiting('登录页面正在跳转')
     const key = `${this.navigationSequence()}:${before}`
     if (key === this.lastProbeKey || Date.now() - this.lastProbeAt < PROBE_INTERVAL_MS)
       return waiting('商品后台身份尚未确认，请按当前窗口提示操作')
     this.lastProbeAt = Date.now()
     const result = await this.adapter.detectMerchantIdentity(this.window.webContents.id)
-    if (!this.isCurrent()) return waiting('登录已取消')
+    if (!this.isCurrent() || !this.isPageReady() || this.navigationSequence() !== navigation)
+      return waiting('登录页面正在跳转')
     const after = await this.adapter.merchantCookieFingerprint(session)
-    if (!this.isCurrent()) return waiting('登录已取消')
+    if (!this.isCurrent() || !this.isPageReady() || this.navigationSequence() !== navigation)
+      return waiting('登录页面正在跳转')
     this.lastProbeKey = `${this.navigationSequence()}:${after}`
     if (result.status === 'unavailable')
       return waiting('本次商品后台验证未完成，原登录状态保留；请检查窗口后重新打开')
@@ -83,6 +92,7 @@ export class DouyinUnifiedLogin {
   private navigate(url: string): void {
     if (!this.isCurrent()) return
     this.loadFailed = false
+    this.beginNavigation(url)
     void this.window.loadURL(url).catch(() => {
       if (this.isCurrent() && !this.onOrigin(url)) this.loadFailed = true
     })

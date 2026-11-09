@@ -40,6 +40,8 @@ class WindowStub extends EventEmitter {
   destroyed = false
   focused = 0
   loadFailure: Error | null = null
+  loadHold: Promise<void> | null = null
+  autoReady = true
   loading = false
   url = ''
   loadedUrls: string[] = []
@@ -62,9 +64,16 @@ class WindowStub extends EventEmitter {
     this.focused++
   }
   async loadURL(url: string) {
-    if (this.loadFailure) throw this.loadFailure
+    this.webContents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url })
     this.url = url
     this.loadedUrls.push(url)
+    if (this.loadFailure) {
+      this.webContents.emit('did-fail-load', {}, -105, 'synthetic', url, true)
+      throw this.loadFailure
+    }
+    this.webContents.emit('did-navigate', {}, url, 200)
+    if (this.autoReady) this.webContents.emit('dom-ready')
+    if (this.loadHold) await this.loadHold
   }
   close() {
     if (!this.destroyed) {
@@ -84,13 +93,16 @@ function setup(
     metadataTimeoutMs?: number
     detectionResult?: PlatformLoginDetectionResult
     unified?: boolean
+    loadHold?: Promise<void>
+    autoReady?: boolean
+    platform?: 'douyin' | 'pdd'
   },
 ) {
   const windows: WindowStub[] = []
   const buffers: Buffer[] = []
   let captures = 0
   const adapter: PlatformAuthAdapter = {
-    platformCode: 'douyin',
+    platformCode: failures?.platform ?? 'douyin',
     loginUrl: 'https://test.example/login',
     loginWindowTitle: 'isolated test',
     async detectLoginStatus() {
@@ -100,7 +112,7 @@ function setup(
         readyForCapture: true,
         message: 'identified',
         identity: {
-          platform: 'douyin',
+          platform: failures?.platform ?? 'douyin',
           platformShopId: 'matching-test-shop',
           shopDisplayName: 'test shop',
         },
@@ -109,19 +121,21 @@ function setup(
     async captureSession() {
       if (failures?.capture) throw failures.capture
       captures++
-      const payload = Buffer.from('isolated-candidate')
+      const payload = Buffer.from(failures?.platform === 'pdd' ? '{}' : 'isolated-candidate')
       buffers.push(payload)
       return { payload, capturedAt: '2026-10-11T09:00:00Z', cookieCount: 1 }
     },
   }
   const service = new ManagementLoginService({
-    adapters: new Map([['douyin', adapter]]),
+    adapters: new Map([[adapter.platformCode, adapter]]),
     // The common lifecycle suite isolates existing behavior; unified-login
     // navigation and validation have their own focused tests.
     ...(failures?.unified ? {} : { createUnifiedLogin: () => null }),
     createWindow() {
       const window = new WindowStub()
       window.loadFailure = failures?.load ?? null
+      window.loadHold = failures?.loadHold ?? null
+      window.autoReady = failures?.autoReady ?? true
       windows.push(window)
       return window as unknown as BrowserWindow
     },
@@ -335,7 +349,154 @@ test('unknown attempts reject instead of returning a fabricated closed or null s
   assert.equal(state.captures(), 0)
 })
 
-test('existing Douyin login visits merchant in the same window, then captures once on Compass and retains it', async () => {
+test('window opens before loadURL settles, but capture waits for main-frame DOM readiness', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const load = deferred<void>()
+  const state = setup(undefined, { loadHold: load.promise, autoReady: false })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal(opened.status, 'waiting')
+    assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
+    assert.equal(state.captures(), 0)
+    state.windows[0]!.loading = true
+    state.windows[0]!.webContents.emit('dom-ready')
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
+    assert.equal(state.captures(), 1)
+  } finally {
+    load.resolve()
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('aborted old navigation does not fail the current login or collect before the new DOM', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const load = deferred<void>()
+  const state = setup(undefined, { loadHold: load.promise, autoReady: false })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const contents = state.windows[0]!.webContents
+    const next = 'https://test.example/continue'
+    contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: next })
+    contents.emit('did-fail-provisional-load', {}, -3, 'cancelled', state.adapter.loginUrl, true)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
+    assert.equal(state.captures(), 0)
+    contents.emit('did-navigate', {}, next, 200)
+    contents.emit('dom-ready')
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    load.resolve()
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('HTTP error on the main document fails and releases the lease without capture', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const state = setup(undefined, { autoReady: false })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    state.windows[0]!.webContents.emit('did-navigate', {}, state.adapter.loginUrl, 503)
+    state.windows[0]!.webContents.emit('dom-ready')
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    assert.equal(state.captures(), 0)
+    await state.service.close(opened.attemptId)
+    assert.deepEqual(methods, ['DELETE'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('closing while loadURL is pending releases once and ignores its late rejection', async () => {
+  const originalFetch = globalThis.fetch
+  const methods: string[] = []
+  globalThis.fetch = async (_url, init) => {
+    methods.push(init?.method ?? 'GET')
+    return new Response(null, { status: 204 })
+  }
+  const load = deferred<void>()
+  const state = setup(undefined, { loadHold: load.promise, autoReady: false })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.close(opened.attemptId)
+    load.reject(new Error('synthetic late failure'))
+    await nextTurn()
+    assert.equal(state.windows[0]!.destroyed, true)
+    assert.equal(state.captures(), 0)
+    assert.deepEqual(methods, ['DELETE'])
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a late identity probe cannot override the user navigating to another page', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const detection = deferred<PlatformLoginDetectionResult>()
+  const state = setup(undefined, { unified: true })
+  state.adapter.detectLoginStatus = () => detection.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    const pending = state.service.getStatus(opened.attemptId)
+    await nextTurn()
+    const contents = state.windows[0]!.webContents
+    const next = 'https://test.example/user-navigation'
+    contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: next })
+    state.windows[0]!.url = next
+    contents.emit('did-navigate', {}, next, 200)
+    contents.emit('dom-ready')
+    detection.resolve({ readyForCapture: true, message: '', identity: {
+      platform: 'douyin', platformShopId: 'matching-test-shop', shopDisplayName: 'fixture',
+    } })
+    assert.equal((await pending).status, 'waiting')
+    assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl])
+    assert.equal(state.captures(), 0)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a late merchant identity cannot interrupt a new user navigation', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(null, { status: 204 })
+  const probe = deferred<{ status: 'confirmed'; platformShopId: string }>()
+  const state = setup(undefined, { unified: true })
+  state.adapter.merchantCookieFingerprint = async () => 'synthetic'
+  state.adapter.detectMerchantIdentity = () => probe.promise
+  try {
+    const opened = await state.service.open(state.parent, input)
+    await state.service.getStatus(opened.attemptId)
+    const pending = state.service.getStatus(opened.attemptId)
+    await nextTurn()
+    const contents = state.windows[0]!.webContents
+    const next = 'https://fxg.jinritemai.com/user-navigation'
+    contents.emit('did-start-navigation', { isMainFrame: true, isSameDocument: false, url: next })
+    state.windows[0]!.url = next
+    contents.emit('did-navigate', {}, next, 200)
+    contents.emit('dom-ready')
+    probe.resolve({ status: 'confirmed', platformShopId: 'matching-test-shop' })
+    assert.equal((await pending).status, 'waiting')
+    assert.equal(state.windows[0]!.loadedUrls.length, 2)
+    assert.equal(state.captures(), 0)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('unsettled loadURL still permits one verified capture after DOM readiness and retains the window', async () => {
   const originalFetch = globalThis.fetch
   const methods: string[] = []
   let saved: Record<string, unknown> | null = null
@@ -351,7 +512,8 @@ test('existing Douyin login visits merchant in the same window, then captures on
     }
     return new Response(null, { status: 204 })
   }
-  const state = setup(undefined, { unified: true })
+  const load = deferred<void>()
+  const state = setup(undefined, { unified: true, loadHold: load.promise })
   let captures = 0
   state.adapter.merchantCookieFingerprint = async () => 'synthetic-fingerprint'
   state.adapter.detectMerchantIdentity = async () => ({ status: 'confirmed', platformShopId: 'matching-test-shop' })
@@ -366,14 +528,19 @@ test('existing Douyin login visits merchant in the same window, then captures on
   }
   try {
     const opened = await state.service.open(state.parent, input)
+    state.windows[0]!.loading = true
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
     assert.equal(state.windows[0]!.url, 'https://fxg.jinritemai.com/ffa/g/create')
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
     assert.equal(state.windows[0]!.url, state.adapter.loginUrl)
     state.windows[0]!.loading = true
+    state.windows[0]!.webContents.emit('did-start-navigation', {
+      isMainFrame: true, isSameDocument: false, url: state.adapter.loginUrl,
+    })
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'waiting')
     assert.equal(captures, 0)
-    state.windows[0]!.loading = false
+    state.windows[0]!.webContents.emit('did-navigate', {}, state.adapter.loginUrl, 200)
+    state.windows[0]!.webContents.emit('dom-ready')
     assert.equal((await state.service.getStatus(opened.attemptId)).status, 'identified')
     assert.equal(captures, 1)
     await state.service.refresh(opened.attemptId)
@@ -384,6 +551,7 @@ test('existing Douyin login visits merchant in the same window, then captures on
     assert.equal((received.cookies as unknown[]).length, 2)
     assert.deepEqual(methods, ['GET', 'POST'])
   } finally {
+    load.resolve()
     await state.service.closeAll()
     globalThis.fetch = originalFetch
   }
@@ -494,6 +662,27 @@ test('first Douyin onboarding still captures and closes without merchant navigat
   }
 })
 
+test('PDD existing-shop login keeps its original identity path while loadURL remains pending', async () => {
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (_url, init) => init?.method === 'POST'
+    ? Response.json({ platform_shop_id: 'matching-test-shop', shop_display_name: 'PDD fixture' })
+    : new Response(null, { status: 204 })
+  const load = deferred<void>()
+  const state = setup(undefined, { platform: 'pdd', unified: true, loadHold: load.promise })
+  try {
+    const opened = await state.service.open(state.parent, { ...input, platform: 'pdd' })
+    const status = await state.service.getStatus(opened.attemptId)
+    assert.equal(status.status, 'identified')
+    assert.equal(state.captures(), 1)
+    assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl])
+    assert.equal(state.windows[0]!.destroyed, false)
+  } finally {
+    load.resolve()
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
 test('existing-shop super context without a team omits the header on metadata/save/release and preserves single capture/CAS/retained focus', async () => {
   const originalFetch = globalThis.fetch
   const calls: Array<{ method: string; team: string | null }> = []
@@ -545,10 +734,11 @@ test('existing-shop super context without a team omits the header on metadata/sa
   }
 })
 
-test('unscoped metadata still rejects revoked personnel and non-super contexts before lease/open', async () => {
+test('unscoped focus still rejects revoked personnel and non-super contexts when a window exists', async () => {
   const originalFetch = globalThis.fetch
   const state = setup()
   try {
+    await state.service.open(state.parent, input)
     for (const status of [401, 403]) {
       globalThis.fetch = async () =>
         Response.json({ private: 'ignored fixture' }, { status })
@@ -557,8 +747,24 @@ test('unscoped metadata still rejects revoked personnel and non-super contexts b
         status === 401 ? /SHOP_LOGIN_AUTH_REQUIRED/ : /SHOP_LOGIN_FORBIDDEN/,
       )
     }
-    assert.equal(state.windows.length, 0)
+    assert.equal(state.windows.length, 1)
+    assert.equal(state.windows[0]!.focused, 0)
     assert.equal(state.captures(), 0)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('without a local window focus returns false without requesting metadata', async () => {
+  const originalFetch = globalThis.fetch
+  let requests = 0
+  globalThis.fetch = async () => { requests++; throw new Error('unexpected request') }
+  const state = setup()
+  try {
+    assert.equal(await state.service.focusShop(state.parent, { shopId, platform: 'douyin' }), false)
+    assert.equal(requests, 0)
+    assert.equal(state.windows.length, 0)
   } finally {
     await state.service.closeAll()
     globalThis.fetch = originalFetch
@@ -595,6 +801,7 @@ test('same-window navigation/probe/script observation is bounded, redacted and d
       200,
       'secret ignored',
     )
+    contents.emit('dom-ready')
     for (let i = 0; i < 25; i++)
       contents.emit('console-message', {
         level: 'error',
@@ -637,6 +844,8 @@ test('same-window navigation/probe/script observation is bounded, redacted and d
       level: 'error',
       message: 'Access has been blocked by CORS policy: private-fixture',
     })
+    contents.emit('did-navigate', {}, 'https://compass.jinritemai.com/shop?different-secret=ignored', 200)
+    contents.emit('dom-ready')
     await state.service.getStatus(opened.attemptId)
     assert.equal(
       records.filter((record) => record.phase === 'account_probe').length,
@@ -646,7 +855,7 @@ test('same-window navigation/probe/script observation is bounded, redacted and d
       records.some(
         (record) =>
           record.phase === 'script' &&
-          record.navigationSequence === 2 &&
+          record.navigationSequence === 3 &&
           record.corsBlocked === true &&
           record.scriptErrorCount === 1,
       ),
@@ -734,6 +943,7 @@ test('Main metadata deadline aborts HTTP and a late success cannot focus or crea
     })
   }
   try {
+    await state.service.open(state.parent, input)
     await assert.rejects(
       state.service.focusShop(state.parent, {
         shopId,
@@ -754,7 +964,8 @@ test('Main metadata deadline aborts HTTP and a late success cannot focus or crea
     assert.ok((failed.elapsedMs ?? 0) >= 15)
     finish(Response.json({ ignored: 'private-fixture' }))
     await new Promise((resolve) => setImmediate(resolve))
-    assert.equal(state.windows.length, 0)
+    assert.equal(state.windows.length, 1)
+    assert.equal(state.windows[0]!.focused, 0)
     assert.equal(JSON.stringify(records).includes('private-fixture'), false)
     assert.equal(
       records.some(
@@ -764,6 +975,8 @@ test('Main metadata deadline aborts HTTP and a late success cannot focus or crea
       false,
     )
   } finally {
+    globalThis.fetch = async () => new Response(null, { status: 204 })
+    await state.service.closeAll()
     globalThis.fetch = originalFetch
   }
 })
@@ -804,6 +1017,7 @@ test('authentication preparation failure is AUTH_REQUIRED with no GET-request ev
     return Response.json({})
   }
   try {
+    await state.service.open(state.parent, input)
     await assert.rejects(
       state.service.focusShop(state.parent, {
         shopId,
@@ -826,6 +1040,8 @@ test('authentication preparation failure is AUTH_REQUIRED with no GET-request ev
     )
   } finally {
     loginSession.cookies.get = originalCookies
+    globalThis.fetch = async () => new Response(null, { status: 204 })
+    await state.service.closeAll()
     globalThis.fetch = originalFetch
   }
 })
@@ -842,6 +1058,7 @@ test('GET attempt and safe DNS code/errno are retained without URL, error messag
     })
   }
   try {
+    await state.service.open(state.parent, input)
     await assert.rejects(
       state.service.focusShop(state.parent, {
         shopId,
@@ -865,11 +1082,13 @@ test('GET attempt and safe DNS code/errno are retained without URL, error messag
     assert.equal(failed.errno, -3008)
     assert.equal(JSON.stringify(records).includes('private-fixture'), false)
   } finally {
+    globalThis.fetch = async () => new Response(null, { status: 204 })
+    await state.service.closeAll()
     globalThis.fetch = originalFetch
   }
 })
 
-test('diagnostic baseline: empty profile load rejection closes the child and releases without a save', async () => {
+test('main-frame load failure is reported and releases without saving', async () => {
   const originalFetch = globalThis.fetch
   const requests: string[] = []
   globalThis.fetch = async (_url, init) => {
@@ -881,7 +1100,9 @@ test('diagnostic baseline: empty profile load rejection closes the child and rel
   })
   const state = setup(undefined, { load: failure })
   try {
-    await assert.rejects(state.service.open(state.parent, input), failure)
+    const opened = await state.service.open(state.parent, input)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    await state.service.close(opened.attemptId)
     assert.equal(state.windows.length, 1)
     assert.equal(state.windows[0]!.destroyed, true)
     assert.equal(state.parent.isDestroyed(), false)
@@ -935,17 +1156,20 @@ test('development diagnostics whitelist navigation code/errno and explicit close
     onDiagnostic: (record) => records.push(record),
   })
   try {
-    await assert.rejects(state.service.open(state.parent, input), failure)
+    const opened = await state.service.open(state.parent, input)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    await nextTurn()
     const failed = records.find(
-      (record) => record.phase === 'load' && record.event === 'error',
+      (record) => record.phase === 'load' && record.errorCode === 'ERR_SYNTHETIC_NAVIGATION',
     )!
     assert.equal(failed.errorCode, 'ERR_SYNTHETIC_NAVIGATION')
     assert.equal(failed.errno, -777)
     assert.equal(failed.mainFrameLoading, false)
+    await state.service.close(opened.attemptId)
     assert.ok(
       records.some(
         (record) =>
-          record.event === 'closed' && record.closeReason === 'load_failed',
+          record.event === 'closed' && record.closeReason === 'renderer_request',
       ),
     )
     const serialized = JSON.stringify(records)
@@ -1000,6 +1224,8 @@ test('development diagnostics distinguish capture error and Frame navigation wit
       'private URL',
       true,
     )
+    state.windows[0]!.webContents.emit('did-navigate', {}, 'private', 200)
+    state.windows[0]!.webContents.emit('dom-ready')
     const status = await state.service.getStatus(opened.attemptId)
     assert.equal(status.status, 'failed')
     const failed = records.find(
@@ -1062,7 +1288,9 @@ test('diagnostic property access never replaces the original error or changes cl
   })
   const state = setup(undefined, { load: failure })
   try {
-    await assert.rejects(state.service.open(state.parent, input), failure)
+    const opened = await state.service.open(state.parent, input)
+    assert.equal((await state.service.getStatus(opened.attemptId)).status, 'failed')
+    await state.service.close(opened.attemptId)
     assert.equal(state.windows[0]!.destroyed, true)
   } finally {
     await state.service.closeAll()

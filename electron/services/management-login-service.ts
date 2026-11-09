@@ -68,8 +68,12 @@ interface LoginAttempt {
   lastPddVerificationFailureAt: number | null
   closeReason: LoginCloseReason | null
   navigationSequence: number
+  pageReady: boolean
+  pageCommitted: boolean
+  pageNavigationUrl: string | null
   lastProbeDiagnosticFingerprint?: string
   disposePageDiagnostics?: () => void
+  disposePageReadiness?: () => void
   finishPendingStatus?: () => void
   unifiedLogin?: DouyinUnifiedLogin | null
 }
@@ -155,6 +159,8 @@ export class ManagementLoginService {
     adapter: PlatformAuthAdapter,
     isCurrent: () => boolean,
     navigationSequence: () => number,
+    isPageReady: () => boolean,
+    beginNavigation: (url: string) => void,
   ) => DouyinUnifiedLogin | null
   private readonly adapters = new Map<
     ManagementLoginPlatform,
@@ -178,6 +184,8 @@ export class ManagementLoginService {
       adapter: PlatformAuthAdapter,
       isCurrent: () => boolean,
       navigationSequence: () => number,
+      isPageReady: () => boolean,
+      beginNavigation: (url: string) => void,
     ) => DouyinUnifiedLogin | null
   }) {
     this.backendBaseUrl =
@@ -187,8 +195,8 @@ export class ManagementLoginService {
     this.allowDevTools = options?.allowDevTools ?? true
     this.onDiagnostic = options?.onDiagnostic
     this.createUnifiedLogin = options?.createUnifiedLogin ??
-      ((window, adapter, isCurrent, navigationSequence) =>
-        new DouyinUnifiedLogin(window, adapter, isCurrent, navigationSequence))
+      ((window, adapter, isCurrent, navigationSequence, isPageReady, beginNavigation) =>
+        new DouyinUnifiedLogin(window, adapter, isCurrent, navigationSequence, isPageReady, beginNavigation))
     this.metadataTimeoutMs =
       options?.metadataTimeoutMs ?? LOGIN_METADATA_TIMEOUT_MS
     this.createWindow =
@@ -218,6 +226,13 @@ export class ManagementLoginService {
       phase: 'focus',
       event: 'start',
     })
+    const local = this.shopWindows.get(input.shopId)
+    if (!local || local.window.isDestroyed()) {
+      // Opening a new window still requires the separately authorized lease.
+      this.trace({ correlationId, source: 'main', phase: 'focus', event: 'finish',
+        focused: false, elapsedMs: Date.now() - started })
+      return false
+    }
     let httpStatus: number | null = null
     let metadataFinished = false
     try {
@@ -375,6 +390,9 @@ export class ManagementLoginService {
         attemptId,
         correlationId: input.correlationId ?? attemptId,
         navigationSequence: 0,
+        pageReady: false,
+        pageCommitted: false,
+        pageNavigationUrl: null,
         platform: input.platform,
         teamId: input.teamId,
         appSession: parent.webContents.session,
@@ -483,6 +501,7 @@ export class ManagementLoginService {
     })
     loginWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     attempt.window = loginWindow
+    attempt.disposePageReadiness = this.installPageReadiness(attempt, loginWindow)
     attempt.disposePageDiagnostics = this.installNavigationDiagnostics(
       attempt,
       loginWindow,
@@ -503,6 +522,7 @@ export class ManagementLoginService {
     attempt.status = 'waiting'
     attempt.message = '等待人工登录，系统会自动识别店铺'
     loginWindow.on('closed', () => {
+      attempt!.disposePageReadiness?.()
       attempt!.disposePageDiagnostics?.()
       this.report(attempt!, 'close', 'closed', {
         closeReason:
@@ -537,10 +557,19 @@ export class ManagementLoginService {
     })
     try {
       this.report(attempt, 'load', 'start')
-      await loginWindow.loadURL(adapter.loginUrl)
-      if (this.attempts.get(attemptId) !== attempt)
-        throw new LoginOpeningError('CONTEXT_CHANGED')
-      this.report(attempt, 'load', 'finish')
+      this.beginPageNavigation(attempt, adapter.loginUrl)
+      // Opening the window must not wait for unrelated page subresources.
+      // Readiness and failures are observed through main-frame events below.
+      void loginWindow.loadURL(adapter.loginUrl).then(
+        () => {
+          if (this.attempts.get(attemptId) === attempt && attempt!.window === loginWindow)
+            this.report(attempt!, 'load', 'finish')
+        },
+        (error) => {
+          if (this.attempts.get(attemptId) === attempt && attempt!.window === loginWindow)
+            this.report(attempt!, 'load', 'error', diagnosticError(error))
+        },
+      )
     } catch (error) {
       this.report(attempt, 'load', 'error', diagnosticError(error))
       await this.close(attemptId, 'load_failed')
@@ -581,6 +610,11 @@ export class ManagementLoginService {
     ) {
       const loginWindow = attempt.window
       let phase: 'detect' | 'capture' = 'detect'
+      if (!attempt.pageReady) {
+        attempt.message = '登录页面正在加载，请在窗口中完成登录'
+        return this.toStatus(attempt)
+      }
+      const navigationSequence = attempt.navigationSequence
       try {
         const adapter = this.requireAdapter(attempt.platform)
         this.report(attempt, phase, 'start')
@@ -591,6 +625,8 @@ export class ManagementLoginService {
             () => this.attempts.get(attemptId) === attempt && attempt.status === 'waiting' &&
               attempt.window === loginWindow && !loginWindow.isDestroyed(),
             () => attempt.navigationSequence,
+            () => attempt.pageReady,
+            (url) => this.beginPageNavigation(attempt, url),
           )
         }
         const detection = attempt.unifiedLogin
@@ -602,6 +638,8 @@ export class ManagementLoginService {
           attempt.window !== loginWindow ||
           loginWindow.isDestroyed()
         )
+          return this.toStatus(attempt)
+        if (attempt.navigationSequence !== navigationSequence || !attempt.pageReady)
           return this.toStatus(attempt)
         this.reportDetection(attempt, detection)
         if (detection.readyForCapture) {
@@ -617,7 +655,9 @@ export class ManagementLoginService {
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
-            loginWindow.isDestroyed()
+            loginWindow.isDestroyed() ||
+            attempt.navigationSequence !== navigationSequence ||
+            !attempt.pageReady
           ) {
             capturedSession.payload.fill(0)
             return this.toStatus(attempt)
@@ -681,7 +721,9 @@ export class ManagementLoginService {
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
             attempt.window !== loginWindow ||
-            loginWindow.isDestroyed()
+            loginWindow.isDestroyed() ||
+            attempt.navigationSequence !== navigationSequence ||
+            !attempt.pageReady
           ) {
             capturedSession.payload.fill(0)
             return this.toStatus(attempt)
@@ -705,6 +747,10 @@ export class ManagementLoginService {
       } catch (error) {
         this.report(attempt, phase, 'error', diagnosticError(error))
         if (attempt.window !== loginWindow || loginWindow.isDestroyed()) {
+          return this.toStatus(attempt)
+        }
+        if (attempt.navigationSequence !== navigationSequence || !attempt.pageReady) {
+          attempt.message = '登录页面正在跳转，请继续在当前窗口操作'
           return this.toStatus(attempt)
         }
         attempt.status = 'failed'
@@ -929,6 +975,7 @@ export class ManagementLoginService {
     if (!attempt) return
     attempt.closeReason = reason
     this.report(attempt, 'close', 'request')
+    attempt.disposePageReadiness?.()
     attempt.disposePageDiagnostics?.()
     this.attempts.delete(attemptId)
     attempt.status = 'closed'
@@ -1004,6 +1051,7 @@ export class ManagementLoginService {
     attempt.rejectedCaptureFingerprint = null
     attempt.rejectedCaptureFailureCode = null
     attempt.refreshFailure = undefined
+    attempt.disposePageReadiness?.()
     attempt.disposePageDiagnostics?.()
     attempt.message = message
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
@@ -1153,6 +1201,68 @@ export class ManagementLoginService {
     )
   }
 
+  private beginPageNavigation(attempt: LoginAttempt, url: string): void {
+    attempt.pageReady = false
+    attempt.pageCommitted = false
+    attempt.pageNavigationUrl = url
+  }
+
+  private installPageReadiness(attempt: LoginAttempt, window: BrowserWindow): () => void {
+    const contents = window.webContents
+    let disposed = false
+    const started = (details: { isMainFrame: boolean; isSameDocument: boolean; url: string }) => {
+      if (disposed || !details.isMainFrame) return
+      attempt.navigationSequence = Math.min(10000, attempt.navigationSequence + 1)
+      if (!details.isSameDocument) this.beginPageNavigation(attempt, details.url)
+    }
+    const redirected = (details: { isMainFrame: boolean; url: string }) => {
+      if (!disposed && details.isMainFrame) attempt.pageNavigationUrl = details.url
+    }
+    const fail = () => {
+      if (disposed || attempt.status !== 'waiting') return
+      attempt.pageReady = false
+      attempt.status = 'failed'
+      attempt.message = '登录页面加载未完成，原登录状态保留'
+      this.clearCapturedSession(attempt)
+      void this.releaseRecoveryLease(attempt)
+      attempt.finishPendingStatus?.()
+    }
+    const committed = (_event: unknown, url: string, httpStatus: number) => {
+      if (disposed) return
+      attempt.pageNavigationUrl = url
+      if (httpStatus >= 400 && httpStatus <= 599) return fail()
+      attempt.pageCommitted = true
+    }
+    const ready = () => {
+      if (!disposed && attempt.pageCommitted && attempt.status === 'waiting') attempt.pageReady = true
+    }
+    const failed = (_event: unknown, code: number, _description: string, url: string, main: boolean) => {
+      if (disposed || !main || code === -3 || attempt.status !== 'waiting' ||
+        (attempt.pageNavigationUrl !== null && url !== attempt.pageNavigationUrl)) return
+      fail()
+    }
+    contents.on('did-start-navigation', started)
+    contents.on('did-redirect-navigation', redirected)
+    contents.on('did-navigate', committed)
+    contents.on('dom-ready', ready)
+    contents.on('did-fail-load', failed)
+    contents.on('did-fail-provisional-load', failed)
+    return () => {
+      if (disposed) return
+      disposed = true
+      for (const detach of [
+        () => contents.off('did-start-navigation', started),
+        () => contents.off('did-redirect-navigation', redirected),
+        () => contents.off('did-navigate', committed),
+        () => contents.off('dom-ready', ready),
+        () => contents.off('did-fail-load', failed),
+        () => contents.off('did-fail-provisional-load', failed),
+      ]) {
+        try { detach() } catch { /* Closing must still release the lease. */ }
+      }
+    }
+  }
+
   private installNavigationDiagnostics(
     attempt: LoginAttempt,
     window: BrowserWindow,
@@ -1164,10 +1274,6 @@ export class ManagementLoginService {
     const started = (details: { isMainFrame: boolean; url: string }) => {
       if (disposed) return
       if (details.isMainFrame) {
-        attempt.navigationSequence = Math.min(
-          10000,
-          attempt.navigationSequence + 1,
-        )
         scriptErrorCount = 0
       }
       this.report(attempt, 'load', 'start', {
