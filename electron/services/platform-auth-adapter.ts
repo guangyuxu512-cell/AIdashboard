@@ -37,5 +37,6 @@ export interface PlatformAuthAdapter {
     session: Session,
     webContentsId: number,
     identity: ManagementLoginIdentity | null,
+    options?: { includeOriginStorage?: boolean },
   ): Promise<CapturedManagementSession>
 }

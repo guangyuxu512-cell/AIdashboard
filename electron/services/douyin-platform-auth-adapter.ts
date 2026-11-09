@@ -207,6 +207,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     loginSession: Session,
     webContentsId: number,
     identity: ManagementLoginIdentity | null,
+    options?: { includeOriginStorage?: boolean },
   ): Promise<CapturedManagementSession> {
     if (!identity) {
       throw new Error('抖店登录身份尚未识别')
@@ -219,25 +220,28 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     if (!contents || contents.isDestroyed()) {
       throw new Error('登录窗口已经关闭')
     }
-    // Fixed adapter-owned script. Renderer cannot supply JavaScript or inspect its result.
-    const storage = (await contents.mainFrame.executeJavaScript(
-      `(() => {
-        const copy = (storage) => {
-          const result = {};
-          for (let index = 0; index < storage.length; index += 1) {
-            const key = storage.key(index);
-            if (key) result[key] = storage.getItem(key) ?? '';
-          }
-          return result;
-        };
-        return {
-          origin: location.origin,
-          localStorage: copy(window.localStorage),
-          sessionStorage: copy(window.sessionStorage),
-        };
-      })()`,
-      true,
-    )) as OriginStorageSnapshot
+    let storage: OriginStorageSnapshot | undefined
+    if (options?.includeOriginStorage !== false) {
+      // Fixed adapter-owned script. Renderer cannot supply JavaScript or inspect its result.
+      storage = (await contents.mainFrame.executeJavaScript(
+        `(() => {
+          const copy = (storage) => {
+            const result = {};
+            for (let index = 0; index < storage.length; index += 1) {
+              const key = storage.key(index);
+              if (key) result[key] = storage.getItem(key) ?? '';
+            }
+            return result;
+          };
+          return {
+            origin: location.origin,
+            localStorage: copy(window.localStorage),
+            sessionStorage: copy(window.sessionStorage),
+          };
+        })()`,
+        true,
+      )) as OriginStorageSnapshot
+    }
     const capturedAt = new Date().toISOString()
     const payload = Buffer.from(
       JSON.stringify({
@@ -246,7 +250,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
         identity,
         capturedAt,
         cookies: cookies.map(toSerializableCookie),
-        storage,
+        ...(storage ? { storage } : {}),
       }),
       'utf8',
     )

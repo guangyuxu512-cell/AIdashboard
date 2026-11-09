@@ -673,6 +673,7 @@ export class ManagementLoginService {
             loginWindow.webContents.session,
             loginWindow.webContents.id,
             detection.identity,
+            attempt.unifiedLogin ? { includeOriginStorage: false } : undefined,
           )
           this.report(attempt, phase, 'finish')
           if (

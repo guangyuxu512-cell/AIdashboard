@@ -102,6 +102,7 @@ function setup(
   const windows: WindowStub[] = []
   const buffers: Buffer[] = []
   let captures = 0
+  let captureOptions: { includeOriginStorage?: boolean } | undefined
   const adapter: PlatformAuthAdapter = {
     platformCode: failures?.platform ?? 'douyin',
     loginUrl: 'https://test.example/login',
@@ -119,9 +120,10 @@ function setup(
         },
       }
     },
-    async captureSession() {
+    async captureSession(_session, _webContentsId, _identity, options) {
       if (failures?.capture) throw failures.capture
       captures++
+      captureOptions = options
       const payload = Buffer.from(failures?.platform === 'pdd' ? '{}' : 'isolated-candidate')
       buffers.push(payload)
       return { payload, capturedAt: '2026-10-11T09:00:00Z', cookieCount: 1 }
@@ -157,6 +159,7 @@ function setup(
     windows,
     buffers,
     captures: () => captures,
+    captureOptions: () => captureOptions,
     parent: new WindowStub() as unknown as BrowserWindow,
   }
 }
@@ -519,12 +522,13 @@ test('unsettled loadURL still permits one verified capture after DOM readiness a
   let captures = 0
   state.adapter.merchantCookieFingerprint = async () => 'synthetic-fingerprint'
   state.adapter.detectMerchantIdentity = async () => ({ status: 'confirmed', platformShopId: 'matching-test-shop' })
-  state.adapter.captureSession = async () => {
+  state.adapter.captureSession = async (_session, _id, _identity, options) => {
     captures++
+    assert.deepEqual(options, { includeOriginStorage: false })
     assert.equal(state.windows[0]!.url, 'https://fxg.jinritemai.com/ffa/g/create')
     return {
       payload: Buffer.from(JSON.stringify({ schema: 'management-login.session.v1', platform: 'douyin',
-        cookies: [{ name: 'synthetic-compass' }, { name: 'synthetic-merchant' }], storage: { origin: 'https://fxg.jinritemai.com' } })),
+        cookies: [{ name: 'synthetic-compass' }, { name: 'synthetic-merchant' }] })),
       capturedAt: '2026-10-11T09:00:00Z', cookieCount: 2,
     }
   }
@@ -548,7 +552,7 @@ test('unsettled loadURL still permits one verified capture after DOM readiness a
     const received = saved as unknown as Record<string, unknown>
     assert.equal(received.merchantIdentityCheckRequired, true)
     assert.equal((received.cookies as unknown[]).length, 2)
-    assert.equal((received.storage as { origin: string }).origin, 'https://fxg.jinritemai.com')
+    assert.equal('storage' in received, false)
     assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl, 'https://fxg.jinritemai.com/ffa/g/create'])
     assert.deepEqual(methods, ['GET', 'POST'])
   } finally {
@@ -787,6 +791,7 @@ test('first Douyin onboarding still captures and closes without merchant navigat
     const status = await state.service.getStatus(opened.attemptId)
     assert.equal(status.status, 'identified')
     assert.equal(state.captures(), 1)
+    assert.equal(state.captureOptions(), undefined)
     assert.equal(state.windows[0]!.destroyed, true)
     assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl])
   } finally {
@@ -806,6 +811,7 @@ test('PDD existing-shop login keeps its original identity path while loadURL rem
     const status = await state.service.getStatus(opened.attemptId)
     assert.equal(status.status, 'identified')
     assert.equal(state.captures(), 1)
+    assert.equal(state.captureOptions(), undefined)
     assert.deepEqual(state.windows[0]!.loadedUrls, [state.adapter.loginUrl])
     assert.equal(state.windows[0]!.destroyed, false)
   } finally {

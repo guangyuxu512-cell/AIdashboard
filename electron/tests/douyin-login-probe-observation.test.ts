@@ -10,6 +10,7 @@ import type { DouyinPlatformAuthAdapter } from '../services/douyin-platform-auth
 function adapter(
   fetch: (...args: unknown[]) => Promise<unknown>,
   location = { protocol: 'https:', hostname: 'fxg.jinritemai.com' },
+  onPageExecution?: () => void,
 ) {
   const sourcePath = path.join(
     __dirname,
@@ -23,10 +24,13 @@ function adapter(
     isDestroyed: () => false,
     executeJavaScript: () => { throw new Error('WebContents execution must not be used') },
     mainFrame: {
-      executeJavaScript: (script: string) => vm.runInNewContext(script, {
-        fetch, URL, Date, location: { ...location, origin: `${location.protocol}//${location.hostname}` }, AbortSignal,
-        window: { localStorage: emptyStorage, sessionStorage: emptyStorage },
-      }),
+      executeJavaScript: (script: string) => {
+        onPageExecution?.()
+        return vm.runInNewContext(script, {
+          fetch, URL, Date, location: { ...location, origin: `${location.protocol}//${location.hostname}` }, AbortSignal,
+          window: { localStorage: emptyStorage, sessionStorage: emptyStorage },
+        })
+      },
     },
   }
   vm.runInNewContext(readFileSync(sourcePath, 'utf8'), {
@@ -87,6 +91,21 @@ test('session capture uses the main-frame fixed script and preserves its origin 
   const payload = JSON.parse(captured.payload.toString('utf8')) as { cookies: unknown[]; storage: { origin: string } }
   assert.equal(payload.cookies.length, 1)
   assert.equal(payload.storage.origin, 'https://fxg.jinritemai.com')
+  captured.payload.fill(0)
+})
+
+test('existing unified login captures platform cookies without reading merchant page storage', async () => {
+  let executions = 0
+  const client = adapter(async () => { throw new Error('unexpected request') },
+    undefined, () => { executions++ })
+  const captured = await client.captureSession(loginSession, 42, {
+    platform: 'douyin', platformShopId: 'shop-a', shopDisplayName: 'fixture',
+  }, { includeOriginStorage: false })
+  const payload = JSON.parse(captured.payload.toString('utf8')) as Record<string, unknown>
+  assert.equal(executions, 0)
+  assert.equal('storage' in payload, false)
+  assert.equal((payload.cookies as unknown[]).length, 1)
+  assert.ok(captured.payload.length < 4096)
   captured.payload.fill(0)
 })
 
