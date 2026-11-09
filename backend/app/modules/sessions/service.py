@@ -43,7 +43,7 @@ class ShopSessionService:
 
     def get_metadata(self, shop_id: UUID) -> ShopSessionMetadataRead:
         self._ensure_shop_exists(shop_id)
-        shop_session = self.repository.get_by_shop(shop_id)
+        shop_session = self.repository.get_metadata_by_shop(shop_id)
         if shop_session is None:
             return ShopSessionMetadataRead(
                 session_id=None,
