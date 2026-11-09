@@ -55,6 +55,9 @@ class FakeRepository:
     def get_by_shop(self, shop_id: UUID) -> ShopSession | None:
         return self.stored if self.stored.shop_id == shop_id else None
 
+    def get_metadata_by_shop(self, shop_id: UUID) -> ShopSession | None:
+        return self.stored if self.stored.shop_id == shop_id else None
+
     def acquire_refresh_lease(
         self,
         *,
