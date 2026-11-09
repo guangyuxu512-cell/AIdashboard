@@ -3,6 +3,7 @@ from datetime import UTC, datetime, timedelta
 from uuid import UUID
 from typing import Callable
 
+from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -31,10 +32,18 @@ from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.exceptions import ShopNotFoundError
 from app.modules.shops.repository import ShopRepository
 from app.platforms.base import PlatformConnector
+from app.platforms.douyin.merchant_identity import (
+    MerchantIdentityMismatch,
+    MerchantIdentityUnverified,
+    MerchantValidationUnavailable,
+    verify_merchant_session_sync,
+)
 from app.platforms.exceptions import (
     PlatformAuthenticationInvalidError,
     PlatformIdentityMismatchError,
     PlatformNotSupportedError,
+    PlatformRequestFailedError,
+    PlatformResponseInvalidError,
 )
 
 
@@ -60,6 +69,7 @@ class ShopSessionHealthService:
         shop_repository: ShopRepository | None = None,
         settings: Settings | None = None,
         before_platform_io: Callable[[], None] | None = None,
+        merchant_verifier: Callable[..., None] = verify_merchant_session_sync,
     ) -> None:
         self.session_accessor = session_accessor
         self.connectors = connectors
@@ -69,6 +79,7 @@ class ShopSessionHealthService:
         # Only an owner of an exclusive read Session may opt in. Ordinary
         # health/login callers keep their original transaction semantics.
         self.before_platform_io = before_platform_io
+        self.merchant_verifier = merchant_verifier
 
     def validate_candidate(
         self,
@@ -112,6 +123,34 @@ class ShopSessionHealthService:
                     "refresh_stage": "candidate_validation", "validation_step": "cookie_merge",
                 }
                 raise
+        if parsed.merchant_identity_check_required:
+            # Validate the exact candidate that would be stored, after the
+            # Compass response has applied its updates. Never trust an ID
+            # asserted by the desktop or a previously saved Session here.
+            if platform is not ShopPlatform.DOUYIN:
+                raise ShopSessionPayloadInvalidError()
+            try:
+                merged_parsed = StoredManagementSessionPayload.model_validate_json(merged)
+            except ValidationError as error:
+                raise ShopSessionPayloadInvalidError() from error
+            if not merged_parsed.merchant_identity_check_required:
+                raise ShopSessionPayloadInvalidError()
+            merchant_context = self.session_accessor.context_from_payload(
+                shop_id, platform, version, merged_parsed,
+            )
+            try:
+                self.merchant_verifier(
+                    merchant_context, identity.platform_shop_id,
+                    compass_already_verified=count == 0,
+                )
+            except MerchantIdentityMismatch:
+                raise PlatformIdentityMismatchError() from None
+            except MerchantIdentityUnverified:
+                raise PlatformResponseInvalidError() from None
+            except MerchantValidationUnavailable:
+                raise PlatformRequestFailedError() from None
+            except Exception:
+                raise PlatformRequestFailedError() from None
         return ValidatedSessionCandidate(
             payload=merged,
             platform_shop_id=identity.platform_shop_id,

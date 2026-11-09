@@ -12,6 +12,7 @@ from app.modules.sessions.application_auth import (
     ApplicationAuthenticationError,
     ApplicationAuthenticator,
     ApplicationPrincipal,
+    ApplicationSessionPurposeInvalidError,
     ApplicationTransportError,
 )
 from app.modules.sessions.application_contract import ApplicationSessionRead, ApplicationShopRead
@@ -59,14 +60,25 @@ def _safe_request_id(request: Request) -> str:
         return str(uuid4())
 
 
-@router.get("/shops", response_model=list[ApplicationShopRead])
+def _merchant_purpose(purpose: str | None) -> bool:
+    if purpose not in (None, "merchant"):
+        raise ApplicationSessionPurposeInvalidError()
+    return purpose == "merchant"
+
+
+@router.get("/shops", response_model=list[ApplicationShopRead], response_model_exclude_unset=True)
 def list_application_shops(
     response: Response,
     principal: Annotated[ApplicationPrincipal, Depends(require_application)],
     service: Annotated[ApplicationSessionService, Depends(get_application_session_service)],
+    purpose: Annotated[str | None, Header(alias="X-Session-Purpose")] = None,
 ) -> list[ApplicationShopRead]:
+    merchant = _merchant_purpose(purpose)
     response.headers["Cache-Control"] = "no-store"
-    return service.list_shops(principal)
+    result = service.list_shops(principal, merchant=merchant)
+    if merchant:
+        response.headers["X-Session-Metadata-Version"] = "1"
+    return result
 
 
 @router.get("/shops/{shop_id}/session", response_model=ApplicationSessionRead)
@@ -76,7 +88,15 @@ def read_application_shop_session(
     response: Response,
     principal: Annotated[ApplicationPrincipal, Depends(require_application)],
     service: Annotated[ApplicationSessionService, Depends(get_application_session_service)],
+    purpose: Annotated[str | None, Header(alias="X-Session-Purpose")] = None,
 ) -> ApplicationSessionRead:
+    merchant = _merchant_purpose(purpose)
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
-    return service.read_session(principal, shop_id=shop_id, request_id=_safe_request_id(request))
+    result = service.read_session(
+        principal, shop_id=shop_id, request_id=_safe_request_id(request),
+        merchant=merchant,
+    )
+    if merchant:
+        response.headers["X-Merchant-Identity-Verified"] = "1"
+    return result

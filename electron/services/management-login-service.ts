@@ -1,7 +1,10 @@
 import {
   app,
   BrowserWindow,
+  dialog,
+  Menu,
   session,
+  type MenuItemConstructorOptions,
   type Session,
   type BrowserWindowConstructorOptions,
 } from 'electron'
@@ -63,6 +66,7 @@ interface LoginAttempt {
   rejectedCaptureFailureCode: RefreshFailure['code'] | null
   lastRefreshLeaseId: string | null
   profileReused: boolean
+  merchantVerificationToken: string | null
   lastPddVerificationFailureFingerprint: string | null
   lastPddVerificationFailureAt: number | null
   closeReason: LoginCloseReason | null
@@ -88,6 +92,23 @@ const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
 export const LOGIN_METADATA_TIMEOUT_MS = 15_000
 const LOGIN_OPEN_TIMEOUT_MS = 30_000
 const MAX_REFRESH_ATTEMPTS = 3
+const DOUYIN_MERCHANT_CREATE_URL = 'https://fxg.jinritemai.com/ffa/g/create'
+
+function reportMerchantNavigationFailure(
+  window: BrowserWindow,
+  protectionFailed = false,
+): void {
+  void dialog
+    .showMessageBox(window, {
+      type: 'error',
+      message: '无法打开商品发布页',
+      detail: protectionFailed
+        ? '本机登录环境保护未就绪，请关闭窗口后重试；原登录状态保留。'
+        : '请检查网络连接后重试。',
+      buttons: ['确定'],
+    })
+    .catch(() => {})
+}
 
 interface OnboardingApiResponse {
   shop: {
@@ -144,6 +165,13 @@ export class ManagementLoginService {
     options: BrowserWindowConstructorOptions,
   ) => BrowserWindow
   private readonly fromPartition: (partition: string) => Session
+  private readonly createMerchantMenu: (
+    template: MenuItemConstructorOptions[],
+  ) => Menu
+  private readonly reportMerchantNavigationFailure: (
+    window: BrowserWindow,
+    protectionFailed?: boolean,
+  ) => void
   private readonly backendBaseUrl: string
   private readonly allowDevTools: boolean
   private readonly profileMappingStore: ManagementLoginProfileMappingStore
@@ -162,6 +190,11 @@ export class ManagementLoginService {
     profileMappingStore?: ManagementLoginProfileMappingStore
     createWindow?: (options: BrowserWindowConstructorOptions) => BrowserWindow
     fromPartition?: (partition: string) => Session
+    createMerchantMenu?: (template: MenuItemConstructorOptions[]) => Menu
+    reportMerchantNavigationFailure?: (
+      window: BrowserWindow,
+      protectionFailed?: boolean,
+    ) => void
     adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
     onDiagnostic?: (record: LoginDiagnostic) => void
     metadataTimeoutMs?: number
@@ -179,6 +212,12 @@ export class ManagementLoginService {
     this.fromPartition =
       options?.fromPartition ??
       ((partition) => session.fromPartition(partition, { cache: true }))
+    this.createMerchantMenu =
+      options?.createMerchantMenu ??
+      ((template) => Menu.buildFromTemplate(template))
+    this.reportMerchantNavigationFailure =
+      options?.reportMerchantNavigationFailure ??
+      reportMerchantNavigationFailure
     if (options?.adapters) this.adapters = options.adapters
     this.profileMappingStore =
       options?.profileMappingStore ??
@@ -376,6 +415,7 @@ export class ManagementLoginService {
         rejectedCaptureFailureCode: null,
         lastRefreshLeaseId: null,
         profileReused: profile.profileReused,
+        merchantVerificationToken: mapping?.merchantVerificationToken ?? null,
         lastPddVerificationFailureFingerprint: null,
         lastPddVerificationFailureAt: null,
         closeReason: null,
@@ -579,9 +619,17 @@ export class ManagementLoginService {
           return this.toStatus(attempt)
         this.reportDetection(attempt, detection)
         if (detection.readyForCapture) {
+          await this.syncMerchantProtection(attempt)
+          if (
+            this.attempts.get(attemptId) !== attempt ||
+            attempt.status !== 'waiting' ||
+            attempt.window !== loginWindow ||
+            loginWindow.isDestroyed()
+          )
+            return this.toStatus(attempt)
           phase = 'capture'
           this.report(attempt, phase, 'start')
-          const capturedSession = await adapter.captureSession(
+          let capturedSession = await adapter.captureSession(
             loginWindow.webContents.session,
             loginWindow.webContents.id,
             detection.identity,
@@ -597,6 +645,12 @@ export class ManagementLoginService {
             return this.toStatus(attempt)
           }
           let identity = detection.identity
+          if (
+            attempt.merchantVerificationToken &&
+            attempt.platform === 'douyin'
+          ) {
+            capturedSession = requireMerchantIdentityValidation(capturedSession)
+          }
           if (attempt.platform === 'pdd') {
             const fingerprint = sessionFingerprint(capturedSession)
             if (
@@ -789,9 +843,23 @@ export class ManagementLoginService {
           ...failure,
           canContinue:
             failure.canContinue &&
+            !attempt.merchantVerificationToken &&
             attempt.refreshAttemptCount < MAX_REFRESH_ATTEMPTS,
         }
         attempt.message = refreshFailureMessage(attempt.refreshFailure)
+        if (attempt.merchantVerificationToken && attempt.recoveryShopId) {
+          if (failure.code === 'identity_mismatch')
+            attempt.message =
+              '店铺身份与目标不一致，原登录状态保留；请核对罗盘和商家后台店铺，关闭窗口后重试'
+          else if (failure.code === 'validation_incomplete')
+            attempt.message =
+              '本次店铺会话验证未完成，原登录状态保留；请核对商家后台登录，关闭窗口后重试'
+          this.installMerchantMenu(
+            attempt.window,
+            attempt.recoveryShopId,
+            attempt.partition,
+          )
+        }
         await this.releaseRecoveryLease(attempt)
       }
       throw error
@@ -815,6 +883,30 @@ export class ManagementLoginService {
     )
       throw new Error('本次登录验证次数已用尽，请取消后重新登录')
     const headers = await this.authorizedHeaders(attempt)
+    await this.syncMerchantProtection(attempt)
+    if (
+      this.attempts.get(attemptId) !== attempt ||
+      attempt.status !== 'identified' ||
+      !attempt.capturedSession
+    )
+      throw new Error('登录同步已取消')
+    if (attempt.merchantVerificationToken) {
+      attempt.capturedSession = requireMerchantIdentityValidation(
+        attempt.capturedSession,
+      )
+      await loginDeadline(async (signal) => {
+        const metadata = await fetch(
+          this.backendUrl(`/api/v1/shops/${recovery.shopId}/session`),
+          { headers, signal },
+        )
+        if (!metadata.ok) throw new Error('商家后台验证能力未就绪')
+        const body = (await metadata.json()) as {
+          merchant_identity_validation_supported?: unknown
+        }
+        if (body?.merchant_identity_validation_supported !== true)
+          throw new Error('商家后台验证能力未就绪')
+      }, this.metadataTimeoutMs)
+    }
     if (
       this.attempts.get(attemptId) !== attempt ||
       attempt.status !== 'identified'
@@ -967,6 +1059,21 @@ export class ManagementLoginService {
     attempt.refreshFailure = undefined
     attempt.disposePageDiagnostics?.()
     attempt.message = message
+    const loginWindow = attempt.window
+    if (
+      retainWindow &&
+      attempt.platform === 'douyin' &&
+      attempt.recoveryShopId &&
+      loginWindow &&
+      !loginWindow.isDestroyed()
+    ) {
+      this.installMerchantMenu(
+        loginWindow,
+        attempt.recoveryShopId,
+        attempt.partition,
+        true,
+      )
+    }
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
       attempt.systemCloseRequested = true
       attempt.closeReason = 'completed_onboarding'
@@ -978,6 +1085,66 @@ export class ManagementLoginService {
     attempt.recovery = null
     attempt.finishPendingStatus?.()
     this.attempts.delete(attempt.attemptId)
+  }
+
+  private installMerchantMenu(
+    loginWindow: BrowserWindow,
+    shopId: string,
+    partition: string,
+    keepVisible = false,
+  ): void {
+    try {
+      let opening = false
+      const menu = this.createMerchantMenu([
+        {
+          label: '抖店商家后台',
+          submenu: [
+            {
+              label: '打开商品发布页',
+              click: () => {
+                if (loginWindow.isDestroyed() || opening) return
+                opening = true
+                let protectedProfile = false
+                void (async () => {
+                  // Persist this before navigating, so closing or crashing the
+                  // app cannot allow an unchecked merchant state on re-open.
+                  if (!this.profileMappingStore.requireMerchantVerification) {
+                    throw new Error('无法保护本机登录环境')
+                  }
+                  await this.profileMappingStore.requireMerchantVerification(
+                    shopId,
+                    partition,
+                  )
+                  protectedProfile = true
+                  if (!loginWindow.isDestroyed())
+                    await loginWindow.loadURL(DOUYIN_MERCHANT_CREATE_URL)
+                })()
+                  .catch(() => {
+                    if (!loginWindow.isDestroyed()) {
+                      try {
+                        this.reportMerchantNavigationFailure(
+                          loginWindow,
+                          !protectedProfile,
+                        )
+                      } catch {
+                        // Feedback does not change the saved shop session.
+                      }
+                    }
+                  })
+                  .finally(() => {
+                    opening = false
+                  })
+              },
+            },
+          ],
+        },
+      ])
+      loginWindow.setMenu(menu)
+      if (keepVisible) loginWindow.setAutoHideMenuBar(false)
+      loginWindow.setMenuBarVisibility(true)
+    } catch {
+      // A nonessential menu failure cannot undo an already successful sync.
+    }
   }
 
   private armAttemptTimeout(attempt: LoginAttempt): void {
@@ -1319,6 +1486,18 @@ export class ManagementLoginService {
     await this.profileMappingStore.save(shopId, platform, partition)
   }
 
+  private async syncMerchantProtection(attempt: LoginAttempt): Promise<void> {
+    if (attempt.platform !== 'douyin' || !attempt.recoveryShopId) return
+    const mapping = await this.loadProfileMapping(
+      attempt.recoveryShopId,
+      attempt.platform,
+    )
+    if (mapping && mapping.partition !== attempt.partition)
+      throw new Error('本机登录环境已变化，原登录状态保留')
+    if (mapping?.merchantVerificationToken)
+      attempt.merchantVerificationToken = mapping.merchantVerificationToken
+  }
+
   private async saveProfileMappingAfterServerSuccess(
     attempt: LoginAttempt,
     shopId: string,
@@ -1326,10 +1505,45 @@ export class ManagementLoginService {
   ): Promise<string | null> {
     try {
       await this.saveProfileMapping(shopId, attempt.platform, attempt.partition)
-      return null
     } catch (error) {
       return `${serverSuccessMessage}，但本机登录环境映射未保存；下次恢复需要重新登录（${safeErrorMessage(error)}）`
     }
+    if (attempt.merchantVerificationToken) {
+      try {
+        if (!this.profileMappingStore.clearMerchantVerification)
+          throw new Error('无法完成本机商家同步标记清理')
+        const cleared =
+          await this.profileMappingStore.clearMerchantVerification(
+            shopId,
+            attempt.partition,
+            attempt.merchantVerificationToken,
+          )
+        if (!cleared)
+          return `${serverSuccessMessage}，但商家页面再次发生变化，请完成后重新同步`
+      } catch {
+        return `${serverSuccessMessage}，但本机验证标记未清理；下次登录将再次验证`
+      }
+    }
+    return null
+  }
+}
+
+function requireMerchantIdentityValidation(
+  captured: CapturedManagementSession,
+): CapturedManagementSession {
+  try {
+    const value: unknown = JSON.parse(captured.payload.toString('utf8'))
+    if (typeof value !== 'object' || value === null || Array.isArray(value))
+      throw new Error('invalid')
+    const payload = Buffer.from(
+      JSON.stringify({ ...value, merchantIdentityCheckRequired: true }),
+      'utf8',
+    )
+    return { ...captured, payload }
+  } catch {
+    throw new Error('商家后台验证未准备完成，原登录状态保留')
+  } finally {
+    captured.payload.fill(0)
   }
 }
 

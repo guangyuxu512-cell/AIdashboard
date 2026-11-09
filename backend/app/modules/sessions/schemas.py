@@ -18,6 +18,7 @@ class ShopSessionMetadataRead(BaseModel):
     expires_at: datetime | None
     refresh_in_progress: bool = False
     refresh_lease_expires_at: datetime | None = None
+    merchant_identity_validation_supported: bool = True
 
 
 class ShopSessionHealthRead(BaseModel):

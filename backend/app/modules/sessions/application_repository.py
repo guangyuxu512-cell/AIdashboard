@@ -19,7 +19,7 @@ class ApplicationSessionRepository:
 
     def list_shops(self, shop_ids: tuple[UUID, ...]):
         statement = (
-            select(Shop, ShopSession.status)
+            select(Shop, ShopSession.status, ShopSession.version)
             .outerjoin(ShopSession, ShopSession.shop_id == Shop.shop_id)
             .where(Shop.shop_id.in_(shop_ids), Shop.enabled.is_(True), Shop.deleted_at.is_(None))
             .order_by(Shop.display_name, Shop.shop_id)

@@ -161,6 +161,69 @@ test('profile store serializes concurrent read-modify-write operations', async (
   assert.equal(persisted[shopB]?.partition, partitionB)
 })
 
+test('merchant verification requirement survives restart and is preserved on future saves for the same partition', async () => {
+  const fileSystem = new MemoryFileSystem()
+  const store = createStore(fileSystem)
+  await store.save(shopA, 'douyin', partitionA)
+  await store.save(shopB, 'douyin', partitionA)
+  await store.requireMerchantVerification(shopA, partitionA)
+  const restarted = createStore(fileSystem)
+  const token = (await restarted.load(shopA, 'douyin'))
+    ?.merchantVerificationToken
+  assert.ok(token)
+  assert.equal(
+    (await restarted.load(shopB, 'douyin'))?.merchantVerificationToken,
+    token,
+  )
+  await restarted.save(shopA, 'douyin', partitionA)
+  assert.equal(
+    (await restarted.load(shopA, 'douyin'))?.merchantVerificationToken,
+    token,
+  )
+  await restarted.requireMerchantVerification(shopA, partitionA)
+  const newer = (await restarted.load(shopA, 'douyin'))
+    ?.merchantVerificationToken
+  assert.ok(newer && newer !== token)
+  assert.equal(
+    await restarted.clearMerchantVerification(shopA, partitionA, token),
+    false,
+  )
+  assert.equal(
+    await restarted.clearMerchantVerification(shopA, partitionA, newer),
+    true,
+  )
+  assert.equal(
+    (await restarted.load(shopA, 'douyin'))?.merchantVerificationToken,
+    newer,
+  )
+  assert.equal(
+    await restarted.clearMerchantVerification(shopB, partitionA, newer),
+    true,
+  )
+  assert.equal(
+    (await restarted.load(shopA, 'douyin'))?.merchantVerificationToken,
+    undefined,
+  )
+  await assert.rejects(
+    restarted.requireMerchantVerification(shopA, partitionB),
+    /环境已变化/,
+  )
+  assert.equal((await restarted.load(shopA, 'douyin'))?.partition, partitionA)
+})
+
+test('a failed persistent protection write leaves the previous mapping unchanged', async () => {
+  const fileSystem = new MemoryFileSystem()
+  const store = createStore(fileSystem)
+  await store.save(shopA, 'douyin', partitionA)
+  const before = fileSystem.files.get(filePath)
+  fileSystem.renameFailure = fileError('EPERM')
+  await assert.rejects(
+    store.requireMerchantVerification(shopA, partitionA),
+    /原文件未被覆盖/,
+  )
+  assert.equal(fileSystem.files.get(filePath), before)
+})
+
 test('server success remains completed when local profile persistence fails', async () => {
   const failingStore: ManagementLoginProfileMappingStore = {
     load: async () => null,

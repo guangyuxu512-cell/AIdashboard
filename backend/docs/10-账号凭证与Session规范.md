@@ -81,6 +81,8 @@ PRODUCT_DATA_SESSION_VALIDATION_REQUIRED仅为历史失败回执兼容保留，�
 
 `ShopSessionHealthService` 是解密后验证、身份匹配和状态更新的唯一边界。抖店 V1 使用已验证的 `shop_info_v2`；最近验证时间仍处于 `BACKEND_SHOP_SESSION_VALIDATION_FRESHNESS_SECONDS` 窗口时，后续业务可直接使用，超出窗口才按需先验证。没有全店铺 Cron。
 
+主动商家同步的候选使用 `merchantIdentityCheckRequired=true`，Main 提交前检查 `merchant_identity_validation_supported`；旧服务端不具备该能力时不得提交。Backend 按原规则验证罗盘，针对将被保存的最终快照核验商家 ID；原罗盘检查无合并更新时可复用其结果，否则需重新验证罗盘。明确错店、10008、未知结构或请求失败均不覆盖旧 Session；该标记不改变普通未标记罗盘同步。商家 `data.id` 与罗盘 `data.shop_id` 的对应仅有一个真实同店样本；未知不得以名称或其他字段代替。
+
 服务器采集消费者统一使用
 `app.modules.sessions.collection_readiness.classify_collection_readiness` 的纯判定矩阵，并通过
 `ShopSessionHealthService.check(force=False)` 执行需要的权威验证：
