@@ -24,6 +24,9 @@ export const shopSessionApi = {
   ): Promise<ShopSessionRefreshLeaseReadDto> {
     const response = await httpClient.post<ShopSessionRefreshLeaseReadDto>(
       `/api/v1/shops/${shopId}/session/refresh-lease`,
+      undefined,
+      // The opening flow times out at 20s and releases a later result by ID.
+      { timeout: 60_000 },
     )
     return response.data
   },

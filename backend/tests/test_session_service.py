@@ -31,6 +31,9 @@ class FakeShopSessionRepository:
     def get_by_shop(self, shop_id: UUID) -> ShopSession | None:
         return self.item if self.item and self.item.shop_id == shop_id else None
 
+    def get_metadata_by_shop(self, shop_id: UUID) -> ShopSession | None:
+        return self.get_by_shop(shop_id)
+
     def add(self, shop_session: ShopSession) -> None:
         shop_session.session_id = uuid4()
         shop_session.created_at = datetime.now(UTC)

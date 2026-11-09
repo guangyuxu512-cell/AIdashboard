@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StrictBool, ValidationError
 from sqlalchemy.orm import Session
 
 from app.core.security import EncryptedPayloadError, SecretCipher
@@ -48,6 +48,9 @@ class StoredManagementSessionPayload(BaseModel):
     platform: ShopPlatform
     identity: StoredSessionIdentity | None = None
     cookies: list[StoredSessionCookie] = Field(min_length=1)
+    merchant_identity_check_required: StrictBool = Field(
+        default=False, alias="merchantIdentityCheckRequired",
+    )
 
 
 class ShopSessionAuthContext(BaseModel):

@@ -1,9 +1,11 @@
 import { webContents, type Cookie, type Session } from 'electron'
+import { createHash } from 'node:crypto'
 import { safeAccountProbes, type LoginAccountProbe } from './login-diagnostics'
 
 import type { ManagementLoginIdentity } from '../types'
 import type {
   CapturedManagementSession,
+  MerchantIdentityResult,
   PlatformAuthAdapter,
   PlatformLoginDetectionResult,
 } from './platform-auth-adapter'
@@ -36,6 +38,48 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     'https://compass.jinritemai.com/shop/search/drainage-terms'
   readonly loginWindowTitle = '抖店登录'
 
+  async merchantCookieFingerprint(loginSession: Session): Promise<string> {
+    const cookies = await this.getPlatformCookies(loginSession)
+    const hash = createHash('sha256')
+    for (const cookie of cookies.sort((a, b) =>
+      `${a.domain}\u0000${a.path}\u0000${a.name}`.localeCompare(
+        `${b.domain}\u0000${b.path}\u0000${b.name}`,
+      ),
+    )) {
+      hash.update(JSON.stringify([cookie.domain, cookie.path, cookie.name, cookie.value]))
+    }
+    return hash.digest('hex')
+  }
+
+  async detectMerchantIdentity(webContentsId: number): Promise<MerchantIdentityResult> {
+    const contents = webContents.fromId(webContentsId)
+    if (!contents || contents.isDestroyed()) return { status: 'unavailable' }
+    try {
+      return (await contents.mainFrame.executeJavaScript(
+        `(async () => {
+          try {
+            if (location.protocol !== 'https:' || location.hostname !== 'fxg.jinritemai.com')
+              return { status: 'unverified' };
+            const response = await fetch('/common/index/index', {
+              credentials: 'include', headers: { accept: 'application/json, text/plain, */*' },
+              signal: AbortSignal.timeout(4000),
+            });
+            if (!response.ok) return { status: 'unavailable' };
+            const body = await response.json();
+            if (body?.code !== 0) return { status: 'unverified' };
+            const value = body?.data?.id;
+            const id = typeof value === 'string' ? value.trim()
+              : Number.isSafeInteger(value) && value > 0 ? String(value) : '';
+            return id ? { status: 'confirmed', platformShopId: id } : { status: 'unverified' };
+          } catch { return { status: 'unavailable' }; }
+        })()`,
+        true,
+      )) as MerchantIdentityResult
+    } catch {
+      return { status: 'unavailable' }
+    }
+  }
+
   async detectLoginStatus(
     loginSession: Session,
     webContentsId: number,
@@ -53,7 +97,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
 
     // Run the verified account request inside the authenticated page context.
     // Only identity fields, HTTP status and response key names cross into Main.
-    const probe = (await contents.executeJavaScript(
+    const probe = (await contents.mainFrame.executeJavaScript(
       `(async () => {
         const probes = [];
         let probeIndex = -1;
@@ -88,6 +132,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
             const response = await fetch(endpoint, {
               credentials: 'include',
               headers: { accept: 'application/json, text/plain, */*' },
+              signal: AbortSignal.timeout(4000),
             });
             currentStatus = response.status;
             const text = await response.text();
@@ -150,6 +195,8 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     return {
       identity: null,
       readyForCapture: false,
+      requestFailed: probe.requestFailed || probe.status === 429 || probe.status >= 500 ||
+        (probe.status >= 400 && probe.status !== 401 && probe.status !== 403),
       message: `${diagnostic}；平台 Cookie ${cookies.length} 个，正在继续识别`,
       pageContextAvailable: true,
       probes: safeAccountProbes(probe.probes),
@@ -160,6 +207,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     loginSession: Session,
     webContentsId: number,
     identity: ManagementLoginIdentity | null,
+    options?: { includeOriginStorage?: boolean },
   ): Promise<CapturedManagementSession> {
     if (!identity) {
       throw new Error('抖店登录身份尚未识别')
@@ -172,25 +220,28 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
     if (!contents || contents.isDestroyed()) {
       throw new Error('登录窗口已经关闭')
     }
-    // Fixed adapter-owned script. Renderer cannot supply JavaScript or inspect its result.
-    const storage = (await contents.executeJavaScript(
-      `(() => {
-        const copy = (storage) => {
-          const result = {};
-          for (let index = 0; index < storage.length; index += 1) {
-            const key = storage.key(index);
-            if (key) result[key] = storage.getItem(key) ?? '';
-          }
-          return result;
-        };
-        return {
-          origin: location.origin,
-          localStorage: copy(window.localStorage),
-          sessionStorage: copy(window.sessionStorage),
-        };
-      })()`,
-      true,
-    )) as OriginStorageSnapshot
+    let storage: OriginStorageSnapshot | undefined
+    if (options?.includeOriginStorage !== false) {
+      // Fixed adapter-owned script. Renderer cannot supply JavaScript or inspect its result.
+      storage = (await contents.mainFrame.executeJavaScript(
+        `(() => {
+          const copy = (storage) => {
+            const result = {};
+            for (let index = 0; index < storage.length; index += 1) {
+              const key = storage.key(index);
+              if (key) result[key] = storage.getItem(key) ?? '';
+            }
+            return result;
+          };
+          return {
+            origin: location.origin,
+            localStorage: copy(window.localStorage),
+            sessionStorage: copy(window.sessionStorage),
+          };
+        })()`,
+        true,
+      )) as OriginStorageSnapshot
+    }
     const capturedAt = new Date().toISOString()
     const payload = Buffer.from(
       JSON.stringify({
@@ -199,7 +250,7 @@ export class DouyinPlatformAuthAdapter implements PlatformAuthAdapter {
         identity,
         capturedAt,
         cookies: cookies.map(toSerializableCookie),
-        storage,
+        ...(storage ? { storage } : {}),
       }),
       'utf8',
     )

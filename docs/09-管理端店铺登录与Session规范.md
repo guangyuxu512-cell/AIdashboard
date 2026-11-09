@@ -48,8 +48,10 @@ Profile 本地、Session 服务器。Backend HTTP 使用 ShopSession，不读取
 
 - 平台与已识别店铺身份；
 - `jinritemai.com` 域下的 Cookie；
-- 当前登录 Origin 的 localStorage / sessionStorage 快照；
+- 首次添加店铺时，当前登录 Origin 的 localStorage / sessionStorage 快照；
 - 采集时间。
+
+已有抖店的统一登录在商家页确认同店后，仅保存身份和该店 Profile 中的抖店 Cookie，不读取或保存商家页的 localStorage / sessionStorage。中控现有 Session 读取及应用 Session 接口仅使用身份与 Cookie；旧载荷仍可读取，首次添加与其他平台的采集行为不变。
 
 Payload 不经过 Renderer，不提供读取 API，也不记录日志。Electron Main 只通过固定 Adapter 脚本采集，Renderer 不能传入 JavaScript。Backend Base64 解码后立即使用 Fernet 加密落库。
 

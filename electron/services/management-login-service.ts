@@ -28,6 +28,7 @@ import type {
   ManagementLoginFocusInput,
 } from '../types'
 import { DouyinPlatformAuthAdapter } from './douyin-platform-auth-adapter'
+import { DouyinUnifiedLogin } from './douyin-unified-login'
 import { PddPlatformAuthAdapter } from './pdd-platform-auth-adapter'
 import { shouldPreserveCapturedLogin } from './management-login-lifecycle'
 import {
@@ -67,9 +68,15 @@ interface LoginAttempt {
   lastPddVerificationFailureAt: number | null
   closeReason: LoginCloseReason | null
   navigationSequence: number
+  pageReady: boolean
+  pageCommitted: boolean
+  pageNavigationUrl: string | null
+  captureEpoch: number
   lastProbeDiagnosticFingerprint?: string
   disposePageDiagnostics?: () => void
+  disposePageReadiness?: () => void
   finishPendingStatus?: () => void
+  unifiedLogin?: DouyinUnifiedLogin | null
 }
 
 type LoginCloseReason =
@@ -87,6 +94,7 @@ const LOGIN_ATTEMPT_TIMEOUT_MS = 30 * 60 * 1000
 const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
 export const LOGIN_METADATA_TIMEOUT_MS = 15_000
 const LOGIN_OPEN_TIMEOUT_MS = 30_000
+const DOUYIN_DETECTION_TIMEOUT_MS = 15_000
 const MAX_REFRESH_ATTEMPTS = 3
 
 interface OnboardingApiResponse {
@@ -148,6 +156,14 @@ export class ManagementLoginService {
   private readonly allowDevTools: boolean
   private readonly profileMappingStore: ManagementLoginProfileMappingStore
   private readonly onDiagnostic?: (record: LoginDiagnostic) => void
+  private readonly createUnifiedLogin: (
+    window: BrowserWindow,
+    adapter: PlatformAuthAdapter,
+    isCurrent: () => boolean,
+    navigationSequence: () => number,
+    isPageReady: () => boolean,
+    beginNavigation: (url: string) => void,
+  ) => DouyinUnifiedLogin | null
   private readonly adapters = new Map<
     ManagementLoginPlatform,
     PlatformAuthAdapter
@@ -165,6 +181,15 @@ export class ManagementLoginService {
     adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
     onDiagnostic?: (record: LoginDiagnostic) => void
     metadataTimeoutMs?: number
+    detectionTimeoutMs?: number
+    createUnifiedLogin?: (
+      window: BrowserWindow,
+      adapter: PlatformAuthAdapter,
+      isCurrent: () => boolean,
+      navigationSequence: () => number,
+      isPageReady: () => boolean,
+      beginNavigation: (url: string) => void,
+    ) => DouyinUnifiedLogin | null
   }) {
     this.backendBaseUrl =
       options?.backendBaseUrl ??
@@ -172,8 +197,12 @@ export class ManagementLoginService {
       'http://127.0.0.1:8000/'
     this.allowDevTools = options?.allowDevTools ?? true
     this.onDiagnostic = options?.onDiagnostic
+    this.createUnifiedLogin = options?.createUnifiedLogin ??
+      ((window, adapter, isCurrent, navigationSequence, isPageReady, beginNavigation) =>
+        new DouyinUnifiedLogin(window, adapter, isCurrent, navigationSequence, isPageReady, beginNavigation))
     this.metadataTimeoutMs =
       options?.metadataTimeoutMs ?? LOGIN_METADATA_TIMEOUT_MS
+    this.detectionTimeoutMs = options?.detectionTimeoutMs ?? DOUYIN_DETECTION_TIMEOUT_MS
     this.createWindow =
       options?.createWindow ?? ((config) => new BrowserWindow(config))
     this.fromPartition =
@@ -201,6 +230,13 @@ export class ManagementLoginService {
       phase: 'focus',
       event: 'start',
     })
+    const local = this.shopWindows.get(input.shopId)
+    if (!local || local.window.isDestroyed()) {
+      // Opening a new window still requires the separately authorized lease.
+      this.trace({ correlationId, source: 'main', phase: 'focus', event: 'finish',
+        focused: false, elapsedMs: Date.now() - started })
+      return false
+    }
     let httpStatus: number | null = null
     let metadataFinished = false
     try {
@@ -358,6 +394,10 @@ export class ManagementLoginService {
         attemptId,
         correlationId: input.correlationId ?? attemptId,
         navigationSequence: 0,
+        pageReady: false,
+        pageCommitted: false,
+        pageNavigationUrl: null,
+        captureEpoch: 0,
         platform: input.platform,
         teamId: input.teamId,
         appSession: parent.webContents.session,
@@ -403,6 +443,7 @@ export class ManagementLoginService {
       attempt.recovery = input.recovery
       attempt.refreshFailure = undefined
       attempt.identity = null
+      attempt.unifiedLogin = undefined
       attempt.status = 'waiting'
       attempt.message = '继续检测原窗口登录状态'
     }
@@ -465,6 +506,7 @@ export class ManagementLoginService {
     })
     loginWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
     attempt.window = loginWindow
+    attempt.disposePageReadiness = this.installPageReadiness(attempt, loginWindow)
     attempt.disposePageDiagnostics = this.installNavigationDiagnostics(
       attempt,
       loginWindow,
@@ -485,6 +527,7 @@ export class ManagementLoginService {
     attempt.status = 'waiting'
     attempt.message = '等待人工登录，系统会自动识别店铺'
     loginWindow.on('closed', () => {
+      attempt!.disposePageReadiness?.()
       attempt!.disposePageDiagnostics?.()
       this.report(attempt!, 'close', 'closed', {
         closeReason:
@@ -519,10 +562,19 @@ export class ManagementLoginService {
     })
     try {
       this.report(attempt, 'load', 'start')
-      await loginWindow.loadURL(adapter.loginUrl)
-      if (this.attempts.get(attemptId) !== attempt)
-        throw new LoginOpeningError('CONTEXT_CHANGED')
-      this.report(attempt, 'load', 'finish')
+      this.beginPageNavigation(attempt, adapter.loginUrl)
+      // Opening the window must not wait for unrelated page subresources.
+      // Readiness and failures are observed through main-frame events below.
+      void loginWindow.loadURL(adapter.loginUrl).then(
+        () => {
+          if (this.attempts.get(attemptId) === attempt && attempt!.window === loginWindow)
+            this.report(attempt!, 'load', 'finish')
+        },
+        (error) => {
+          if (this.attempts.get(attemptId) === attempt && attempt!.window === loginWindow)
+            this.report(attempt!, 'load', 'error', diagnosticError(error))
+        },
+      )
     } catch (error) {
       this.report(attempt, 'load', 'error', diagnosticError(error))
       await this.close(attemptId, 'load_failed')
@@ -541,11 +593,24 @@ export class ManagementLoginService {
       finishPendingStatus = () => resolve(this.toStatus(attempt))
     })
     attempt.finishPendingStatus = finishPendingStatus
-    const pending = Promise.race([this.detectStatus(attemptId), ended])
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const deadlines = [this.detectStatus(attemptId), ended]
+    if (attempt.platform === 'douyin' && attempt.recovery) {
+      deadlines.push(new Promise((resolve) => {
+        timer = setTimeout(() => {
+          if (this.attempts.get(attemptId) === attempt && attempt.status === 'waiting') {
+            this.finishDetectionUncompleted(attempt, '本次店铺登录识别超时，原登录状态保留；请检查窗口后重试')
+          }
+          resolve(this.toStatus(attempt))
+        }, this.detectionTimeoutMs)
+      }))
+    }
+    const pending = Promise.race(deadlines)
     this.polls.set(attemptId, pending)
     try {
       return await pending
     } finally {
+      if (timer) clearTimeout(timer)
       if (this.polls.get(attemptId) === pending) this.polls.delete(attemptId)
       if (attempt.finishPendingStatus === finishPendingStatus)
         attempt.finishPendingStatus = undefined
@@ -563,39 +628,67 @@ export class ManagementLoginService {
     ) {
       const loginWindow = attempt.window
       let phase: 'detect' | 'capture' = 'detect'
+      if (!attempt.pageReady) {
+        attempt.message = '登录页面正在加载，请在窗口中完成登录'
+        return this.toStatus(attempt)
+      }
+      const navigationSequence = attempt.navigationSequence
+      const captureEpoch = attempt.captureEpoch
       try {
         const adapter = this.requireAdapter(attempt.platform)
         this.report(attempt, phase, 'start')
-        const detection = await adapter.detectLoginStatus(
-          loginWindow.webContents.session,
-          loginWindow.webContents.id,
-        )
+        if (attempt.platform === 'douyin' && attempt.recovery && attempt.unifiedLogin === undefined) {
+          attempt.unifiedLogin = this.createUnifiedLogin(
+            loginWindow,
+            adapter,
+            () => this.attempts.get(attemptId) === attempt && attempt.status === 'waiting' &&
+              attempt.captureEpoch === captureEpoch && attempt.window === loginWindow && !loginWindow.isDestroyed(),
+            () => attempt.navigationSequence,
+            () => attempt.pageReady,
+            (url) => this.beginPageNavigation(attempt, url),
+          )
+        }
+        const detection = attempt.unifiedLogin
+          ? await attempt.unifiedLogin.advance()
+          : await adapter.detectLoginStatus(loginWindow.webContents.session, loginWindow.webContents.id)
         if (
           this.attempts.get(attemptId) !== attempt ||
           attempt.status !== 'waiting' ||
+          attempt.captureEpoch !== captureEpoch ||
           attempt.window !== loginWindow ||
           loginWindow.isDestroyed()
         )
           return this.toStatus(attempt)
+        if (attempt.navigationSequence !== navigationSequence || !attempt.pageReady)
+          return this.toStatus(attempt)
         this.reportDetection(attempt, detection)
+        if (attempt.unifiedLogin && detection.requestFailed) {
+          this.finishDetectionUncompleted(attempt, '本次店铺登录验证未完成，原登录状态保留；请检查窗口后重试')
+          return this.toStatus(attempt)
+        }
         if (detection.readyForCapture) {
           phase = 'capture'
           this.report(attempt, phase, 'start')
-          const capturedSession = await adapter.captureSession(
+          let capturedSession = await adapter.captureSession(
             loginWindow.webContents.session,
             loginWindow.webContents.id,
             detection.identity,
+            attempt.unifiedLogin ? { includeOriginStorage: false } : undefined,
           )
           this.report(attempt, phase, 'finish')
           if (
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
+            attempt.captureEpoch !== captureEpoch ||
             attempt.window !== loginWindow ||
-            loginWindow.isDestroyed()
+            loginWindow.isDestroyed() ||
+            attempt.navigationSequence !== navigationSequence ||
+            !attempt.pageReady
           ) {
             capturedSession.payload.fill(0)
             return this.toStatus(attempt)
           }
+          if (attempt.unifiedLogin) capturedSession = requireMerchantIdentityValidation(capturedSession)
           let identity = detection.identity
           if (attempt.platform === 'pdd') {
             const fingerprint = sessionFingerprint(capturedSession)
@@ -653,8 +746,11 @@ export class ManagementLoginService {
           if (
             this.attempts.get(attemptId) !== attempt ||
             attempt.status !== 'waiting' ||
+            attempt.captureEpoch !== captureEpoch ||
             attempt.window !== loginWindow ||
-            loginWindow.isDestroyed()
+            loginWindow.isDestroyed() ||
+            attempt.navigationSequence !== navigationSequence ||
+            !attempt.pageReady
           ) {
             capturedSession.payload.fill(0)
             return this.toStatus(attempt)
@@ -676,8 +772,13 @@ export class ManagementLoginService {
           attempt.message = detection.message
         }
       } catch (error) {
+        if (attempt.captureEpoch !== captureEpoch) return this.toStatus(attempt)
         this.report(attempt, phase, 'error', diagnosticError(error))
         if (attempt.window !== loginWindow || loginWindow.isDestroyed()) {
+          return this.toStatus(attempt)
+        }
+        if (attempt.navigationSequence !== navigationSequence || !attempt.pageReady) {
+          attempt.message = '登录页面正在跳转，请继续在当前窗口操作'
           return this.toStatus(attempt)
         }
         attempt.status = 'failed'
@@ -815,6 +916,18 @@ export class ManagementLoginService {
     )
       throw new Error('本次登录验证次数已用尽，请取消后重新登录')
     const headers = await this.authorizedHeaders(attempt)
+    if (attempt.unifiedLogin) {
+      await loginDeadline(async (signal) => {
+        const metadata = await fetch(
+          this.backendUrl(`/api/v1/shops/${recovery.shopId}/session`),
+          { headers, signal },
+        )
+        if (!metadata.ok) throw new Error('商家后台验证能力未就绪，原登录状态保留')
+        const body = (await metadata.json()) as { merchant_identity_validation_supported?: unknown }
+        if (body?.merchant_identity_validation_supported !== true)
+          throw new Error('商家后台验证能力未就绪，原登录状态保留')
+      }, this.metadataTimeoutMs)
+    }
     if (
       this.attempts.get(attemptId) !== attempt ||
       attempt.status !== 'identified'
@@ -890,6 +1003,7 @@ export class ManagementLoginService {
     if (!attempt) return
     attempt.closeReason = reason
     this.report(attempt, 'close', 'request')
+    attempt.disposePageReadiness?.()
     attempt.disposePageDiagnostics?.()
     this.attempts.delete(attemptId)
     attempt.status = 'closed'
@@ -956,6 +1070,17 @@ export class ManagementLoginService {
     attempt.capturedSession = null
   }
 
+  private finishDetectionUncompleted(attempt: LoginAttempt, message: string): void {
+    attempt.captureEpoch++
+    attempt.unifiedLogin = undefined
+    attempt.identity = null
+    this.clearCapturedSession(attempt)
+    attempt.status = 'failed'
+    attempt.refreshFailure = { code: 'validation_incomplete', canContinue: true }
+    attempt.message = message
+    void this.releaseRecoveryLease(attempt)
+  }
+
   private finishCompletedAttempt(
     attempt: LoginAttempt,
     message: string,
@@ -965,6 +1090,7 @@ export class ManagementLoginService {
     attempt.rejectedCaptureFingerprint = null
     attempt.rejectedCaptureFailureCode = null
     attempt.refreshFailure = undefined
+    attempt.disposePageReadiness?.()
     attempt.disposePageDiagnostics?.()
     attempt.message = message
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
@@ -1057,6 +1183,7 @@ export class ManagementLoginService {
   }
 
   private readonly metadataTimeoutMs: number
+  private readonly detectionTimeoutMs: number
   private reportDetection(
     attempt: LoginAttempt,
     detection: PlatformLoginDetectionResult,
@@ -1114,6 +1241,68 @@ export class ManagementLoginService {
     )
   }
 
+  private beginPageNavigation(attempt: LoginAttempt, url: string): void {
+    attempt.pageReady = false
+    attempt.pageCommitted = false
+    attempt.pageNavigationUrl = url
+  }
+
+  private installPageReadiness(attempt: LoginAttempt, window: BrowserWindow): () => void {
+    const contents = window.webContents
+    let disposed = false
+    const started = (details: { isMainFrame: boolean; isSameDocument: boolean; url: string }) => {
+      if (disposed || !details.isMainFrame) return
+      attempt.navigationSequence = Math.min(10000, attempt.navigationSequence + 1)
+      if (!details.isSameDocument) this.beginPageNavigation(attempt, details.url)
+    }
+    const redirected = (details: { isMainFrame: boolean; url: string }) => {
+      if (!disposed && details.isMainFrame) attempt.pageNavigationUrl = details.url
+    }
+    const fail = () => {
+      if (disposed || attempt.status !== 'waiting') return
+      attempt.pageReady = false
+      attempt.status = 'failed'
+      attempt.message = '登录页面加载未完成，原登录状态保留'
+      this.clearCapturedSession(attempt)
+      void this.releaseRecoveryLease(attempt)
+      attempt.finishPendingStatus?.()
+    }
+    const committed = (_event: unknown, url: string, httpStatus: number) => {
+      if (disposed) return
+      attempt.pageNavigationUrl = url
+      if (httpStatus >= 400 && httpStatus <= 599) return fail()
+      attempt.pageCommitted = true
+    }
+    const ready = () => {
+      if (!disposed && attempt.pageCommitted && attempt.status === 'waiting') attempt.pageReady = true
+    }
+    const failed = (_event: unknown, code: number, _description: string, url: string, main: boolean) => {
+      if (disposed || !main || code === -3 || attempt.status !== 'waiting' ||
+        (attempt.pageNavigationUrl !== null && url !== attempt.pageNavigationUrl)) return
+      fail()
+    }
+    contents.on('did-start-navigation', started)
+    contents.on('did-redirect-navigation', redirected)
+    contents.on('did-navigate', committed)
+    contents.on('dom-ready', ready)
+    contents.on('did-fail-load', failed)
+    contents.on('did-fail-provisional-load', failed)
+    return () => {
+      if (disposed) return
+      disposed = true
+      for (const detach of [
+        () => contents.off('did-start-navigation', started),
+        () => contents.off('did-redirect-navigation', redirected),
+        () => contents.off('did-navigate', committed),
+        () => contents.off('dom-ready', ready),
+        () => contents.off('did-fail-load', failed),
+        () => contents.off('did-fail-provisional-load', failed),
+      ]) {
+        try { detach() } catch { /* Closing must still release the lease. */ }
+      }
+    }
+  }
+
   private installNavigationDiagnostics(
     attempt: LoginAttempt,
     window: BrowserWindow,
@@ -1125,10 +1314,6 @@ export class ManagementLoginService {
     const started = (details: { isMainFrame: boolean; url: string }) => {
       if (disposed) return
       if (details.isMainFrame) {
-        attempt.navigationSequence = Math.min(
-          10000,
-          attempt.navigationSequence + 1,
-        )
         scriptErrorCount = 0
       }
       this.report(attempt, 'load', 'start', {
@@ -1337,6 +1522,22 @@ export class LoginOpeningError extends Error {
   constructor(readonly code: string) {
     // Only this fixed safe marker crosses Electron's serialized error boundary.
     super(`SHOP_LOGIN_${code}`)
+  }
+}
+
+function requireMerchantIdentityValidation(captured: CapturedManagementSession): CapturedManagementSession {
+  try {
+    const value: unknown = JSON.parse(captured.payload.toString('utf8'))
+    if (typeof value !== 'object' || value === null || Array.isArray(value))
+      throw new Error('invalid')
+    return {
+      ...captured,
+      payload: Buffer.from(JSON.stringify({ ...value, merchantIdentityCheckRequired: true }), 'utf8'),
+    }
+  } catch {
+    throw new Error('商家后台验证未准备完成，原登录状态保留')
+  } finally {
+    captured.payload.fill(0)
   }
 }
 

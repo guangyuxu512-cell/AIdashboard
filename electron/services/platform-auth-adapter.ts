@@ -13,8 +13,14 @@ export interface PlatformLoginDetectionResult {
   identity: ManagementLoginIdentity | null
   readyForCapture: boolean
   message: string
+  requestFailed?: boolean
   pageContextAvailable?: boolean
   probes?: LoginAccountProbe[]
+}
+
+export interface MerchantIdentityResult {
+  status: 'confirmed' | 'unverified' | 'unavailable'
+  platformShopId?: string
 }
 
 export interface PlatformAuthAdapter {
@@ -25,9 +31,12 @@ export interface PlatformAuthAdapter {
     session: Session,
     webContentsId: number,
   ): Promise<PlatformLoginDetectionResult>
+  detectMerchantIdentity?(webContentsId: number): Promise<MerchantIdentityResult>
+  merchantCookieFingerprint?(session: Session): Promise<string>
   captureSession(
     session: Session,
     webContentsId: number,
     identity: ManagementLoginIdentity | null,
+    options?: { includeOriginStorage?: boolean },
   ): Promise<CapturedManagementSession>
 }

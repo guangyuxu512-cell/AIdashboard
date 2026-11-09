@@ -7,7 +7,11 @@ import { createRequire } from 'node:module'
 import type { Session } from 'electron'
 import type { DouyinPlatformAuthAdapter } from '../services/douyin-platform-auth-adapter'
 
-function adapter(fetch: (...args: unknown[]) => Promise<unknown>) {
+function adapter(
+  fetch: (...args: unknown[]) => Promise<unknown>,
+  location = { protocol: 'https:', hostname: 'fxg.jinritemai.com' },
+  onPageExecution?: () => void,
+) {
   const sourcePath = path.join(
     __dirname,
     '../services/douyin-platform-auth-adapter.js',
@@ -18,11 +22,20 @@ function adapter(fetch: (...args: unknown[]) => Promise<unknown>) {
   } = {}
   const contents = {
     isDestroyed: () => false,
-    executeJavaScript: (script: string) =>
-      vm.runInNewContext(script, { fetch, URL, Date }),
+    executeJavaScript: () => { throw new Error('WebContents execution must not be used') },
+    mainFrame: {
+      executeJavaScript: (script: string) => {
+        onPageExecution?.()
+        return vm.runInNewContext(script, {
+          fetch, URL, Date, location: { ...location, origin: `${location.protocol}//${location.hostname}` }, AbortSignal,
+          window: { localStorage: emptyStorage, sessionStorage: emptyStorage },
+        })
+      },
+    },
   }
   vm.runInNewContext(readFileSync(sourcePath, 'utf8'), {
     exports,
+    Buffer,
     require: (name: string) =>
       name === 'electron'
         ? { webContents: { fromId: () => contents } }
@@ -30,6 +43,38 @@ function adapter(fetch: (...args: unknown[]) => Promise<unknown>) {
   })
   return new exports.DouyinPlatformAuthAdapter!()
 }
+const emptyStorage = { length: 0, key: () => null, getItem: () => null }
+
+test('merchant identity probe uses only the fixed same-origin endpoint and requires an exact ID', async () => {
+  const paths: unknown[] = []
+  const client = adapter(async (path) => {
+    paths.push(path)
+    return { ok: true, json: async () => ({ code: 0, data: { id: 'shop-a' } }) }
+  })
+  const result = await client.detectMerchantIdentity(42)
+  assert.equal(result.status, 'confirmed')
+  assert.equal(result.platformShopId, 'shop-a')
+  assert.deepEqual(paths, ['/common/index/index'])
+})
+
+test('unknown merchant code and unsafe numeric identity never become a confirmed shop', async () => {
+  for (const body of [
+    { code: 10008, data: {} },
+    { code: 0, data: { id: 9223372036854776000 } },
+    { code: '0', data: { id: 'shop-a' } },
+  ]) {
+    const client = adapter(async () => ({ ok: true, json: async () => body }))
+    assert.equal((await client.detectMerchantIdentity(42)).status, 'unverified')
+  }
+})
+
+test('merchant identity never probes from an unrelated origin', async () => {
+  let requests = 0
+  const client = adapter(async () => { requests++; throw new Error('unexpected') },
+    { protocol: 'https:', hostname: 'example.invalid' })
+  assert.equal((await client.detectMerchantIdentity(42)).status, 'unverified')
+  assert.equal(requests, 0)
+})
 const loginSession = {
   cookies: {
     get: async () => [
@@ -37,6 +82,32 @@ const loginSession = {
     ],
   },
 } as unknown as Session
+
+test('session capture uses the main-frame fixed script and preserves its origin storage', async () => {
+  const client = adapter(async () => { throw new Error('unexpected request') })
+  const captured = await client.captureSession(loginSession, 42, {
+    platform: 'douyin', platformShopId: 'shop-a', shopDisplayName: 'fixture',
+  })
+  const payload = JSON.parse(captured.payload.toString('utf8')) as { cookies: unknown[]; storage: { origin: string } }
+  assert.equal(payload.cookies.length, 1)
+  assert.equal(payload.storage.origin, 'https://fxg.jinritemai.com')
+  captured.payload.fill(0)
+})
+
+test('existing unified login captures platform cookies without reading merchant page storage', async () => {
+  let executions = 0
+  const client = adapter(async () => { throw new Error('unexpected request') },
+    undefined, () => { executions++ })
+  const captured = await client.captureSession(loginSession, 42, {
+    platform: 'douyin', platformShopId: 'shop-a', shopDisplayName: 'fixture',
+  }, { includeOriginStorage: false })
+  const payload = JSON.parse(captured.payload.toString('utf8')) as Record<string, unknown>
+  assert.equal(executions, 0)
+  assert.equal('storage' in payload, false)
+  assert.equal((payload.cookies as unknown[]).length, 1)
+  assert.ok(captured.payload.length < 4096)
+  captured.payload.fill(0)
+})
 
 test('existing fixed probe records one successful request without adding requests or persisting identity in observations', async () => {
   let requests = 0
@@ -70,10 +141,20 @@ test('an existing failed fetch stops at the original point, records failure not 
   const result = await client.detectLoginStatus(loginSession, 42)
   assert.equal(requests, 1)
   assert.equal(result.readyForCapture, false)
+  assert.equal(result.requestFailed, true)
   assert.equal(result.probes?.[0]?.httpStatus, null)
   assert.equal(result.probes?.[0]?.requestFailed, true)
   assert.ok(!JSON.stringify(result.probes).includes('private-'))
   assert.ok(!JSON.stringify(result.probes).includes('cors'))
+})
+
+test('a temporary HTTP service error is a failed request while an unauthenticated page may keep waiting', async () => {
+  for (const [status, failed] of [[503, true], [429, true], [401, false], [403, false]] as const) {
+    const client = adapter(async () => ({ status, text: async () => '{}' }))
+    const result = await client.detectLoginStatus(loginSession, 42)
+    assert.equal(result.readyForCapture, false)
+    assert.equal(result.requestFailed, failed)
+  }
 })
 
 for (const [scenario, body, status] of [
