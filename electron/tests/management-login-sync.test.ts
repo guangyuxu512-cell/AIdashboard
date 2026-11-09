@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { EventEmitter } from 'node:events'
-import type { BrowserWindow, Session } from 'electron'
+import type {
+  BrowserWindow,
+  Menu,
+  MenuItemConstructorOptions,
+  Session,
+} from 'electron'
 import {
   ManagementLoginService,
   type ManagementLoginDiagnostic,
@@ -39,6 +44,9 @@ const loginSession = {
 class WindowStub extends EventEmitter {
   destroyed = false
   focused = 0
+  loadedUrls: string[] = []
+  menuSetCount = 0
+  menuBarVisible = false
   loadFailure: Error | null = null
   loading = false
   webContents = Object.assign(new EventEmitter(), {
@@ -58,8 +66,15 @@ class WindowStub extends EventEmitter {
   focus() {
     this.focused++
   }
-  async loadURL() {
+  setMenu() {
+    this.menuSetCount++
+  }
+  setMenuBarVisibility(visible: boolean) {
+    this.menuBarVisible = visible
+  }
+  async loadURL(url: string) {
     if (this.loadFailure) throw this.loadFailure
+    this.loadedUrls.push(url)
   }
   close() {
     if (!this.destroyed) {
@@ -75,6 +90,7 @@ function setup(
     load?: Error
     detection?: Error
     capture?: Error
+    menu?: Error
     onDiagnostic?: (record: ManagementLoginDiagnostic) => void
     metadataTimeoutMs?: number
     detectionResult?: PlatformLoginDetectionResult
@@ -82,6 +98,8 @@ function setup(
 ) {
   const windows: WindowStub[] = []
   const buffers: Buffer[] = []
+  const merchantMenus: MenuItemConstructorOptions[][] = []
+  const merchantNavigationFailures: BrowserWindow[] = []
   let captures = 0
   const adapter: PlatformAuthAdapter = {
     platformCode: 'douyin',
@@ -117,6 +135,14 @@ function setup(
       return window as unknown as BrowserWindow
     },
     fromPartition: () => loginSession,
+    createMerchantMenu(template) {
+      if (failures?.menu) throw failures.menu
+      merchantMenus.push(template)
+      return {} as Menu
+    },
+    reportMerchantNavigationFailure(window) {
+      merchantNavigationFailures.push(window)
+    },
     onDiagnostic: failures?.onDiagnostic,
     metadataTimeoutMs: failures?.metadataTimeoutMs,
     profileMappingStore: profileMappingStore ?? {
@@ -131,6 +157,8 @@ function setup(
     adapter,
     windows,
     buffers,
+    merchantMenus,
+    merchantNavigationFailures,
     captures: () => captures,
     parent: new WindowStub() as unknown as BrowserWindow,
   }
@@ -1434,12 +1462,39 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     assert.equal(second.identity, null)
     assert.equal(state.captures(), 1)
     assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal(state.merchantMenus.length, 0)
     await Promise.all([
       state.service.refresh(opened.attemptId),
       state.service.refresh(opened.attemptId),
     ])
     assert.equal(saves, 1)
     assert.equal(state.windows[0]!.destroyed, false)
+    assert.equal(state.merchantMenus.length, 1)
+    assert.equal(state.windows[0]!.menuSetCount, 1)
+    assert.equal(state.windows[0]!.menuBarVisible, true)
+    assert.deepEqual(state.windows[0]!.loadedUrls, [
+      'https://test.example/login',
+    ])
+    assert.equal(state.merchantMenus[0]![0]!.label, '抖店商家后台')
+    const submenu = state.merchantMenus[0]![0]!.submenu
+    assert.ok(Array.isArray(submenu))
+    assert.equal(submenu[0]!.label, '打开商品发布页')
+    const navigate = submenu[0]!.click as () => void
+    navigate()
+    await nextTurn()
+    assert.equal(
+      state.windows[0]!.loadedUrls.at(-1),
+      'https://fxg.jinritemai.com/ffa/g/create',
+    )
+    assert.equal(state.captures(), 1)
+    assert.equal(saves, 1)
+    state.windows[0]!.loadFailure = new Error('isolated navigation failure')
+    navigate()
+    await nextTurn()
+    assert.equal(state.merchantNavigationFailures.length, 1)
+    assert.equal(state.captures(), 1)
+    assert.equal(saves, 1)
+    state.windows[0]!.loadFailure = null
     assert.ok(state.buffers[0]!.every((value) => value === 0))
     await assert.rejects(state.service.getStatus(opened.attemptId), /不存在/)
     assert.equal(
@@ -1453,6 +1508,10 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
     assert.equal(saves, 1)
     assert.equal(state.captures(), 1)
     state.windows[0]!.close()
+    const navigationCount = state.windows[0]!.loadedUrls.length
+    navigate()
+    await nextTurn()
+    assert.equal(state.windows[0]!.loadedUrls.length, navigationCount)
     assert.equal(
       await state.service.focusShop(state.parent, {
         shopId,
@@ -1468,6 +1527,38 @@ test('existing shop: single capture/save, retain browsing without lease, focus o
       null,
     )
     assert.equal(state.captures(), 2)
+  } finally {
+    await state.service.closeAll()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('merchant menu failure does not undo an already successful shop synchronization', async () => {
+  const originalFetch = globalThis.fetch
+  let saves = 0
+  globalThis.fetch = async (_url, init) => {
+    if (init?.method === 'POST') saves++
+    return Response.json({
+      shop_id: shopId,
+      status: 'valid',
+      version: 4,
+      validated_at: '2026-10-11T09:00:01Z',
+      cookie_updates_applied: 0,
+      used_cached_validation: false,
+    })
+  }
+  const state = setup(undefined, { menu: new Error('isolated menu failure') })
+  try {
+    const opened = await state.service.open(state.parent, input)
+    assert.equal(
+      (await state.service.getStatus(opened.attemptId)).status,
+      'identified',
+    )
+    const result = await state.service.refresh(opened.attemptId)
+    assert.equal(result.status, 'valid')
+    assert.equal(saves, 1)
+    assert.equal(state.captures(), 1)
+    assert.equal(state.windows[0]!.destroyed, false)
   } finally {
     await state.service.closeAll()
     globalThis.fetch = originalFetch

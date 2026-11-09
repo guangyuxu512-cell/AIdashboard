@@ -1,7 +1,10 @@
 import {
   app,
   BrowserWindow,
+  dialog,
+  Menu,
   session,
+  type MenuItemConstructorOptions,
   type Session,
   type BrowserWindowConstructorOptions,
 } from 'electron'
@@ -88,6 +91,18 @@ const PDD_IDENTITY_RETRY_INTERVAL_MS = 5_000
 export const LOGIN_METADATA_TIMEOUT_MS = 15_000
 const LOGIN_OPEN_TIMEOUT_MS = 30_000
 const MAX_REFRESH_ATTEMPTS = 3
+const DOUYIN_MERCHANT_CREATE_URL = 'https://fxg.jinritemai.com/ffa/g/create'
+
+function reportMerchantNavigationFailure(window: BrowserWindow): void {
+  void dialog
+    .showMessageBox(window, {
+      type: 'error',
+      message: '无法打开商品发布页',
+      detail: '请检查网络连接后重试。',
+      buttons: ['确定'],
+    })
+    .catch(() => {})
+}
 
 interface OnboardingApiResponse {
   shop: {
@@ -144,6 +159,12 @@ export class ManagementLoginService {
     options: BrowserWindowConstructorOptions,
   ) => BrowserWindow
   private readonly fromPartition: (partition: string) => Session
+  private readonly createMerchantMenu: (
+    template: MenuItemConstructorOptions[],
+  ) => Menu
+  private readonly reportMerchantNavigationFailure: (
+    window: BrowserWindow,
+  ) => void
   private readonly backendBaseUrl: string
   private readonly allowDevTools: boolean
   private readonly profileMappingStore: ManagementLoginProfileMappingStore
@@ -162,6 +183,8 @@ export class ManagementLoginService {
     profileMappingStore?: ManagementLoginProfileMappingStore
     createWindow?: (options: BrowserWindowConstructorOptions) => BrowserWindow
     fromPartition?: (partition: string) => Session
+    createMerchantMenu?: (template: MenuItemConstructorOptions[]) => Menu
+    reportMerchantNavigationFailure?: (window: BrowserWindow) => void
     adapters?: Map<ManagementLoginPlatform, PlatformAuthAdapter>
     onDiagnostic?: (record: LoginDiagnostic) => void
     metadataTimeoutMs?: number
@@ -179,6 +202,12 @@ export class ManagementLoginService {
     this.fromPartition =
       options?.fromPartition ??
       ((partition) => session.fromPartition(partition, { cache: true }))
+    this.createMerchantMenu =
+      options?.createMerchantMenu ??
+      ((template) => Menu.buildFromTemplate(template))
+    this.reportMerchantNavigationFailure =
+      options?.reportMerchantNavigationFailure ??
+      reportMerchantNavigationFailure
     if (options?.adapters) this.adapters = options.adapters
     this.profileMappingStore =
       options?.profileMappingStore ??
@@ -967,6 +996,47 @@ export class ManagementLoginService {
     attempt.refreshFailure = undefined
     attempt.disposePageDiagnostics?.()
     attempt.message = message
+    // Add the fixed merchant entry only after a successful existing-shop sync.
+    // Before then the identity probe must remain on its original platform page.
+    const loginWindow = attempt.window
+    if (
+      retainWindow &&
+      attempt.platform === 'douyin' &&
+      loginWindow &&
+      !loginWindow.isDestroyed()
+    ) {
+      try {
+        const menu = this.createMerchantMenu([
+          {
+            label: '抖店商家后台',
+            submenu: [
+              {
+                label: '打开商品发布页',
+                click: () => {
+                  if (!loginWindow.isDestroyed()) {
+                    void loginWindow
+                      .loadURL(DOUYIN_MERCHANT_CREATE_URL)
+                      .catch(() => {
+                        if (!loginWindow.isDestroyed()) {
+                          try {
+                            this.reportMerchantNavigationFailure(loginWindow)
+                          } catch {
+                            // Failure feedback must not affect the saved sync.
+                          }
+                        }
+                      })
+                  }
+                },
+              },
+            ],
+          },
+        ])
+        loginWindow.setMenu(menu)
+        loginWindow.setMenuBarVisibility(true)
+      } catch {
+        // A nonessential menu failure cannot undo an already successful sync.
+      }
+    }
     if (!retainWindow && attempt.window && !attempt.window.isDestroyed()) {
       attempt.systemCloseRequested = true
       attempt.closeReason = 'completed_onboarding'
