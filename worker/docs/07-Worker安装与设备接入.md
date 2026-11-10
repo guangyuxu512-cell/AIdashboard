@@ -20,7 +20,7 @@ dist/ecommerce-worker-<version>-win-x64.zip
 
 发行构建必须提供 32 字节 Ed25519 公钥的 Base64 文件；文件名固定为 `capability-public-key.txt`。测试构建使用独立合成公钥；签名私钥只放受保护的发布位置，绝不打入安装包。通用 ZIP 只包含 Worker EXE/runtime、公钥、控制脚本、README 和版本文件；不包含 Frontend、Electron、Backend、tests、Python 开发虚拟环境、数据库配置、SSH Key、Device ID、Device Token、Credential 或 Cookie。
 
-能力包沿用 `worker/tools/publish_capability.py` 离线签发。使用受保护的正式私钥文件、严格递增的 `--sequence`、能力入口 `capability.py` 和最终 RPA 发行包中 `resources/listing-worker` **整目录**的 SHA-256，先向独立受保护 staging 输出。不得使用 Integration 测试密钥或中间构建目录摘要；需要兼容多个 RPA 版本时，通过重复的 `--rpa-helper-sha256` 列全仍受信任的摘要。上线前用发行公钥验证清单签名、包摘要和 RPA 摘要，并确认 Worker 包内公钥与之匹配。Backend 只读挂载完整签发结果，不接触私钥。
+能力包沿用 `worker/tools/publish_capability.py` 离线签发。使用受保护的正式私钥文件、严格递增的 `--sequence`、能力入口 `capability.py`，以及用 `worker/app/rpa_session_bridge.py` 中的 `helper_tree_digest` 对最终 RPA 发行包 `resources/listing-worker` **整目录**计算出的摘要，先向独立受保护 staging 输出。不得使用 Integration 测试密钥、中间构建目录摘要或单个 EXE 的哈希；需要兼容多个 RPA 版本时，通过重复的 `--rpa-helper-sha256` 列全仍受信任的摘要。上线前用发行公钥验证清单签名、包摘要和 RPA 摘要，并确认 Worker 包内公钥与之匹配。Backend 只读挂载完整签发结果，不接触私钥。
 
 发布新版本前复制并保留原完整发布目录及回滚记录，在 staging 中完成签发和校验，再切换 Backend 使用的完整目录。工具分别原子替换清单和签名文件，两者并非整体原子；不要在正在服务的目录中直接覆盖，否则中断可能使发布清单暂时不可验证。Worker 会保留仍完整有效的旧能力，下次检查重试；已有损坏的旧文件不会被当作可信能力执行。
 
