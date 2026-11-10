@@ -21,6 +21,9 @@ from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInval
 from app.integrations.douyin_signer.schemas import DouyinSignResult
 
 
+pytestmark = pytest.mark.integration
+
+
 class StubAuthorizer:
     def __init__(self, grant):
         self.grant = grant
