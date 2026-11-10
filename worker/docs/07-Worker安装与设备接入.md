@@ -9,7 +9,7 @@
 开发机在项目根目录执行：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-worker.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-worker.ps1 -CapabilityPublicKeyFile <受信位置>\capability-public-key.txt
 ```
 
 脚本依次 clean、pytest、PyInstaller `onedir`、组装并生成：
@@ -18,7 +18,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-worker.ps1
 dist/ecommerce-worker-<version>-win-x64.zip
 ```
 
-通用 ZIP 只包含 Worker EXE/runtime、控制脚本、README 和版本文件；不包含 Frontend、Electron、Backend、tests、Python 开发虚拟环境、数据库配置、SSH Key、Device ID、Device Token、Credential 或 Cookie。
+发行构建必须提供 32 字节 Ed25519 公钥的 Base64 文件；文件名固定为 `capability-public-key.txt`。测试构建使用独立合成公钥；签名私钥只放受保护的发布位置，绝不打入安装包。通用 ZIP 只包含 Worker EXE/runtime、公钥、控制脚本、README 和版本文件；不包含 Frontend、Electron、Backend、tests、Python 开发虚拟环境、数据库配置、SSH Key、Device ID、Device Token、Credential 或 Cookie。
 
 ## 第二台电脑首次接入
 
@@ -106,7 +106,7 @@ Worker 进程另以 `Global\\EcommerceAIWorker-<device_id>` Windows Mutex 保证
 - `yingdao.discover`（通过 6.3.6 当前会话刷新账号与云端应用 Inventory）
 - `yingdao.app.run`（按 App ID 和经 Backend Schema 校验后的参数创建真实影刀运行）
 
-PyInstaller 冻结环境中的 Python Skill 通过同一 EXE 的内部 `--skill-runner` 入口执行，Backend 仍只能下发已注册 Skill ID，不能下发任意命令或路径。影刀运行继续通过现有 Task、Lease、Runtime Event 与 tasklog 链完成；当前不提供 Windows Service、自动更新、浏览器登录或动态 Skill 下载。
+PyInstaller 冻结环境中的内置 Python Skill 通过同一 EXE 的内部 `--skill-runner` 入口执行。经发布签名的能力包在 Worker 空闲时自动更新，只能以已验证的 Skill ID 和固定入口运行；Backend 不能下发任意命令或路径。RPA 店铺发现只读取同用户本机资料，helper 整树摘要必须在签名清单内。能力包更新不等于 Worker 底座自动升级；当前仍不提供 Windows Service 或自动登录。
 
 ## 掉线与恢复
 

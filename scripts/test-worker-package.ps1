@@ -94,7 +94,7 @@ function Wait-Task([string]$TaskId) {
 
 try {
     if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {
-        throw 'Worker ZIP is missing. Run scripts/build-worker.ps1 first.'
+        throw 'Worker ZIP is missing. Run scripts/build-worker.ps1 with -CapabilityPublicKeyFile first.'
     }
     if (-not $PublicServerUrl -and $null -ne (Get-NetTCPConnection -State Listen -LocalPort $LocalPort -ErrorAction SilentlyContinue)) {
         throw "Local test port $LocalPort is already in use."

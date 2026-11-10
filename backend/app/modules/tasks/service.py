@@ -844,6 +844,19 @@ class TaskService:
         )
         if task is None:
             self.session.rollback()
+            # The server may have committed the terminal while its response
+            # was lost.  Accept an identical replay from the same device;
+            # different results and expired/LOST tasks remain conflicts.
+            existing = self.repository.get(task_id)
+            if (
+                existing is not None
+                and existing.target_device_id == principal.device_id
+                and existing.status == status.value
+                and existing.result_json == result
+                and existing.error_code == error_code
+                and existing.error_message == error_message
+            ):
+                return existing
             raise TaskStateConflictError()
         self.session.commit()
         return task

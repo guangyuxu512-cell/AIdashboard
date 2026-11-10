@@ -1,5 +1,7 @@
 param(
-    [switch]$SkipTests
+    [switch]$SkipTests,
+    [Parameter(Mandatory = $true)]
+    [string]$CapabilityPublicKeyFile
 )
 
 Set-StrictMode -Version Latest
@@ -27,6 +29,21 @@ function Remove-VerifiedProjectChild([string]$Path) {
 
 if (-not (Test-Path -LiteralPath $workerPython)) {
     throw 'Worker Python environment is missing.'
+}
+
+if (-not (Test-Path -LiteralPath $CapabilityPublicKeyFile -PathType Leaf)) {
+    throw 'Capability signing public key file is required for Worker release builds.'
+}
+$capabilityPublicKeyPath = (Resolve-Path -LiteralPath $CapabilityPublicKeyFile).ProviderPath
+if ([System.IO.Path]::GetFileName($capabilityPublicKeyPath) -ne 'capability-public-key.txt') {
+    throw 'Capability public key file must be named capability-public-key.txt.'
+}
+try {
+    $capabilityPublicKey = [Convert]::FromBase64String([System.IO.File]::ReadAllText($capabilityPublicKeyPath).Trim())
+    if ($capabilityPublicKey.Length -ne 32) { throw 'Invalid key length.' }
+}
+catch {
+    throw 'Capability signing public key must be a base64 encoded 32-byte Ed25519 public key.'
 }
 
 $version = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
@@ -67,6 +84,7 @@ if (-not $SkipTests) {
     --workpath $pyInstallerWork `
     --specpath $buildRoot `
     --paths $workerRoot `
+    --add-data "${capabilityPublicKeyPath};." `
     (Join-Path $workerRoot 'app\__main__.py')
 if ($LASTEXITCODE -ne 0) {
     throw 'PyInstaller build failed.'

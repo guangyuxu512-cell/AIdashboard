@@ -44,6 +44,14 @@ class ApplicationSessionBusyError(AppError):
     status_code = 409
 
 
+class DeviceShopGrant(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    device_id: UUID
+    local_shop_id: str = Field(min_length=1, max_length=160)
+    platform_shop_id: str = Field(min_length=1, max_length=160)
+
+
 class ClientGrant(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -51,12 +59,35 @@ class ClientGrant(BaseModel):
     token_sha256: str = Field(pattern=r"^[0-9a-f]{64}$", repr=False)
     authorized_by_user_id: UUID
     enabled: StrictBool
-    shop_ids: tuple[UUID, ...] = Field(min_length=1, max_length=500)
+    shop_ids: tuple[UUID, ...] = Field(default=(), max_length=500)
+    # Explicit opt-in: a historical shop grant never grants Worker access.
+    worker_precheck_enabled: StrictBool = False
+    device_ids: tuple[UUID, ...] = Field(default=(), max_length=500)
+    # Each entry explicitly authorizes this application's prechecks for all
+    # currently mapped shops on that device; legacy grants default to empty.
+    all_mapped_shops: tuple[UUID, ...] = Field(default=(), max_length=500)
+    device_shops: tuple[DeviceShopGrant, ...] = Field(default=(), max_length=500)
 
     @model_validator(mode="after")
     def unique_shop_ids(self) -> ClientGrant:
         if len(set(self.shop_ids)) != len(self.shop_ids):
             raise ValueError("duplicate shop grants")
+        if len(set(self.device_ids)) != len(self.device_ids):
+            raise ValueError("duplicate device grants")
+        if not self.shop_ids and not (self.worker_precheck_enabled and self.device_ids):
+            raise ValueError("at least one explicit access grant is required")
+        if self.device_ids and not self.worker_precheck_enabled:
+            raise ValueError("device grants require Worker precheck opt-in")
+        if self.device_shops and not self.worker_precheck_enabled:
+            raise ValueError("device shop grants require Worker precheck opt-in")
+        if len(set(self.all_mapped_shops)) != len(self.all_mapped_shops):
+            raise ValueError("duplicate all-shop device grants")
+        if self.all_mapped_shops and (not self.worker_precheck_enabled
+                or any(device_id not in self.device_ids for device_id in self.all_mapped_shops)):
+            raise ValueError("all-shop grants require explicitly authorized devices")
+        keys = [(shop.device_id, shop.local_shop_id) for shop in self.device_shops]
+        if len(keys) != len(set(keys)) or any(shop.device_id not in self.device_ids for shop in self.device_shops):
+            raise ValueError("duplicate or unauthorized device shop grants")
         return self
 
 
@@ -96,6 +127,16 @@ class ApplicationAuthenticator:
             raise ApplicationAuthenticationError()
         if not re.fullmatch(r"[A-Za-z0-9_-]{32,256}", token):
             raise ApplicationAuthenticationError()
+        grant = self.current_grant(client_id)
+        presented_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
+        if not hmac.compare_digest(presented_hash, grant.token_sha256):
+            raise ApplicationAuthenticationError()
+        return ApplicationPrincipal(grant=grant, token=token)
+
+    def current_grant(self, client_id: str) -> ClientGrant:
+        """Internal recheck for an already-authenticated task, not login."""
+        if not self.enabled or self.path is None:
+            raise ApplicationSessionUnavailableError()
         try:
             with self.path.open("rb") as config_file:
                 content = config_file.read(1024 * 1024 + 1)
@@ -104,13 +145,10 @@ class ApplicationAuthenticator:
             config = ClientConfiguration.model_validate_json(content)
         except (OSError, ValueError, ValidationError):
             raise ApplicationSessionUnavailableError() from None
-        presented_hash = hashlib.sha256(token.encode("ascii")).hexdigest()
         grant = next((item for item in config.clients if item.client_id == client_id), None)
-        if grant is None or not grant.enabled or not hmac.compare_digest(
-            presented_hash, grant.token_sha256,
-        ):
+        if grant is None or not grant.enabled:
             raise ApplicationAuthenticationError()
-        return ApplicationPrincipal(grant=grant, token=token)
+        return grant
 
     def reauthorize(self, principal: ApplicationPrincipal, shop_id: UUID) -> ClientGrant:
         current = self.authenticate(principal.grant.client_id, principal.token).grant
