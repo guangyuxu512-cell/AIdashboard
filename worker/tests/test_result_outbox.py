@@ -1,5 +1,10 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+import json
+from pathlib import Path
+import subprocess
+import sys
+import time
 from uuid import uuid4
 
 import httpx
@@ -165,3 +170,70 @@ def test_explicit_conflict_is_preserved_without_automatic_retry(tmp_path):
     assert client.calls == 1
     assert worker.result_outbox.pending() == []
     assert (tmp_path / "result-outbox" / "rejected" / f"{item.task_id}.json").exists()
+
+
+def test_result_survives_real_process_termination_after_delivery_failure(tmp_path):
+    """Kill an isolated Worker after a simulated connection loss, then restart it."""
+    program = tmp_path / "isolated_worker.py"
+    program.write_text('''\
+import asyncio
+from datetime import UTC, datetime, timedelta
+import json
+from pathlib import Path
+import sys
+from uuid import UUID, uuid4
+import httpx
+from app.config import WorkerSettings
+from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
+from app.worker import Worker
+
+mode, root, task_id = sys.argv[1], Path(sys.argv[2]), UUID(sys.argv[3])
+class Executor:
+    async def execute(self, task):
+        with (root / "executions.txt").open("a", encoding="utf-8") as stream:
+            stream.write("executed\\n")
+        return ExecutionResult(status=ExecutionStatus.SUCCESS, result={"items": ["synthetic"]})
+class Client:
+    async def heartbeat(self, **kwargs):
+        pass
+    async def complete(self, task_id, result):
+        if mode == "first":
+            raise httpx.ConnectError("simulated loss")
+        (root / "receipt.json").write_text(json.dumps(result), encoding="utf-8")
+settings = WorkerSettings(server_url="https://example.test", device_id=uuid4(),
+    device_token="synthetic-token", runtime_root=root / "runtime", lease_renew_interval_seconds=60)
+worker = Worker(settings, Client(), Executor())
+async def run():
+    if mode == "first":
+        task = WorkerTask(task_id=task_id, skill_id="system.echo", input={},
+            lease_until=datetime.now(UTC) + timedelta(minutes=1))
+        await worker._execute_task(task)
+        (root / "ready").write_text("ready", encoding="ascii")
+        await asyncio.sleep(60)
+    else:
+        assert await worker._deliver_pending_terminals()
+asyncio.run(run())
+''', encoding="utf-8")
+    task_id = str(uuid4())
+    worker_root = Path(__file__).resolve().parents[1]
+    command = [sys.executable, str(program), "first", str(tmp_path), task_id]
+    process = subprocess.Popen(command, cwd=worker_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        deadline = time.monotonic() + 15
+        while not (tmp_path / "ready").exists() and process.poll() is None and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert (tmp_path / "ready").exists(), "isolated Worker did not persist its result"
+        assert (tmp_path / "runtime/result-outbox" / f"{task_id}.json").is_file()
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.communicate(timeout=10)
+
+    restarted = subprocess.run([sys.executable, str(program), "second", str(tmp_path), task_id],
+                               cwd=worker_root, capture_output=True, timeout=15,
+                               creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    assert restarted.returncode == 0
+    assert json.loads((tmp_path / "receipt.json").read_text(encoding="utf-8")) == {"items": ["synthetic"]}
+    assert (tmp_path / "executions.txt").read_text(encoding="utf-8").splitlines() == ["executed"]
+    assert not (tmp_path / "runtime/result-outbox" / f"{task_id}.json").exists()
