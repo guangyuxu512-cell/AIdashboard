@@ -1,4 +1,4 @@
-Ecommerce AI Worker 0.4.10 for Windows
+Ecommerce AI Worker 0.5.0 for Windows
 ======================================
 
 普通首次接入
@@ -14,7 +14,7 @@ Ecommerce AI Worker 0.4.10 for Windows
 - 直接替换程序文件并双击 ecommerce-worker.exe。
 - 自动复用 %LOCALAPPDATA%\EcommerceAIWorker\config.json 中原 Device ID、Server 和 DPAPI Token；升级不会覆盖已有 Server。
 - 不会创建新的 Device UUID，也不要求重新签发 Token。
-- 服务器发布不会自动更新执行电脑的 Worker；两项版本必须分别记录和验收。
+- 服务器可向当前 Worker 自动发布已签名能力包；Worker 底座本身不会因此自动升级，两项版本分别记录和验收。
 
 窗口与后台进程
 - GUI 提供“状态 / 配置 / 诊断”三个页签。
@@ -23,7 +23,7 @@ Ecommerce AI Worker 0.4.10 for Windows
 - 高级运维 CMD 入口继续保留，但普通首次配置不依赖 PowerShell。
 
 ShadowBot 策略
-- Worker 0.4.10 固定支持 ShadowBot 6.3.6。
+- Worker 0.5.0 固定支持 ShadowBot 6.3.6。
 - Task 图片会先下载并校验到配置的 images 目录，全部成功后才启动执行器。
 - 当前会话、云端应用与执行均来自 6.3.6 本地会话接口。
 - 若其他版本正在运行，Worker 不结束它，也不启动第二个版本，只报告版本不支持。
@@ -46,4 +46,4 @@ ShadowBot 策略
 - yingdao.app.run
 - yingdao.test（仅显式配置无副作用测试应用时使用）
 
-本版本不包含 Windows Service、自动更新、设备配对码或自动登录 ShadowBot。
+本版本不包含 Windows Service、Worker 底座自动更新、设备配对码或自动登录 ShadowBot。

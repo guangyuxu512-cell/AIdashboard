@@ -44,6 +44,21 @@ server {
         proxy_set_header X-Forwarded-Proto https;
     }
 
+    # This authenticated request carries a shop Session solely for signing.
+    # Stream it directly to Backend so it is not written to a proxy body file,
+    # and preserve the actual TLS scheme rather than the inner proxy's HTTP hop.
+    location ~ "^/api/v1/worker/tasks/[^/]+/precheck-sign/?$" {
+        access_log off;
+        proxy_request_buffering off;
+        proxy_buffering off;
+        proxy_pass http://127.0.0.1:${BACKEND_BIND_PORT};
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https;
+    }
+
     # ProductDataCenter owns these files on NAS.  Expose only its immutable
     # image-download prefix; the adjacent RPA and management APIs stay private.
     location ^~ /rpa/v1/product-images/ {

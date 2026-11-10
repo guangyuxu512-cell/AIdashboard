@@ -208,3 +208,45 @@ def test_request_log_never_records_body_cookie_or_authorization() -> None:
     assert "authorization-secret" not in rendered
     assert "cookie-secret" not in rendered
     assert "password-secret" not in rendered
+
+
+def test_precheck_sign_logs_do_not_include_session_or_signing_response(monkeypatch) -> None:
+    from app.core.database import get_database_session
+    from app.modules.workers import precheck_api
+    from app.modules.workers.auth import get_worker_principal
+    from app.modules.workers.service import WorkerPrincipal
+
+    task_id, device_id = uuid4(), uuid4()
+    application = create_app()
+    application.dependency_overrides[precheck_api._enabled] = lambda: None
+    application.dependency_overrides[precheck_api._precheck_authenticator] = lambda: object()
+    application.dependency_overrides[get_database_session] = lambda: object()
+    application.dependency_overrides[get_worker_principal] = lambda: WorkerPrincipal(device_id=device_id)
+
+    def sign(_session, _auth, _signer, actual_device, actual_task, payload):
+        assert actual_device == device_id and actual_task == task_id
+        assert payload.cookie.get_secret_value() == "session=synthetic-cookie-secret"
+        return {"url": "https://example.test/?a_bogus=synthetic-signature-secret", "body": "{}"}
+
+    monkeypatch.setattr(precheck_api, "sign_current_precheck", sign)
+    handler = _capture_request_log()
+    try:
+        async def send():
+            async with AsyncClient(transport=ASGITransport(app=application), base_url="https://testserver") as client:
+                path = f"/api/v1/worker/tasks/{task_id}/precheck-sign"
+                signed = await client.post(path,
+                    headers={"Authorization": "Bearer synthetic-authorization-secret"},
+                    json={"cookie": "session=synthetic-cookie-secret", "user_agent": "synthetic-agent"})
+                wrong_method = await client.get(path)
+                missing = await client.post(path + "-extra")
+                return signed, wrong_method, missing
+        response, wrong_method, missing = asyncio.run(send())
+    finally:
+        request_logger.removeHandler(handler)
+    assert response.status_code == 200
+    assert wrong_method.status_code == 405
+    assert missing.status_code == 404
+    for record in handler.records:
+        assert "synthetic-cookie-secret" not in record.getMessage()
+        assert "synthetic-authorization-secret" not in record.getMessage()
+        assert "synthetic-signature-secret" not in record.getMessage()

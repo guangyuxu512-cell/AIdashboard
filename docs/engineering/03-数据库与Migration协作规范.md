@@ -1,5 +1,12 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-10 Worker 能力包与预检资源登记
+
+- `20261020_0049` 已进入 Green dev `ef63e85bda0407a9dcfe64ac0db2cdc0791370ba`（CI 42636143993 成功），Integration 和生产均已应用为单一 Head；其下方旧 `active` 文字仅保留历史，现核销为 `released`。
+- 当前唯一 Slot `active`：`feat/worker-capability-precheck-v1`，revision `20261110_0050`，down revision `20261020_0049`。范围仅为设备所属 RPA 店铺非敏感快照，以及商品版本与 Worker 预检任务的幂等关联；不存储店铺 Session。
+- 独立库 `control_center_feat_worker_capability_precheck` 已由 DBAdmin 创建并经受保护隧道实连，Owner 为既有最小权限应用角色 `control_center_dev_user`，原始 public 表数为 0；Feature 可在该库初始化 0049 并实现、验证 0050，不得借用 Integration、Main smoke、生产或旧 Feature 库。
+- 同一应用、商品和 revision 只关联一个预检任务；商品库 attempt 仅作当前队列领取及结果写回的 fence。旧结果不可覆盖新 revision，结果补传不重新发平台请求。生产回滚关闭新入口与消费者并保留事实；downgrade 仅限两表均为空的隔离 Feature 库。
+
 ## 1. 基本原则
 
 PostgreSQL 结构演进只能通过 SQLAlchemy Model 与 Alembic Migration 完成，禁止手改任意正式环境的表结构。业务 Feature 对其 Migration 的设计、实现、测试、文档和回滚负责；Integrator 负责 Slot 协调、Gate 2 验证和拒绝不合格候选，不代替 Feature 编写新的数据库变更。

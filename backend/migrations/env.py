@@ -75,6 +75,7 @@ from app.modules.workers.models import (
     DeviceSkillCapability,
     WorkerDeviceCredential,
 )
+from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 
 _MODELS = (
     AiModel,
@@ -138,6 +139,8 @@ _MODELS = (
     TeamShopAccess,
     User,
     WorkerDeviceCredential,
+    ApplicationWorkerPrecheck,
+    WorkerRpaShopInventory,
 )
 
 config = context.config

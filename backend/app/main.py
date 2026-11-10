@@ -64,6 +64,9 @@ from app.modules.tasks.retention import purge_expired_task_events_forever
 from app.modules.tasks.worker_api import router as worker_tasks_router
 from app.modules.users.api import router as users_router
 from app.modules.workers.api import router as workers_router
+from app.modules.workers.capability_package_api import build_capability_package_router
+from app.modules.workers.precheck_api import application_router as application_worker_precheck_router
+from app.modules.workers.precheck_api import worker_router as worker_precheck_router
 from app.modules.workers.reconcile import reconcile_offline_devices_forever
 
 
@@ -232,9 +235,12 @@ def create_app() -> FastAPI:
     application.include_router(credentials_router)
     application.include_router(sessions_router)
     application.include_router(application_sessions_router)
+    application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
     application.include_router(workers_router)
+    application.include_router(build_capability_package_router(get_settings().worker_capability_package_dir))
+    application.include_router(worker_precheck_router)
     application.include_router(worker_tasks_router)
     return application
 

@@ -18,7 +18,9 @@ from app.version import WORKER_VERSION
 logger = logging.getLogger(__name__)
 RuntimeEventSubscriber = Callable[[RuntimeEvent], None]
 _SENSITIVE_KEYS = frozenset(
-    {"password", "token", "authorization", "cookie", "cookies", "secret"},
+    {"account", "accounts", "password", "token", "authorization", "cookie",
+     "cookies", "secret", "login_identifier", "preferred_verification_channel",
+     "登录账号", "登录密码", "店铺列表"},
 )
 _SENSITIVE_MESSAGE = re.compile(
     r"(?i)\b(password|token|authorization|cookie|secret)\b\s*[:=]\s*[^\s,;]+",
