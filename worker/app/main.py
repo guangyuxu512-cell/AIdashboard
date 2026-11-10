@@ -1,10 +1,15 @@
 import asyncio
+import base64
 import logging
 import signal
 
 from pydantic import ValidationError
 
 from app.client import WorkerApiClient
+from app.capability_host import CapabilityHost
+from app.capability_runtime import CapabilityRuntime
+from app.capability_updates import CapabilityUpdater
+from app.release_trust import packaged_capability_public_key
 from app.config import WorkerSettings, get_settings
 from app.executors import (
     ExecutorRouter,
@@ -34,6 +39,7 @@ from app.skills import registry
 from app.skills.registry import SkillProvider, SkillRuntime
 from app.worker import Worker
 from app.task_images import TaskImagePreparer
+from app.rpa_session_bridge import RpaAutoBridge, default_rpa_data_directory
 
 
 async def run_worker(settings: WorkerSettings) -> None:
@@ -45,6 +51,22 @@ async def run_worker(settings: WorkerSettings) -> None:
         except NotImplementedError:
             pass
     client = WorkerApiClient(settings)
+    rpa_bridge = None
+    capability_runtime = None
+    if settings.capability_public_key_b64 is not None or packaged_capability_public_key() is not None:
+        try:
+            public_key = packaged_capability_public_key() or base64.b64decode(settings.capability_public_key_b64, validate=True)
+            updater = CapabilityUpdater(settings.runtime_root.resolve() / "capability-packages", public_key, 1)
+            try:
+                rpa_bridge = RpaAutoBridge(default_rpa_data_directory(), updater.trusted_rpa_digests)
+            except Exception:
+                logging.getLogger(__name__).warning("RPA session bridge is not configured")
+            capability_runtime = CapabilityRuntime(updater, CapabilityHost(settings.device_id, client, rpa_bridge),
+                                                   reserved_ids=[item.skill_id for item in registry.descriptors()])
+            capability_runtime.refresh()
+        except Exception:
+            logging.getLogger(__name__).warning("Capability package configuration is invalid")
+            capability_runtime = None
     event_bus = RuntimeEventBus()
     event_buffer = RuntimeEventBuffer(settings.event_buffer_capacity)
     local_runtime_state = LocalRuntimeState(
@@ -128,6 +150,8 @@ async def run_worker(settings: WorkerSettings) -> None:
         provider_discovery=discovery_service,
         skill_registry=registry,
         image_preparer=TaskImagePreparer(settings.images_dir, client),
+        capability_runtime=capability_runtime,
+        rpa_bridge=rpa_bridge,
     )
     await worker.run(stop_event)
 

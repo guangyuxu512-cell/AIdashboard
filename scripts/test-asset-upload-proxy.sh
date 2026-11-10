@@ -20,10 +20,27 @@ openssl req -x509 -newkey rsa:2048 -nodes -days 1 -subj '/CN=127.0.0.1' \
     -addext 'subjectAltName=IP:127.0.0.1' \
     -keyout "$test_root/tls/key.pem" -out "$test_root/tls/cert.pem" 2>/dev/null
 
+# Deliberately configure body logging at the http level. The narrowly scoped
+# signing locations must disable it regardless of inherited access-log format.
+cat > "$test_root/nginx.conf" <<'NGINX'
+worker_processes 1;
+error_log /dev/stderr warn;
+pid /tmp/nginx.pid;
+events { worker_connections 1024; }
+http {
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+    log_format body_probe '$request_method $uri $request_body';
+    access_log /dev/stdout body_probe;
+    include /etc/nginx/conf.d/*.conf;
+}
+NGINX
+
 # Use the production image/template and the same bounded writable mounts as Compose.
 # Only this container publishes ports, both on randomly allocated host loopback ports.
 frontend="$(docker run -d --name "$run_id-frontend" --read-only \
     -p 127.0.0.1::18080 -p 127.0.0.1::443 \
+    -v "$test_root/nginx.conf:/etc/nginx/nginx.conf:ro" \
     --tmpfs /etc/nginx/conf.d:size=1m,mode=0755 \
     --tmpfs /var/cache/nginx:size=16m,mode=1777 \
     --tmpfs /var/run:size=1m,mode=1777 --tmpfs /tmp:size=16m,mode=1777 \
@@ -38,6 +55,7 @@ receiver="$(docker run -d --name "$run_id-receiver" --read-only --no-healthcheck
     --network "container:$frontend" --entrypoint python "$backend_image" -B -u -c '
 import hashlib
 import json
+import re
 from email import policy
 from email.parser import BytesParser
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -57,6 +75,8 @@ class Receiver(BaseHTTPRequestHandler):
         self.reply_bytes(status, body, content_type)
 
     def do_GET(self):
+        if re.fullmatch(r"/api/v1/worker/tasks/[^/]+/precheck-sign/?(?:\?.*)?", self.path):
+            return self.reply(405, json.dumps({"backend": "transport-fixture", "method": "GET"}), "application/json")
         if self.path == "/rpa/v1/product-images/00000000000000000000000000000000.png":
             if self.headers.get("Authorization") or self.headers.get("Cookie"):
                 return self.reply(400, "public image request leaked credentials")
@@ -71,6 +91,20 @@ class Receiver(BaseHTTPRequestHandler):
         self.reply(200, str(Receiver.arrivals))
 
     def do_POST(self):
+        if re.fullmatch(r"/api/v1/worker/tasks/[^/]+/precheck-sign/?(?:\?.*)?", self.path):
+            size = int(self.headers.get("Content-Length", "0"))
+            authorized = self.headers.get("Authorization") == "Bearer synthetic-proxy-token"
+            if self.headers.get("X-Streaming-Probe") == "1":
+                first = self.rfile.read(1)
+                return self.reply(200 if authorized and first == b"{" else 401,
+                                  json.dumps({"streamed": bool(first)}), "application/json")
+            body = self.rfile.read(size)
+            return self.reply(200 if authorized else 401, json.dumps({
+                "backend": "transport-fixture", "path": self.path, "method": "POST",
+                "proto": self.headers.get("X-Forwarded-Proto"),
+                "authorized": authorized, "device": self.headers.get("X-Device-ID"),
+                "size": len(body), "sha256": hashlib.sha256(body).hexdigest(),
+            }), "application/json")
         if self.path.startswith("/internal/mobile-collection/v1/"):
             size = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(size).decode()
@@ -115,6 +149,7 @@ host="$(docker run -d --name "$run_id-host" --read-only \
     --network "container:$frontend" --entrypoint nginx \
     --tmpfs /var/cache/nginx:size=16m,mode=1777 \
     --tmpfs /var/run:size=1m,mode=1777 --tmpfs /tmp:size=16m,mode=1777 \
+    -v "$test_root/nginx.conf:/etc/nginx/nginx.conf:ro" \
     -v "$test_root/host.conf:/etc/nginx/conf.d/default.conf:ro" \
     -v "$test_root/tls:/test-tls:ro" "$frontend_image" -g 'daemon off;')"
 containers+=("$host")
@@ -199,6 +234,90 @@ for origin in "$http_origin" "$https_origin"; do
     done
 done
 
+# The signing request is intentionally large enough that default proxy
+# buffering may spill it to disk. The receipt carries only its digest/length.
+python -c 'import json,sys; json.dump({"cookie":"SYNTHETIC_SIGN_BODY_SENTINEL" + "x" * 20000}, open(sys.argv[1],"w"), separators=(",",":"))' "$test_root/sign-body.json"
+sign_path='/api/v1/worker/tasks/00000000-0000-0000-0000-000000000001/precheck-sign?scope=one%2Ftwo'
+for origin in "$http_origin" "$https_origin"; do
+    trust=()
+    expected_proto=http
+    if [[ "$origin" == https:* ]]; then
+        trust=(--cacert "$test_root/tls/cert.pem")
+        expected_proto=https
+    fi
+    for auth in missing invalid valid; do
+        auth_headers=()
+        expected_code=401
+        if [[ "$auth" == invalid ]]; then auth_headers=(-H 'Authorization: Bearer invalid-proxy-token'); fi
+        if [[ "$auth" == valid ]]; then
+            auth_headers=(-H 'Authorization: Bearer synthetic-proxy-token')
+            expected_code=200
+        fi
+        code="$(curl "${curl_options[@]}" "${trust[@]}" "${auth_headers[@]}" \
+            -H 'X-Device-ID: synthetic-device' -H 'X-Forwarded-Proto: spoofed' \
+            -H 'Content-Type: application/json' --data-binary "@$test_root/sign-body.json" \
+            -o "$test_root/sign-receipt.json" -w '%{http_code}' "$origin$sign_path")"
+        test "$code" = "$expected_code"
+        python - "$test_root/sign-body.json" "$test_root/sign-receipt.json" "$sign_path" "$expected_proto" "$auth" <<'PY'
+import hashlib, json, pathlib, sys
+body = pathlib.Path(sys.argv[1]).read_bytes()
+receipt = json.loads(pathlib.Path(sys.argv[2]).read_text())
+assert receipt == {"backend": "transport-fixture", "path": sys.argv[3], "method": "POST",
+    "proto": sys.argv[4], "authorized": sys.argv[5] == "valid", "device": "synthetic-device",
+    "size": len(body), "sha256": hashlib.sha256(body).hexdigest()}
+PY
+    done
+    code="$(curl "${curl_options[@]}" "${trust[@]}" -o "$test_root/sign-get.json" \
+        -w '%{http_code}' "$origin$sign_path")"
+    test "$code" = 405
+    # A direct request to a sibling path remains an ordinary API request.
+    code="$(curl "${curl_options[@]}" "${trust[@]}" -H 'Authorization: Bearer synthetic-proxy-token' \
+        --data-binary '{"control":"SYNTHETIC_NON_SIGN_BODY"}' -o "$test_root/sibling.txt" -w '%{http_code}' \
+        "$origin/api/v1/worker/tasks/00000000-0000-0000-0000-000000000001/precheck-sign-extra")"
+    test "$code" = 400
+done
+
+# Hold the request body incomplete. Backend must still receive its first byte
+# and answer; a buffering proxy waits for the full body and times out here.
+python - "$http_origin" "$https_origin" "$test_root/tls/cert.pem" <<'PY'
+import socket, ssl, sys
+from urllib.parse import urlsplit
+for origin in sys.argv[1:3]:
+    parsed = urlsplit(origin)
+    with socket.create_connection((parsed.hostname, parsed.port), timeout=3) as raw:
+        sock = ssl.create_default_context(cafile=sys.argv[3]).wrap_socket(raw, server_hostname=parsed.hostname) if parsed.scheme == 'https' else raw
+        sock.settimeout(3)
+        sock.sendall(("POST /api/v1/worker/tasks/00000000-0000-0000-0000-000000000001/precheck-sign HTTP/1.1\r\n"
+            "Host: 127.0.0.1\r\nAuthorization: Bearer synthetic-proxy-token\r\n"
+            "X-Streaming-Probe: 1\r\nContent-Length: 20000\r\nConnection: close\r\n\r\n{").encode())
+        response = sock.recv(1024)
+        assert response.startswith(b'HTTP/1.1 200 '), 'signing request was not streamed to Backend'
+PY
+# Prove the deliberately unsafe inherited format is active for normal routes;
+# the secret-specific assertions below would otherwise be vacuous.
+for name in frontend host; do
+    container="$frontend"
+    if [[ "$name" == host ]]; then container="$host"; fi
+    logged=false
+    for _ in $(seq 1 10); do
+        docker logs "$container" > "$test_root/$name.log" 2>&1
+        if grep -q 'SYNTHETIC_NON_SIGN_BODY' "$test_root/$name.log"; then
+            logged=true
+            break
+        fi
+        sleep 0.1
+    done
+    test "$logged" = true
+done
+if grep -q 'SYNTHETIC_SIGN_BODY_SENTINEL' "$test_root/frontend.log"; then
+    echo 'Sensitive request body appeared in frontend access logs' >&2
+    exit 1
+fi
+if grep -q 'SYNTHETIC_SIGN_BODY_SENTINEL' "$test_root/host.log"; then
+    echo 'Sensitive request body appeared in host access logs' >&2
+    exit 1
+fi
+
 # Software Session access must use the host TLS proxy directly: the frontend
 # proxy does not forward this prefix.  A spoofed incoming proto must be replaced
 # by the trusted host TLS proxy before reaching the backend transport fixture.
@@ -237,3 +356,4 @@ printf 'PASS: production inner and host TLS Nginx preserve multipart bytes throu
 printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/auth preserved, missing/invalid auth stays 401, adjacent prefixes stay frontend\n'
 printf 'PASS: application Session path reaches the backend only through host TLS and overwrites a spoofed proto (transport fixture only)\n'
 printf 'PASS: ProductDataCenter image GET/HEAD uses the exact public HTTPS prefix; writes are denied and adjacent RPA paths stay frontend\n'
+printf 'PASS: authenticated precheck signing streams at both proxies, preserves path/headers and never logs request bodies\n'

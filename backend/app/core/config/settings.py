@@ -49,6 +49,9 @@ class Settings(BaseSettings):
     # Independent service integrations; no Worker, task, or device is required.
     application_shop_session_enabled: bool = False
     application_shop_session_clients_file: Path | None = None
+    application_worker_precheck_enabled: bool = False
+    application_worker_precheck_clients_file: Path | None = None
+    worker_capability_package_dir: Path | None = None
     worker_reconcile_interval_seconds: int = Field(default=10, ge=1, le=60)
     task_event_retention_days: int = Field(default=90, ge=1, le=3650)
     task_event_retention_sweep_interval_seconds: int = Field(
