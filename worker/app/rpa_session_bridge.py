@@ -289,11 +289,15 @@ class _BridgeProcess:
     async def call(self, data: dict) -> dict:
         assert self.process.stdin is not None and self.process.stdout is not None
         encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
+        phase = {"init": "INIT", "list_shops": "LIST", "read_session": "SESSION"}.get(data.get("type"), "COMMAND")
         try:
             self.process.stdin.write(encoded)
             await asyncio.wait_for(self.process.stdin.drain(), self.timeout)
             line = await asyncio.wait_for(self.process.stdout.readline(), self.timeout)
-            if not line or len(line) > _MAX_LINE:
+            if not line:
+                cause = "EXITED" if self.process.returncode is not None else "EOF"
+                raise RpaBridgeError(f"RPA_BRIDGE_{phase}_{cause}")
+            if len(line) > _MAX_LINE:
                 raise ValueError("invalid bridge response")
             body = json.loads(line)
             if not isinstance(body, dict):
@@ -305,8 +309,12 @@ class _BridgeProcess:
             return body["result"]
         except RpaBridgeError:
             raise
-        except (OSError, ValueError, TypeError, asyncio.TimeoutError):
-            raise RpaBridgeError("RPA_BRIDGE_UNAVAILABLE") from None
+        except asyncio.TimeoutError:
+            raise RpaBridgeError(f"RPA_BRIDGE_{phase}_TIMEOUT") from None
+        except OSError:
+            raise RpaBridgeError(f"RPA_BRIDGE_{phase}_IO") from None
+        except (ValueError, TypeError):
+            raise RpaBridgeError(f"RPA_BRIDGE_{phase}_INVALID") from None
 
     async def close(self) -> None:
         if self.process.stdin is not None:

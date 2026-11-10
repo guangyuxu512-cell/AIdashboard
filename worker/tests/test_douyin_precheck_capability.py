@@ -8,6 +8,7 @@ from uuid import uuid4
 import pytest
 
 from app.contracts import ExecutionStatus, WorkerTask
+from app.rpa_session_bridge import RpaBridgeError
 
 
 path = Path(__file__).resolve().parents[1] / "capabilities" / "douyin_category_schema" / "capability.py"
@@ -64,3 +65,19 @@ def test_business_rejection_preserves_safe_code(platform_code, expected):
     assert result.status is ExecutionStatus.FAILED
     assert result.result["platform_code"] == expected
     assert result.result["error_stage"] == "platform"
+
+
+def test_session_bridge_timeout_is_reported_without_signing_or_platform_request():
+    class TimedOutHost(Host):
+        async def read_session(self, local_shop_id, platform_shop_id):
+            raise RpaBridgeError("RPA_BRIDGE_SESSION_TIMEOUT")
+
+        async def sign_precheck(self, *args):
+            raise AssertionError("signer must not be called")
+
+    host = TimedOutHost(0)
+    result = asyncio.run(capability.execute(host, task()))
+    assert result.status is ExecutionStatus.FAILED
+    assert result.result["error_stage"] == "session"
+    assert result.result["safe_error_code"] == "RPA_BRIDGE_SESSION_TIMEOUT"
+    assert host.platform_calls == 0
