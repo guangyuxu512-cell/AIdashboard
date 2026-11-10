@@ -29,3 +29,5 @@
 Feature 库 `control_center_feat_worker_capability_precheck` 已从空库升级至 0050。定向验证覆盖同版本并发去重、两店顺序及并发轮转、结果丢 ACK 后补发、LOST 结果补传、旧 revision 防覆盖、设备与旧 Session 授权隔离、签名目标约束、字符串业务码、真实脱敏样本投影及大于 64 KiB 结果。合成 HTTP 链使用真实 PostgreSQL；RPA 会话、签名和平台响应均为替身，不代表真实平台成功。
 
 RPA 对接候选 `3f4052fe3ec68034e0150e2078ac7ba51b236243` 提供 `browserOpen` 三态；商品库对接候选 `527a15ee5642984b1370c081d1a9ea836462a7cb`。Gate 2 使用隔离 RPA 候选树及 Integration 凭据、受信 HTTPS 和隔离商品副本，限制一机一店一商品、最多一次平台 HTTP。旧 RPA 无 marker 的测试启动器只在内存注入经核准的 `RpaLocalBridge`；正式 RPA 新安装自动写 marker 仍需另行实机验证。隔离启动器如用原 `sign_once.js` stdin 签名，须注明是真实签名算法、并非独立 Signer HTTP 部署链路。
+
+Gate 2 发现能力包已安装，但设备仍只上报旧的五项能力。受控并发测试复现：旧能力快照上报尚未返回时，能力包发生加载或移除，旧请求完成后将新快照错误标为已同步。返修以版本标记和串行上报保护快照；若上报期间能力发生变化，立即有限补报，并在真正同步前保持未同步状态。受控测试覆盖加载、移除、并发心跳和真实 Worker 主循环时序。本次未更改 Migration，也未读取真实 Session 或请求平台；现场是否恢复须由 ca97 在集成环境再次核验。

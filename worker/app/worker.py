@@ -69,6 +69,8 @@ class Worker:
         self.started_at = datetime.now(UTC)
         self.worker_version = WORKER_VERSION
         self._skill_snapshot_synced = False
+        self._skill_snapshot_generation = 0
+        self._skill_snapshot_lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._heartbeat_consecutive_failures = 0
 
@@ -209,39 +211,59 @@ class Worker:
             return False
 
         self._record_heartbeat_success()
-        if not sync_skill_capabilities or self._skill_snapshot_synced:
+        if not sync_skill_capabilities:
             return True
+        # Only one report may be in flight: a late old response must never
+        # overwrite a newer snapshot or mark it as synchronized.
+        async with self._skill_snapshot_lock:
+            for _ in range(2):
+                if self._skill_snapshot_synced:
+                    break
+                generation = self._skill_snapshot_generation
+                descriptors = self._current_skill_descriptors()
+                try:
+                    await self.client.report_skill_capabilities(
+                        SkillCapabilitySnapshot(skills=descriptors),
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as error:
+                    self._set_skill_sync_state(False, self._current_skill_descriptors())
+                    logger.warning("Skill capability snapshot sync failed: %s", error)
+                    break
+                if generation == self._skill_snapshot_generation:
+                    self._skill_snapshot_synced = True
+                    self._set_skill_sync_state(True, descriptors)
+                    break
+                # The installed set changed while this report was in flight.
+                # Retry once immediately; another change waits for the next
+                # ordinary heartbeat instead of an unbounded retry loop.
+                self._skill_snapshot_synced = False
+                self._set_skill_sync_state(False, self._current_skill_descriptors())
+        return True
+
+    def _current_skill_descriptors(self):
         descriptors = list(self.skill_registry.descriptors())
         if self.capability_runtime is not None:
             descriptors.extend(self.capability_runtime.descriptors())
-        business_skill_count = sum(
-            descriptor.classification is SkillClassification.BUSINESS
-            for descriptor in descriptors
-        )
+        return descriptors
+
+    def _set_skill_sync_state(self, synced, descriptors) -> None:
+        if self.local_runtime_state is None:
+            return
         try:
-            await self.client.report_skill_capabilities(
-                SkillCapabilitySnapshot(
-                    skills=descriptors,
-                ),
+            self.local_runtime_state.set_skill_sync(
+                synced,
+                count=len(descriptors),
+                business_count=sum(item.classification is SkillClassification.BUSINESS for item in descriptors),
             )
-            self._skill_snapshot_synced = True
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.set_skill_sync(
-                    True,
-                    count=len(descriptors),
-                    business_count=business_skill_count,
-                )
-        except asyncio.CancelledError:
-            raise
         except Exception as error:
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.set_skill_sync(
-                    False,
-                    count=len(descriptors),
-                    business_count=business_skill_count,
-                )
-            logger.warning("Skill capability snapshot sync failed: %s", error)
-        return True
+            logger.warning("Worker skill sync status update failed: %s", error)
+
+    def _invalidate_skill_snapshot(self) -> None:
+        self._skill_snapshot_generation += 1
+        self._skill_snapshot_synced = False
+        self._set_skill_sync_state(False, self._current_skill_descriptors())
 
     def _record_heartbeat_failure(
         self,
@@ -249,7 +271,7 @@ class Worker:
         *,
         token_status: str | None = None,
     ) -> None:
-        self._skill_snapshot_synced = False
+        self._invalidate_skill_snapshot()
         self._heartbeat_consecutive_failures += 1
         self._set_local_connection(False, token_status=token_status)
         if (
@@ -339,7 +361,7 @@ class Worker:
                 self.client, idle=True, validate_entry=self.capability_runtime.validate_entry)
             self.capability_runtime.refresh()
             if changed or previous != self.capability_runtime.descriptors():
-                self._skill_snapshot_synced = False
+                self._invalidate_skill_snapshot()
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -348,9 +370,10 @@ class Worker:
             try:
                 self.capability_runtime.refresh()
             except Exception:
-                self._skill_snapshot_synced = False
-            if previous != self.capability_runtime.descriptors():
-                self._skill_snapshot_synced = False
+                self._invalidate_skill_snapshot()
+            else:
+                if previous != self.capability_runtime.descriptors():
+                    self._invalidate_skill_snapshot()
             logger.warning("Capability update unavailable; retaining verified release when possible")
 
     async def _execute_task(self, task: WorkerTask) -> None:
