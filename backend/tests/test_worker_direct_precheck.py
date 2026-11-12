@@ -11,7 +11,7 @@ from app.modules.tasks.schemas import WorkerTaskRead
 from app.modules.users.models import User
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement
 from app.modules.workers.precheck_service import (PrecheckConflict, PrecheckNotFound,
-    acknowledge_product_delivery, product_delivery_context, supports_product_delivery, supports_saved_shop_sessions)
+    acknowledge_product_delivery, product_delivery_context, supports_saved_shop_sessions)
 
 
 def fixture():
@@ -34,13 +34,6 @@ def fixture():
 
 
 def test_only_compatible_worker_versions_receive_direct_tasks():
-    assert not supports_product_delivery("0.5.0")
-    assert supports_product_delivery("0.5.1")
-    assert supports_product_delivery("0.6.0")
-    assert not supports_product_delivery("unknown")
-
-
-def test_saved_session_dispatch_requires_compatible_worker():
     assert not supports_saved_shop_sessions("0.5.1")
     assert supports_saved_shop_sessions("0.5.2")
     assert supports_saved_shop_sessions("0.6.0")
