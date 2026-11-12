@@ -45,7 +45,8 @@ class StubAuthorizer:
 def ready_precheck(postgresql_engine):
     with postgresql_engine.connect() as connection:
         assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
-            "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result"}
+            "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
+            "control_center_feat_worker_saved_session"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -57,10 +58,10 @@ def ready_precheck(postgresql_engine):
         session.add(Device(device_id=device_id, team_id=team_id, display_name="precheck", enabled=True))
         session.flush()
         session.add_all([
-            DeviceRuntime(device_id=device_id, worker_version="test", started_at=now, last_seen_at=now, connection_status="online"),
+            DeviceRuntime(device_id=device_id, worker_version="0.5.2", started_at=now, last_seen_at=now, connection_status="online"),
             DeviceSkillCapability(device_id=device_id, skill_id="douyin.category_schema", display_name="test", runtime="python", skill_version="1", classification="internal"),
             WorkerRpaShopInventory(device_id=device_id, installation_id=install_id, available=True, last_discovered_at=now,
-                shops=[{"localShopId": "local-1", "platformShopId": "123", "shopName": "fixture", "platform": "douyin", "browserOpen": True}]),
+                shops=[{"localShopId": "local-1", "platformShopId": "123", "shopName": "fixture", "platform": "douyin", "browserOpen": False, "sessionStored": True}]),
         ])
         session.commit()
     grant = ClientGrant(client_id="pdc-test", token_sha256="a" * 64, authorized_by_user_id=user_id,
@@ -102,6 +103,12 @@ def test_direct_delivery_requires_new_worker_and_central_keeps_only_receipt(read
         runtime = session.get(DeviceRuntime, device_id)
         runtime.worker_version = "0.5.1"
         session.commit()
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, direct)
+        session.rollback()
+        runtime = session.get(DeviceRuntime, device_id)
+        runtime.worker_version = "0.5.2"
+        session.commit()
         task = service.submit(principal, direct)
         task.status = "running"
         session.commit()
@@ -130,7 +137,7 @@ def test_direct_context_checks_real_worker_credential(ready_precheck):
 
     engine, principal, auth, device_id = ready_precheck
     with Session(engine) as session:
-        session.get(DeviceRuntime, device_id).worker_version = "0.5.1"
+        session.get(DeviceRuntime, device_id).worker_version = "0.5.2"
         session.commit()
         token = WorkerService(session).issue_token(device_id)
         task = WorkerPrecheckService(session, auth).submit(principal, submission().model_copy(update={"delivery": "product"}))
@@ -266,15 +273,15 @@ def test_safe_string_business_code_survives_failure_and_replay(ready_precheck):
         assert accept_precheck_terminal(session, device_id, task.task_id, data).status == "failed"
 
 
-def test_all_mapped_shops_rotate_and_new_open_shop_needs_no_regrant(ready_precheck):
+def test_all_mapped_shops_rotate_with_saved_sessions_without_open_browsers(ready_precheck):
     engine, principal, auth, device_id = ready_precheck
     grant = auth.grant.model_copy(update={"all_mapped_shops": (device_id,), "device_shops": ()})
     auth, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
     with Session(engine) as session:
         inventory = session.get(WorkerRpaShopInventory, device_id)
         inventory.shops = [*inventory.shops,
-            {"localShopId": "local-2", "platformShopId": "456", "shopName": "second", "platform": "douyin", "browserOpen": True},
-            {"localShopId": "local-3", "platformShopId": "789", "shopName": "closed", "platform": "douyin", "browserOpen": False}]
+            {"localShopId": "local-2", "platformShopId": "456", "shopName": "second", "platform": "douyin", "browserOpen": False, "sessionStored": True},
+            {"localShopId": "local-3", "platformShopId": "789", "shopName": "no session", "platform": "douyin", "browserOpen": True, "sessionStored": False}]
         session.commit()
         service = WorkerPrecheckService(session, auth)
         assigned = []
@@ -284,23 +291,23 @@ def test_all_mapped_shops_rotate_and_new_open_shop_needs_no_regrant(ready_preche
             task.status = "success"
             session.commit()
         assert assigned == ["local-1", "local-2", "local-1", "local-2"]
-        # A newly opened local shop appears through the next inventory report,
+        # A newly saved local shop appears through the next inventory report,
         # not through a central shop record or a new application grant.
         inventory.shops = [*inventory.shops,
-            {"localShopId": "local-4", "platformShopId": "000", "shopName": "new", "platform": "douyin", "browserOpen": True}]
+            {"localShopId": "local-4", "platformShopId": "000", "shopName": "new", "platform": "douyin", "browserOpen": False, "sessionStored": True}]
         session.commit()
         assert service.submit(principal, submission(product="new-shop")).input_json["local_shop_id"] == "local-4"
         assert not service._authorized_shop(grant, uuid4(), "local-4", "000")
 
 
-def test_concurrent_distinct_products_rotate_across_open_shops(ready_precheck):
+def test_concurrent_distinct_products_rotate_across_saved_shops(ready_precheck):
     engine, _, auth, device_id = ready_precheck
     grant = auth.grant.model_copy(update={"all_mapped_shops": (device_id,), "device_shops": ()})
     auth, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
     with Session(engine) as session:
         inventory = session.get(WorkerRpaShopInventory, device_id)
         inventory.shops = [*inventory.shops, {"localShopId": "local-2", "platformShopId": "456",
-            "shopName": "second", "platform": "douyin", "browserOpen": True}]
+            "shopName": "second", "platform": "douyin", "browserOpen": False, "sessionStored": True}]
         session.commit()
     barrier = Barrier(4)
 

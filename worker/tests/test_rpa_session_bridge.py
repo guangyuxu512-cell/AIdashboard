@@ -68,8 +68,9 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
 'for line in sys.stdin:\n'
 ' d=json.loads(line)\n'
 ' if d["type"] == "init": r={"contractVersion":1,"installationId":iid}\n'
-' elif d["type"] == "list_shops": r={"installationId":iid,"shops":[{"localShopId":"a","platformShopId":"1","shopName":"demo","platform":"douyin"}]}\n'
-' else: r={"localShopId":"a","platformShopId":"1","platform":"douyin","userAgent":"test","cookies":[{"name":"example","value":"synthetic-secret","domain":".jinritemai.com","path":"/"}]}\n'
+' elif d["type"] == "list_stored_shops": r={"installationId":iid,"shops":[{"localShopId":"a","platformShopId":"1","shopName":"demo","platform":"douyin","sessionStored":True}]}\n'
+' elif d["type"] == "read_stored_session": r={"localShopId":"a","platformShopId":"1","platform":"douyin","userAgent":"test","cookies":[{"name":"example","value":"synthetic-secret","domain":".jinritemai.com","path":"/"}]}\n'
+' else: raise ValueError("unexpected legacy browser command")\n'
 ' print(json.dumps({"ok":True,"result":r}),flush=True)\n'''.replace("'\n'", ""), encoding="utf-8")
     original = asyncio.create_subprocess_exec
 
@@ -82,6 +83,7 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
     bridge = RpaLocalBridge(info, data_dir, trust)
     inventory = asyncio.run(bridge.list_shops())
     assert inventory.shops[0].local_shop_id == "a"
+    assert inventory.shops[0].session_stored is True
     session = asyncio.run(bridge.read_session("a", "1"))
     assert session.cookies[0].value.get_secret_value() == "synthetic-secret"
     assert "synthetic-secret" not in repr(session)

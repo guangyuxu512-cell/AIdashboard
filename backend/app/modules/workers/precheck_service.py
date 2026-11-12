@@ -51,6 +51,11 @@ def supports_product_delivery(version: str) -> bool:
     return bool(match and tuple(int(part) for part in match.groups()) >= (0, 5, 1))
 
 
+def supports_saved_shop_sessions(version: str) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    return bool(match and tuple(int(part) for part in match.groups()) >= (0, 5, 2))
+
+
 class WorkerPrecheckService:
     def __init__(self, session: Session, authenticator: ApplicationAuthenticator):
         self.session = session
@@ -115,11 +120,13 @@ class WorkerPrecheckService:
         ).all()
         choices = []
         for device, inventory, worker_version in rows:
+            if not supports_saved_shop_sessions(worker_version):
+                continue
             if data.delivery == "product" and not supports_product_delivery(worker_version):
                 continue
             for shop in inventory.shops:
                 local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
-                if (shop.get("platform") != "douyin" or shop.get("browserOpen") is not True or not isinstance(local_id, str)
+                if (shop.get("platform") != "douyin" or shop.get("sessionStored") is not True or not isinstance(local_id, str)
                         or not isinstance(platform_id, str)
                         or not self._authorized_shop(grant, device.device_id, local_id, platform_id)):
                     continue
