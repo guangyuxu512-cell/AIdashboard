@@ -46,7 +46,13 @@ catch {
     throw 'Capability signing public key must be a base64 encoded 32-byte Ed25519 public key.'
 }
 
-$version = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
+Push-Location $workerRoot
+try {
+    $version = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
+}
+finally {
+    Pop-Location
+}
 if ($version -notmatch '^\d+\.\d+\.\d+$') {
     throw 'Worker version is invalid.'
 }
@@ -74,18 +80,24 @@ if (-not $SkipTests) {
     }
 }
 
-& $workerPython -m PyInstaller `
-    --noconfirm `
-    --clean `
-    --onedir `
-    --noconsole `
-    --name ecommerce-worker `
-    --distpath $pyInstallerDist `
-    --workpath $pyInstallerWork `
-    --specpath $buildRoot `
-    --paths $workerRoot `
-    --add-data "${capabilityPublicKeyPath};." `
-    (Join-Path $workerRoot 'app\__main__.py')
+Push-Location $workerRoot
+try {
+    & $workerPython -m PyInstaller `
+        --noconfirm `
+        --clean `
+        --onedir `
+        --noconsole `
+        --name ecommerce-worker `
+        --distpath $pyInstallerDist `
+        --workpath $pyInstallerWork `
+        --specpath $buildRoot `
+        --paths $workerRoot `
+        --add-data "${capabilityPublicKeyPath};." `
+        (Join-Path $workerRoot 'app\__main__.py')
+}
+finally {
+    Pop-Location
+}
 if ($LASTEXITCODE -ne 0) {
     throw 'PyInstaller build failed.'
 }

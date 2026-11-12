@@ -15,7 +15,13 @@ Add-Type -AssemblyName System.Net.Http
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workerPython = Join-Path $projectRoot 'worker\.venv\Scripts\python.exe'
 $backendPython = Join-Path $projectRoot 'backend\.venv\Scripts\python.exe'
-$workerVersion = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
+Push-Location (Join-Path $projectRoot 'worker')
+try {
+    $workerVersion = (& $workerPython -c 'from app.version import WORKER_VERSION; print(WORKER_VERSION)').Trim()
+}
+finally {
+    Pop-Location
+}
 $zipPath = Join-Path $projectRoot "dist\ecommerce-worker-$workerVersion-win-x64.zip"
 $temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) "control-center-worker-smoke-$([guid]::NewGuid().ToString('N'))"
 $extractRoot = Join-Path $temporaryRoot 'package'
