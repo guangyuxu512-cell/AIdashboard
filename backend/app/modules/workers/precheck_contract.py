@@ -33,6 +33,20 @@ class PrecheckSubmission(BaseModel):
     kind: Literal["douyin.category_schema"]
     context: PrecheckContext
     input: PrecheckInput
+    delivery: Literal["central", "product"] = "central"
+
+
+class PrecheckDeliveryAcknowledgement(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    status: Literal["success", "failed"]
+    payload_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    error_code: str | None = Field(default=None, pattern=r"^[A-Z][A-Z0-9_]{2,63}$")
+
+    @model_validator(mode="after")
+    def check_status(self) -> PrecheckDeliveryAcknowledgement:
+        if (self.status == "success" and self.error_code is not None) or (self.status == "failed" and not self.error_code):
+            raise ValueError("invalid delivery status")
+        return self
 
 
 class LocalShopSummary(BaseModel):

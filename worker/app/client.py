@@ -1,4 +1,7 @@
 from datetime import datetime
+import hashlib
+import json
+import re
 from typing import Any
 from uuid import UUID
 
@@ -26,6 +29,7 @@ class WorkerApiClient:
         self,
         settings: WorkerSettings,
         client: httpx.AsyncClient | None = None,
+        product_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.settings = settings
         self._owns_client = client is None
@@ -39,10 +43,23 @@ class WorkerApiClient:
                 "X-Device-ID": str(settings.device_id),
             },
         )
+        self._owns_product_client = product_client is None
+        product_origin = str(settings.product_precheck_origin).rstrip("/") if settings.product_precheck_origin else None
+        if product_origin is None and str(settings.server_url).rstrip("/") == "https://119.29.188.118":
+            product_origin = "https://119.29.188.118:19001"
+        self.product_client = product_client
+        if self.product_client is None and product_origin is not None:
+            self.product_client = httpx.AsyncClient(
+                base_url=product_origin, timeout=settings.request_timeout_seconds, follow_redirects=False,
+                headers={"Authorization": f"Bearer {settings.device_token.get_secret_value()}",
+                         "X-Device-ID": str(settings.device_id)},
+            )
 
     async def close(self) -> None:
         if self._owns_client:
             await self.client.aclose()
+        if self._owns_product_client and self.product_client is not None:
+            await self.product_client.aclose()
 
     async def heartbeat(
         self,
@@ -142,6 +159,42 @@ class WorkerApiClient:
             json={"status": status, "result": result,
                   "error_code": error_code, "error_message": error_message},
         )
+        self._raise_for_error(response)
+
+    async def deliver_product_precheck(
+        self, task_id: UUID, *, status: str, result: dict[str, Any] | None,
+        error_code: str | None, error_message: str | None,
+    ) -> str:
+        if self.product_client is None:
+            raise WorkerApiError("PRODUCT_DELIVERY_UNCONFIGURED", "商品库回传地址未配置", 0)
+        payload = json.dumps({"status": status, "result": result, "error_code": error_code,
+                              "error_message": error_message}, ensure_ascii=False,
+                             sort_keys=True, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        digest = hashlib.sha256(payload).hexdigest()
+        response = await self.product_client.post(
+            f"/api/v1/worker-precheck-results/{task_id}", content=payload,
+            headers={"Content-Type": "application/json",
+                     "Authorization": f"Bearer {self.settings.device_token.get_secret_value()}",
+                     "X-Device-ID": str(self.settings.device_id)},
+            follow_redirects=False,
+        )
+        if not response.is_success:
+            raise WorkerApiError("PRODUCT_DELIVERY_FAILED", "商品库未接收预检结果", response.status_code)
+        try:
+            receipt = response.json()
+        except ValueError:
+            raise WorkerApiError("PRODUCT_DELIVERY_INVALID", "商品库回执无效", 0) from None
+        if not isinstance(receipt, dict) or receipt.get("task_id") != str(task_id) or not isinstance(receipt.get("accepted"), bool):
+            raise WorkerApiError("PRODUCT_DELIVERY_INVALID", "商品库回执无效", 0)
+        return digest
+
+    async def acknowledge_product_precheck(self, task_id: UUID, *, status: str,
+                                           payload_sha256: str, error_code: str | None) -> None:
+        safe_code = (error_code if error_code and re.fullmatch(r"[A-Z][A-Z0-9_]{2,63}", error_code)
+                     else "PRECHECK_FAILED") if status == "failed" else None
+        response = await self.client.post(f"/api/v1/worker/tasks/{task_id}/precheck-delivered",
+                                          json={"status": status, "payload_sha256": payload_sha256,
+                                                "error_code": safe_code})
         self._raise_for_error(response)
 
     async def report_provider_inventory(
