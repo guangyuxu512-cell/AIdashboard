@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from uuid import UUID
 
-from pydantic import AnyHttpUrl, Field, SecretStr
+from pydantic import AnyHttpUrl, Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.local_config import get_default_local_input_paths
@@ -31,6 +31,8 @@ class WorkerSettings(BaseSettings):
     server_url: AnyHttpUrl
     device_id: UUID
     device_token: SecretStr
+    # Non-production environments must explicitly supply their own origin.
+    product_precheck_origin: AnyHttpUrl | None = None
     device_display_name: str | None = None
     heartbeat_interval_seconds: float = Field(default=15, ge=1, le=300)
     poll_interval_seconds: float = Field(default=3, ge=0.2, le=60)
@@ -59,6 +61,16 @@ class WorkerSettings(BaseSettings):
     event_buffer_capacity: int = Field(default=2_000, ge=100, le=20_000)
     event_flush_retry_count: int = Field(default=3, ge=1, le=10)
     runtime_status_path: Path = Path("runtime-status.json")
+
+    @field_validator("product_precheck_origin")
+    @classmethod
+    def validate_product_origin(cls, value: AnyHttpUrl | None) -> AnyHttpUrl | None:
+        if value is None:
+            return None
+        if (value.scheme != "https" or value.username or value.password or value.path not in (None, "", "/")
+                or value.query or value.fragment):
+            raise ValueError("product precheck origin must be an HTTPS origin")
+        return value
 
 
 @lru_cache

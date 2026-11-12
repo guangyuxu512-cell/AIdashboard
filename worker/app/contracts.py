@@ -1,7 +1,7 @@
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue
@@ -46,6 +46,7 @@ class WorkerTask(BaseModel):
     lease_until: datetime
     accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
     assets: list[TaskAsset] = Field(default_factory=list)
+    result_delivery: Literal["central", "product"] = "central"
 
 
 class ProviderInventoryReport(BaseModel):

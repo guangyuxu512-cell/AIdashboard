@@ -24,6 +24,8 @@ def test_terminal_survives_restart_and_ack_is_required(tmp_path):
         result={"category_id": "123", "items": [{"id": "1", "label": "颜色"}]},
     )
     ResultOutbox(tmp_path).store(item)
+    # The legacy Worker rejects unknown keys when reading an outbox entry.
+    assert "result_delivery" not in json.loads((tmp_path / f"{task_id}.json").read_text(encoding="utf-8"))
 
     reopened = ResultOutbox(tmp_path)
     assert reopened.pending() == [item]

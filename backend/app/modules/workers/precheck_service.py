@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 import hashlib
 import json
+import re
 from uuid import UUID, uuid4
 
 import httpx
@@ -20,7 +21,7 @@ from app.modules.sessions.application_auth import ApplicationAuthenticationError
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
-from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, validate_terminal_result
+from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, validate_terminal_result
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 
 
@@ -42,6 +43,12 @@ class PrecheckInvalidResult(AppError):
 
 class PrecheckSignerUnavailable(AppError):
     code, message, status_code = "PRECHECK_SIGNER_UNAVAILABLE", "本次预检签名未完成", 503
+
+
+def supports_product_delivery(version: str) -> bool:
+    """Only Workers with the direct-result transport may claim such tasks."""
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    return bool(match and tuple(int(part) for part in match.groups()) >= (0, 5, 1))
 
 
 class WorkerPrecheckService:
@@ -73,8 +80,11 @@ class WorkerPrecheckService:
         lock_key = json.dumps([grant.client_id, data.context.product_id, data.context.revision],
                               ensure_ascii=False, separators=(",", ":"))
         self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0))))
+        request_data = {"kind": data.kind, "input": data.input.model_dump()}
+        if data.delivery == "product":
+            request_data["delivery"] = data.delivery
         request_hash = hashlib.sha256(json.dumps(
-            {"kind": data.kind, "input": data.input.model_dump()}, sort_keys=True,
+            request_data, sort_keys=True,
             ensure_ascii=False, separators=(",", ":"),
         ).encode("utf-8")).hexdigest()
         key = (grant.client_id, data.context.product_id, data.context.revision)
@@ -93,7 +103,7 @@ class WorkerPrecheckService:
         self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended("worker-precheck-shop-rotation", 0))))
         now = datetime.now(UTC)
         rows = self.session.execute(
-            select(Device, WorkerRpaShopInventory)
+            select(Device, WorkerRpaShopInventory, DeviceRuntime.worker_version)
             .join(DeviceRuntime, DeviceRuntime.device_id == Device.device_id)
             .join(WorkerRpaShopInventory, WorkerRpaShopInventory.device_id == Device.device_id)
             .join(DeviceSkillCapability, DeviceSkillCapability.device_id == Device.device_id)
@@ -104,7 +114,9 @@ class WorkerPrecheckService:
                    DeviceSkillCapability.skill_id == PRECHECK_KIND)
         ).all()
         choices = []
-        for device, inventory in rows:
+        for device, inventory, worker_version in rows:
+            if data.delivery == "product" and not supports_product_delivery(worker_version):
+                continue
             for shop in inventory.shops:
                 local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
                 if (shop.get("platform") != "douyin" or shop.get("browserOpen") is not True or not isinstance(local_id, str)
@@ -136,7 +148,8 @@ class WorkerPrecheckService:
             # waiting selection lock; use actual assignment time instead.
             created_at=self.session.scalar(select(func.clock_timestamp())),
             input_json={"category_id": data.input.category_id, "title": data.input.title,
-                        "local_shop_id": local_id, "platform_shop_id": platform_id},
+                        "local_shop_id": local_id, "platform_shop_id": platform_id,
+                        **({"_result_delivery": "product"} if data.delivery == "product" else {})},
         )
         self.session.add(task)
         self.session.flush()
@@ -183,7 +196,8 @@ def accept_precheck_terminal(session: Session, device_id: UUID, task_id: UUID, d
     record = session.scalar(select(ApplicationWorkerPrecheck).where(
         ApplicationWorkerPrecheck.task_id == task_id).with_for_update())
     task = session.scalar(select(Task).where(Task.task_id == task_id).with_for_update())
-    if record is None or task is None or task.target_device_id != device_id or task.skill_id != PRECHECK_KIND:
+    if (record is None or task is None or task.target_device_id != device_id or task.skill_id != PRECHECK_KIND
+            or task.input_json.get("_result_delivery") == "product"):
         raise PrecheckNotFound()
     if data.result is None:
         raise PrecheckInvalidResult()
@@ -209,6 +223,54 @@ def accept_precheck_terminal(session: Session, device_id: UUID, task_id: UUID, d
     task.result_json = data.result
     task.error_code = safe_code
     task.error_message = safe_message
+    task.lease_until = None
+    task.finished_at = datetime.now(UTC)
+    session.commit()
+    return task
+
+
+def product_delivery_context(session: Session, authenticator: ApplicationAuthenticator,
+                             device_id: UUID, task_id: UUID) -> dict:
+    """Authenticate the assigned Worker and describe only its own direct delivery."""
+    record = session.scalar(select(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.task_id == task_id))
+    task = session.get(Task, task_id)
+    device = session.get(Device, device_id)
+    if (record is None or task is None or task.target_device_id != device_id or task.skill_id != PRECHECK_KIND
+            or task.input_json.get("_result_delivery") != "product"
+            or task.status not in ("running", "lost", "success", "failed")
+            or device is None or not device.enabled or device.deleted_at is not None):
+        raise PrecheckNotFound()
+    grant = authenticator.current_grant(record.client_id)
+    user = session.get(User, grant.authorized_by_user_id)
+    if (not grant.worker_precheck_enabled or user is None or not user.enabled or not user.is_super_account
+            or not WorkerPrecheckService._authorized_shop(grant, device_id,
+                task.input_json["local_shop_id"], task.input_json["platform_shop_id"])):
+        raise PrecheckNotFound()
+    return {"task_id": str(task_id), "client_id": record.client_id, "product_id": record.product_id,
+            "revision": record.revision, "device_id": str(device_id),
+            "category_id": task.input_json["category_id"], "local_shop_id": task.input_json["local_shop_id"],
+            "platform_shop_id": task.input_json["platform_shop_id"]}
+
+
+def acknowledge_product_delivery(session: Session, device_id: UUID, task_id: UUID,
+                                 data: PrecheckDeliveryAcknowledgement) -> Task:
+    record = session.scalar(select(ApplicationWorkerPrecheck).where(
+        ApplicationWorkerPrecheck.task_id == task_id).with_for_update())
+    task = session.scalar(select(Task).where(Task.task_id == task_id).with_for_update())
+    if (record is None or task is None or task.target_device_id != device_id or task.skill_id != PRECHECK_KIND
+            or task.input_json.get("_result_delivery") != "product"):
+        raise PrecheckNotFound()
+    receipt = {"delivery_sha256": data.payload_sha256}
+    if task.status in ("success", "failed"):
+        if task.status == data.status and task.result_json == receipt and task.error_code == data.error_code:
+            return task
+        raise PrecheckConflict()
+    if task.status not in ("running", "lost"):
+        raise PrecheckConflict()
+    task.status = data.status
+    task.result_json = receipt
+    task.error_code = data.error_code
+    task.error_message = "设备预检未完成" if data.status == "failed" else None
     task.lease_until = None
     task.finished_at = datetime.now(UTC)
     session.commit()

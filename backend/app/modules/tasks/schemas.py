@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import (
@@ -110,6 +110,7 @@ class WorkerTaskRead(BaseModel):
     lease_until: datetime
     accounts: list[TaskAccountPayload] = Field(default_factory=list, repr=False)
     assets: list[WorkerTaskAssetRead] = Field(default_factory=list)
+    result_delivery: Literal["central", "product"] = "central"
 
 
 class TaskLeaseRead(BaseModel):

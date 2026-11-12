@@ -62,10 +62,13 @@ def claim_task(
     if claimed is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     task = claimed.task
+    direct_product = task.skill_id == "douyin.category_schema" and task.input_json.get("_result_delivery") == "product"
+    task_input = {key: value for key, value in task.input_json.items() if key != "_result_delivery"} if direct_product else task.input_json
     return WorkerTaskRead(
         task_id=task.task_id,
         skill_id=task.skill_id,
-        input=task.input_json,
+        input=task_input,
+        result_delivery="product" if direct_product else "central",
         lease_until=task.lease_until,
         accounts=claimed.accounts,
         assets=[
