@@ -13,11 +13,11 @@ from app.modules.devices.models import Device
 from app.modules.sessions.application_auth import ApplicationPrincipal, ApplicationShopNotFoundError, ClientGrant, DeviceShopGrant
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
-from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
-from app.modules.workers.precheck_contract import PrecheckSubmission, PrecheckTerminal
+from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
+from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSubmission, PrecheckTerminal
 from app.modules.workers.precheck_contract import PrecheckSignInput
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
-from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, WorkerPrecheckService, accept_precheck_terminal, sign_current_precheck
+from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, sign_current_precheck
 from app.integrations.douyin_signer.schemas import DouyinSignResult
 
 
@@ -44,7 +44,8 @@ class StubAuthorizer:
 @pytest.fixture
 def ready_precheck(postgresql_engine):
     with postgresql_engine.connect() as connection:
-        assert connection.exec_driver_sql("SELECT current_database()").scalar_one() == "control_center_feat_worker_capability_precheck"
+        assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
+            "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -74,6 +75,7 @@ def ready_precheck(postgresql_engine):
         session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == device_id))
         session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == device_id))
         session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id == device_id))
+        session.execute(delete(WorkerDeviceCredential).where(WorkerDeviceCredential.device_id == device_id))
         session.execute(delete(Device).where(Device.device_id == device_id))
         session.execute(delete(Team).where(Team.team_id == team_id))
         session.execute(delete(User).where(User.user_id == user_id))
@@ -84,6 +86,74 @@ def submission(*, product="product-a", revision=1, attempt=1, title="fixture"):
     return PrecheckSubmission.model_validate({"kind": "douyin.category_schema",
         "context": {"product_id": product, "revision": revision, "attempt": attempt},
         "input": {"category_id": "1000005146", "title": title}})
+
+
+def test_direct_delivery_requires_new_worker_and_central_keeps_only_receipt(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        runtime = session.get(DeviceRuntime, device_id)
+        runtime.worker_version = "0.5.0"
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        direct = submission().model_copy(update={"delivery": "product"})
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, direct)
+        session.rollback()
+        runtime = session.get(DeviceRuntime, device_id)
+        runtime.worker_version = "0.5.1"
+        session.commit()
+        task = service.submit(principal, direct)
+        task.status = "running"
+        session.commit()
+        context = product_delivery_context(session, auth, device_id, task.task_id)
+        assert context["product_id"] == "product-a" and context["revision"] == 1
+        with pytest.raises(PrecheckNotFound):
+            product_delivery_context(session, auth, uuid4(), task.task_id)
+        with pytest.raises(PrecheckNotFound):
+            accept_precheck_terminal(session, device_id, task.task_id, PrecheckTerminal(status="success", result={}))
+        ack = PrecheckDeliveryAcknowledgement(status="success", payload_sha256="a" * 64)
+        assert acknowledge_product_delivery(session, device_id, task.task_id, ack).result_json == {"delivery_sha256": "a" * 64}
+        assert acknowledge_product_delivery(session, device_id, task.task_id, ack).status == "success"
+        with pytest.raises(PrecheckConflict):
+            acknowledge_product_delivery(session, device_id, task.task_id,
+                PrecheckDeliveryAcknowledgement(status="success", payload_sha256="b" * 64))
+
+
+def test_direct_context_checks_real_worker_credential(ready_precheck):
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.core.config import Settings, get_settings
+    from app.core.database import get_database_session
+    from app.core.exceptions import install_exception_handlers
+    from app.modules.workers import precheck_api
+    from app.modules.workers.service import WorkerService
+
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        session.get(DeviceRuntime, device_id).worker_version = "0.5.1"
+        session.commit()
+        token = WorkerService(session).issue_token(device_id)
+        task = WorkerPrecheckService(session, auth).submit(principal, submission().model_copy(update={"delivery": "product"}))
+        task.status = "running"
+        session.commit()
+        task_id = task.task_id
+    app = FastAPI()
+    install_exception_handlers(app)
+    app.include_router(precheck_api.worker_router)
+    app.dependency_overrides[get_settings] = lambda: Settings(application_worker_precheck_enabled=True)
+    app.dependency_overrides[precheck_api._precheck_authenticator] = lambda: auth
+
+    def database():
+        with Session(engine) as session:
+            yield session
+    app.dependency_overrides[get_database_session] = database
+    path = f"/api/v1/worker/tasks/{task_id}/precheck-delivery-context"
+    with TestClient(app, base_url="https://integration.test") as client:
+        good = client.get(path, headers={"Authorization": f"Bearer {token}", "X-Device-ID": str(device_id)})
+        assert good.status_code == 200 and good.json()["product_id"] == "product-a"
+        assert good.headers["cache-control"] == "no-store" and token not in good.text
+        assert client.get(path, headers={"Authorization": "Bearer synthetic-rpa-readonly", "X-Device-ID": str(device_id)}).status_code == 401
+        assert client.get(path, headers={"Authorization": f"Bearer {token}", "X-Device-ID": str(uuid4())}).status_code == 401
 
 
 def test_concurrent_claim_reuses_one_task_and_checks_changed_request(ready_precheck):
@@ -307,7 +377,8 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 
 
-def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch):
+@pytest.mark.parametrize("delivery_mode", ["central", "product"])
+def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode):
     import asyncio
     import base64
     import hashlib
@@ -392,6 +463,8 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
             return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
     monkeypatch.setattr(precheck_api, "DouyinSignerClient", SyntheticSigner)
     platform_calls = []
+    product_calls = []
+    central_clients = []
 
     def platform(request):
         platform_calls.append(request.url.path)
@@ -399,6 +472,16 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
         return httpx.Response(200, json={"code": "0", "data": {"model": {"category_properties": {
             "items": [{"id": "large", "options": [{"id": index, "name": "选项" * 8} for index in range(2500)]}]
         }}}})
+
+    async def product(request):
+        product_calls.append(request.url.path)
+        payload = json.loads(request.content)
+        assert payload["result"]["items"][0]["options"][-1]["id"] == 2499
+        task_id = request.url.path.rsplit("/", 1)[-1]
+        context = await central_clients[0].get(f"/api/v1/worker/tasks/{task_id}/precheck-delivery-context")
+        assert context.status_code == 200 and context.json()["client_id"] == principal.grant.client_id
+        assert context.json()["product_id"] == "product-a" and "result" not in context.json()
+        return httpx.Response(200, json={"task_id": task_id, "accepted": True})
 
     class FakeRpa:
         async def read_session(self, local_shop_id, platform_shop_id):
@@ -415,29 +498,37 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
             raise AssertionError("signed capability should handle the task")
 
     async def exercise():
-        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="https://integration.test") as http:
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=application), base_url="https://integration.test") as http, \
+                   httpx.AsyncClient(transport=httpx.MockTransport(product), base_url="https://product.test") as product_http:
+            central_clients.append(http)
             worker_settings = WorkerSettings(server_url="https://integration.test", device_id=device_id,
                                              device_token="synthetic-device-token", runtime_root=tmp_path / "runtime")
-            client = WorkerApiClient(worker_settings, client=http)
+            client = WorkerApiClient(worker_settings, client=http, product_client=product_http)
             updater = CapabilityUpdater((tmp_path / "installed-capabilities").resolve(), public, 1)
             runtime = CapabilityRuntime(updater, CapabilityHost(device_id, client, FakeRpa(), transport=httpx.MockTransport(platform)))
             worker = Worker(worker_settings, client, NoopExecutor(), capability_runtime=runtime)
             await worker._refresh_capabilities_if_due()
             assert runtime.descriptors()[0].skill_id == "douyin.category_schema"
             await worker._heartbeat_once()
-            created = await http.post("/internal/applications/v1/worker-prechecks", json=submission().model_dump())
+            request = submission().model_copy(update={"delivery": delivery_mode})
+            created = await http.post("/internal/applications/v1/worker-prechecks", json=request.model_dump())
             assert created.status_code == 202
             task = await client.claim()
             assert task is not None and str(task.task_id) == created.json()["task_id"]
+            assert task.result_delivery == delivery_mode and "_result_delivery" not in task.input
             await worker._execute_task(task)
             status = await http.get(f"/internal/applications/v1/worker-prechecks/{task.task_id}")
             assert status.status_code == 200
             result = status.json()
             assert result["status"] == "success"
-            assert result["result"]["platform_code"] == 0
-            assert result["result"]["items"][0]["options"][-1]["id"] == 2499
+            if delivery_mode == "central":
+                assert result["result"]["platform_code"] == 0
+                assert result["result"]["items"][0]["options"][-1]["id"] == 2499
+                assert len(status.content) > 64 * 1024 and product_calls == []
+            else:
+                assert set(result["result"]) == {"delivery_sha256"}
+                assert product_calls == [f"/api/v1/worker-precheck-results/{task.task_id}"]
             assert "synthetic-cookie" not in status.text and "synthetic-signature" not in status.text
-            assert len(status.content) > 64 * 1024
             assert worker.result_outbox.pending() == []
             assert platform_calls == ["/product/tproduct/getSchema"]
             assert (await client.claim()) is None

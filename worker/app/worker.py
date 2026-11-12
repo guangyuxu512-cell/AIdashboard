@@ -426,6 +426,7 @@ class Worker:
             delivery = TerminalDelivery(
                 task_id=task.task_id,
                 skill_id=task.skill_id,
+                result_delivery=task.result_delivery,
                 status=result.status.value,
                 result=_redact_value(result.result or {}) if result.status is ExecutionStatus.SUCCESS
                 else (_redact_value(result.result) if result.result is not None else None),
@@ -505,11 +506,21 @@ class Worker:
                     except Exception:
                         delivery = self.result_outbox.replace_inventory_failure(delivery)
                 if delivery.skill_id == "douyin.category_schema":
-                    await self.client.complete_precheck(
-                        delivery.task_id, status=delivery.status,
-                        result=delivery.result, error_code=delivery.error_code,
-                        error_message=delivery.error_message,
-                    )
+                    if delivery.result_delivery == "product":
+                        digest = await self.client.deliver_product_precheck(
+                            delivery.task_id, status=delivery.status, result=delivery.result,
+                            error_code=delivery.error_code, error_message=delivery.error_message,
+                        )
+                        await self.client.acknowledge_product_precheck(
+                            delivery.task_id, status=delivery.status, payload_sha256=digest,
+                            error_code=delivery.error_code,
+                        )
+                    else:
+                        await self.client.complete_precheck(
+                            delivery.task_id, status=delivery.status,
+                            result=delivery.result, error_code=delivery.error_code,
+                            error_message=delivery.error_message,
+                        )
                 elif delivery.status == "success":
                     await self.client.complete(delivery.task_id, delivery.result or {})
                 else:

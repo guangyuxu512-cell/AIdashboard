@@ -35,6 +35,7 @@ class TerminalDelivery(BaseModel):
     version: Literal[1] = 1
     task_id: UUID
     skill_id: str
+    result_delivery: Literal["central", "product"] = "central"
     status: Literal["success", "failed"]
     result: dict[str, Any] | None = None
     provider_inventory: dict[str, Any] | None = None
@@ -90,8 +91,11 @@ class ResultOutbox:
         return replacement
 
     def _write(self, item: TerminalDelivery, *, previous: TerminalDelivery | None) -> None:
+        # Keep legacy deliveries readable by a Worker rolled back to 0.5.0.
+        # Direct deliveries retain their marker and must finish before rollback.
+        excluded = {"result_delivery"} if item.result_delivery == "central" else set()
         payload = json.dumps(
-            item.model_dump(mode="json"), ensure_ascii=False,
+            item.model_dump(mode="json", exclude=excluded), ensure_ascii=False,
             separators=(",", ":"), sort_keys=True, allow_nan=False,
         ).encode("utf-8")
         self.root.mkdir(mode=0o700, parents=True, exist_ok=True)

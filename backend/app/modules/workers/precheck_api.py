@@ -14,8 +14,8 @@ from app.integrations.douyin_signer.client import DouyinSignerClient
 from app.modules.sessions.application_api import bearer
 from app.modules.sessions.application_auth import ApplicationAuthenticationError, ApplicationAuthenticator, ApplicationPrincipal, ApplicationTransportError
 from app.modules.workers.auth import get_worker_principal
-from app.modules.workers.precheck_contract import PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport
-from app.modules.workers.precheck_service import PrecheckInvalidResult, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, save_rpa_inventory, sign_current_precheck
+from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport
+from app.modules.workers.precheck_service import PrecheckInvalidResult, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, save_rpa_inventory, sign_current_precheck
 from app.modules.workers.service import WorkerPrincipal
 
 
@@ -85,6 +85,23 @@ def finish_precheck(task_id: UUID, data: PrecheckTerminal,
                     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
                     session: Annotated[Session, Depends(get_database_session)]) -> dict:
     task = accept_precheck_terminal(session, principal.device_id, task_id, data)
+    return {"task_id": str(task.task_id), "status": task.status}
+
+
+@worker_router.get("/tasks/{task_id}/precheck-delivery-context", dependencies=[Depends(_enabled)])
+def get_delivery_context(task_id: UUID, response: Response,
+                         principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+                         session: Annotated[Session, Depends(get_database_session)],
+                         auth: Annotated[ApplicationAuthenticator, Depends(_precheck_authenticator)]) -> dict:
+    response.headers["Cache-Control"] = "no-store"
+    return product_delivery_context(session, auth, principal.device_id, task_id)
+
+
+@worker_router.post("/tasks/{task_id}/precheck-delivered", dependencies=[Depends(_enabled)])
+def finish_product_delivery(task_id: UUID, data: PrecheckDeliveryAcknowledgement,
+                            principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+                            session: Annotated[Session, Depends(get_database_session)]) -> dict:
+    task = acknowledge_product_delivery(session, principal.device_id, task_id, data)
     return {"task_id": str(task.task_id), "status": task.status}
 
 
