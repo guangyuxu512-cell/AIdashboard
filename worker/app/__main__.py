@@ -1,5 +1,9 @@
 import sys
 
+if len(sys.argv) == 3 and sys.argv[1] == "--check-version":
+    from app.version import WORKER_VERSION
+    raise SystemExit(0 if sys.argv[2] == WORKER_VERSION else 1)
+
 if len(sys.argv) > 1 and sys.argv[1] == "--check-capability-trust":
     from app.release_trust import packaged_capability_public_key
     raise SystemExit(0 if packaged_capability_public_key() is not None else 2)

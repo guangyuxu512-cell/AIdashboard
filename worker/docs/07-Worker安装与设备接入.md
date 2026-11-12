@@ -1,5 +1,7 @@
 # Worker 安装与设备接入
 
+Worker 0.5.2 从 RPA 本机 SQLite 读取已加密保存的店铺会话进行预检，不要求预检时打开店铺浏览器。RPA 和 Worker 需使用同一 Windows 用户，且 RPA 需先在正常登录时保存对应店铺会话。店铺身份及现有设备授权仍需匹配。
+
 ## 网络边界
 
 执行电脑只主动访问 Backend HTTPS，不需要公网 IP、端口映射、入站规则、SSH Key、Backend、PostgreSQL 或完整项目源码。Backend 不主动连接执行电脑，Worker 不访问 PostgreSQL。每台电脑必须使用独立 `device_id` 和 Device Token。
