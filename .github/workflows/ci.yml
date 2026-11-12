@@ -96,6 +96,8 @@ jobs:
       - name: Install existing verification dependencies
         run: |
           pnpm install --frozen-lockfile
+          # Electron downloads lazily; finish it once before parallel tests import it.
+          pnpm --filter @control-center/electron exec node -e "require('electron')"
           python -m pip install -e './backend[dev]'
           python -m venv "${RUNNER_TEMP}/verify-worker"
           "${RUNNER_TEMP}/verify-worker/Scripts/python.exe" -m pip install -e './worker[dev]'

@@ -126,6 +126,7 @@ class LocalShop(BaseModel):
     shop_name: str = Field(alias="shopName", min_length=1, max_length=200)
     platform: str = Field(min_length=1, max_length=64)
     browser_open: bool | None = Field(alias="browserOpen", default=None)
+    session_stored: bool = Field(alias="sessionStored", default=False)
 
 
 class LocalShopInventory(BaseModel):
@@ -214,7 +215,7 @@ class RpaLocalBridge:
 
     async def list_shops(self) -> LocalShopInventory:
         async with self._connection() as bridge:
-            raw = await bridge.call({"type": "list_shops"})
+            raw = await bridge.call({"type": "list_stored_shops"})
             try:
                 inventory = LocalShopInventory.model_validate(raw)
             except ValidationError:
@@ -227,7 +228,7 @@ class RpaLocalBridge:
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         async with self._connection() as bridge:
-            raw = await bridge.call({"type": "read_session", "localShopId": local_shop_id,
+            raw = await bridge.call({"type": "read_stored_session", "localShopId": local_shop_id,
                                      "expectedPlatformShopId": platform_shop_id})
             try:
                 session = LocalSession.model_validate(raw)
@@ -289,7 +290,8 @@ class _BridgeProcess:
     async def call(self, data: dict) -> dict:
         assert self.process.stdin is not None and self.process.stdout is not None
         encoded = json.dumps(data, ensure_ascii=False, separators=(",", ":")).encode("utf-8") + b"\n"
-        phase = {"init": "INIT", "list_shops": "LIST", "read_session": "SESSION"}.get(data.get("type"), "COMMAND")
+        phase = {"init": "INIT", "list_shops": "LIST", "list_stored_shops": "LIST",
+                 "read_session": "SESSION", "read_stored_session": "SESSION"}.get(data.get("type"), "COMMAND")
         try:
             self.process.stdin.write(encoded)
             await asyncio.wait_for(self.process.stdin.drain(), self.timeout)
