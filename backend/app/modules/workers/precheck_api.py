@@ -92,10 +92,9 @@ def finish_precheck(task_id: UUID, data: PrecheckTerminal,
 def get_delivery_context(task_id: UUID, response: Response,
                          principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
                          session: Annotated[Session, Depends(get_database_session)],
-                         auth: Annotated[ApplicationAuthenticator, Depends(_precheck_authenticator)],
-                         protocol: Annotated[str | None, Header(alias="X-Precheck-Protocol")] = None) -> dict:
+                         auth: Annotated[ApplicationAuthenticator, Depends(_precheck_authenticator)]) -> dict:
     response.headers["Cache-Control"] = "no-store"
-    return product_delivery_context(session, auth, principal.device_id, task_id, protocol_v2=protocol == "2")
+    return product_delivery_context(session, auth, principal.device_id, task_id)
 
 
 @worker_router.post("/tasks/{task_id}/precheck-delivered", dependencies=[Depends(_enabled)])

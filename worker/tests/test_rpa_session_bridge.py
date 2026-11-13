@@ -1,6 +1,5 @@
 import asyncio
 import json
-import sqlite3
 import sys
 from pathlib import Path
 from uuid import uuid4
@@ -9,7 +8,7 @@ import pytest
 
 from app.rpa_session_bridge import (
     BridgeDiscovery, RpaAutoBridge, RpaBridgeError, RpaLocalBridge, TrustedRpaInstallation,
-    _stored_session_revisions, discover_rpa, helper_tree_digest,
+    discover_rpa, helper_tree_digest,
 )
 
 
@@ -32,23 +31,6 @@ def fixture_installation(tmp_path: Path):
         discovery.model_dump_json(by_alias=True), encoding="utf-8")
     trust = TrustedRpaInstallation(root, helper_tree_digest(helper_dir))
     return root, data_dir, trust, discovery
-
-
-def test_session_revision_changes_when_rpa_saves_a_new_snapshot(tmp_path):
-    database = tmp_path / "shop-manager.db"
-    with sqlite3.connect(database) as connection:
-        connection.execute("CREATE TABLE worker_shop_sessions (local_shop_id TEXT, platform_shop_id TEXT, "
-                           "captured_at TEXT, encrypted_payload TEXT)")
-        connection.execute("INSERT INTO worker_shop_sessions VALUES (?, ?, ?, ?)",
-                           ("local-1", "shop-1", "time-a", "synthetic-encrypted-a"))
-    first = _stored_session_revisions(str(database))
-    assert len(first[("local-1", "shop-1")]) == 64
-    assert "synthetic-encrypted-a" not in repr(first)
-    with sqlite3.connect(database) as connection:
-        connection.execute("UPDATE worker_shop_sessions SET encrypted_payload=?", ("synthetic-encrypted-b",))
-    second = _stored_session_revisions(str(database))
-    assert first[("local-1", "shop-1")] != second[("local-1", "shop-1")]
-    assert _stored_session_revisions(str(tmp_path / "missing.db")) == {}
 
 
 def test_discovery_rejects_tampered_helper_dependency(tmp_path):
@@ -80,12 +62,6 @@ def test_automatic_discovery_requires_signed_release_digest(tmp_path):
 
 def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
     _, data_dir, trust, info = fixture_installation(tmp_path)
-    database = Path(info.database_path)
-    database.unlink()
-    with sqlite3.connect(database) as connection:
-        connection.execute("CREATE TABLE worker_shop_sessions (local_shop_id TEXT, platform_shop_id TEXT, captured_at TEXT, encrypted_payload TEXT)")
-        connection.execute("INSERT INTO worker_shop_sessions VALUES (?, ?, ?, ?)",
-                           ("a", "1", "time-a", "synthetic-encrypted-a"))
     script = tmp_path / "fake_helper.py"
     script.write_text('''import json,sys\n'
 'iid=sys.argv[1]\n'
@@ -110,8 +86,6 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
     inventory = asyncio.run(bridge.list_shops())
     assert inventory.shops[0].local_shop_id == "a"
     assert inventory.shops[0].session_stored is True
-    assert len(inventory.shops[0].session_revision) == 64
-    assert "synthetic-encrypted-a" not in inventory.model_dump_json()
     session = asyncio.run(bridge.read_session("a", "1"))
     assert session.cookies[0].value.get_secret_value() == "synthetic-secret"
     assert "synthetic-secret" not in repr(session)

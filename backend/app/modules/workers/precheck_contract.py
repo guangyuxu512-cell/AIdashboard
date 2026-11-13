@@ -57,7 +57,6 @@ class LocalShopSummary(BaseModel):
     platform: str = Field(min_length=1, max_length=64)
     browser_open: bool | None = Field(default=None, alias="browserOpen")
     session_stored: bool = Field(default=False, alias="sessionStored")
-    session_revision: str | None = Field(default=None, alias="sessionRevision", pattern=r"^[0-9a-f]{64}$")
 
 
 class RpaInventoryReport(BaseModel):
