@@ -61,7 +61,9 @@ def test_only_assigned_authorized_worker_can_read_delivery_context():
 
 def test_delivery_ack_stores_only_digest_and_is_idempotent():
     session, _, record, task, device_id = fixture()
-    session.scalar.side_effect = [record, task, record, task, record, task]
+    # The task is locked first so an already-acknowledged old task can be
+    # replayed safely after its product revision is assigned to a new task.
+    session.scalar.side_effect = [task, record, task, task]
     data = PrecheckDeliveryAcknowledgement(status="success", payload_sha256="a" * 64)
     assert acknowledge_product_delivery(session, device_id, task.task_id, data).result_json == {"delivery_sha256": "a" * 64}
     assert acknowledge_product_delivery(session, device_id, task.task_id, data).status == "success"
