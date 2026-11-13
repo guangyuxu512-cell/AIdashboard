@@ -582,19 +582,21 @@ def test_application_precheck_and_legacy_session_switches_are_independent(ready_
 
 
 def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
-    from pathlib import Path
-    from alembic import command
-    from alembic.config import Config
+    import importlib
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
     from sqlalchemy import text
 
     engine, _, _, device_id = ready_precheck
-    backend = Path(__file__).resolve().parents[2]
-    config = Config(str(backend / "alembic.ini"))
-    config.set_main_option("script_location", str(backend / "migrations"))
-    with pytest.raises(RuntimeError, match="retain schema and audit data"):
-        command.downgrade(config, "20261020_0049")
+    # Exercise the existing 0050 guard directly. Newer migrations must not be
+    # downgraded merely to reach it, since they may contain unrelated data.
     with engine.connect() as connection:
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261110_0050"
+        migration = importlib.import_module("migrations.versions.20261110_0050_worker_rpa_precheck_v1")
+        with Operations.context(MigrationContext.configure(connection)):
+            with pytest.raises(RuntimeError, match="retain schema and audit data"):
+                migration.downgrade()
+        connection.rollback()
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0051"
         assert connection.scalar(select(WorkerRpaShopInventory.device_id).where(
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 

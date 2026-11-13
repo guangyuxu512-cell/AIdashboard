@@ -11,6 +11,8 @@ from app.core.health import router as health_router
 from app.core.logging import RequestLoggingMiddleware
 from app.modules.access.api import router as access_router
 from app.modules.access.management_api import router as access_management_router
+from app.modules.api_tokens.api import router as api_tokens_router
+from app.modules.api_tokens.catalog import install_openapi_security
 from app.modules.audit.api import router as audit_log_router
 from app.modules.ai_workbench.api import router as ai_workbench_router
 from app.modules.ai_workbench.generation_executor import (
@@ -213,6 +215,7 @@ def create_app() -> FastAPI:
     application.include_router(human_auth_router)
     application.include_router(access_router)
     application.include_router(access_management_router)
+    application.include_router(api_tokens_router)
     application.include_router(audit_log_router)
     application.include_router(ai_workbench_router)
     application.include_router(ai_model_admin_router)
@@ -242,6 +245,7 @@ def create_app() -> FastAPI:
     application.include_router(build_capability_package_router(get_settings().worker_capability_package_dir))
     application.include_router(worker_precheck_router)
     application.include_router(worker_tasks_router)
+    install_openapi_security(application, settings.human_session_cookie_name)
     return application
 
 

@@ -1,5 +1,11 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-13 中控 AI Token 管理资源登记
+
+- ca97 已只读核对 Integration、生产均为单一 `20261110_0050`，`0050` 已随 Green dev `9dee4b88a1ab9f3b4071f66f8af3628336cfd44f`（CI `43436103594` 成功）进入共享环境；前述 Worker Feature 的 `0050 active` 记录现核销为 `released`，不改写已应用迁移。
+- 为 `feat/control-center-ai-token-management-v1` 分配唯一 active Slot `20261113_0051`，down revision 为 `20261110_0050`。范围为 AI API Token 的摘要、权限、团队范围、有效期和撤销记录；不得保存 Token 明文。最终字段、约束和契约随实现确定并接受 Gate 审核。
+- Feature 使用独立数据库 `control_center_feat_ai_token_management`；不得使用 Integration、Main smoke 或生产实施。需验证升级、空库降级、凭证保护和权限隔离。共享与生产回滚保留凭证与审计记录，通过回滚应用或关闭入口处理；不得通过降级丢失凭证状态。
+
 ## 2026-11-10 Worker 能力包与预检资源登记
 
 - `20261020_0049` 已进入 Green dev `ef63e85bda0407a9dcfe64ac0db2cdc0791370ba`（CI 42636143993 成功），Integration 和生产均已应用为单一 Head；其下方旧 `active` 文字仅保留历史，现核销为 `released`。

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from typing import Annotated
 from uuid import UUID
 
@@ -8,7 +9,8 @@ from app.core.database import get_database_session
 from app.core.logging.request import set_request_team_id, set_request_user_id
 from app.modules.access.auth import get_human_principal
 from app.modules.access.contracts import ActorContext, HumanPrincipal
-from app.modules.access.exceptions import AccessAdministrationForbiddenError
+from app.modules.access.enums import DataScope
+from app.modules.access.exceptions import AccessAdministrationForbiddenError, TeamAccessDeniedError, TeamContextRequiredError
 from app.modules.access.module_access import ModuleCode
 from app.modules.access.service import (
     AccessManagementService,
@@ -55,10 +57,17 @@ def get_actor_context(
         Header(alias=TEAM_CONTEXT_HEADER),
     ] = None,
 ) -> ActorContext:
+    if principal.api_token_id is not None and principal.api_team_ids is not None:
+        if requested_team_id is None:
+            raise TeamContextRequiredError()
+        if requested_team_id not in principal.api_team_ids:
+            raise TeamAccessDeniedError()
     actor = service.resolve(
         user_id=principal.user_id,
         requested_team_id=requested_team_id,
     )
+    if principal.api_token_id is not None and principal.api_team_ids is not None:
+        actor = replace(actor, is_super_account=False, role_code="member", data_scope=DataScope.TEAM)
     set_request_user_id(request, actor.user_id)
     if actor.team_id is not None:
         set_request_team_id(request, actor.team_id)
