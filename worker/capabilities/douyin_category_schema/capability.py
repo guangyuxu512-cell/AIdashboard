@@ -12,7 +12,8 @@ MAX_ITEMS = 4 * 1024 * 1024
 MAX_RESULT = MAX_ITEMS + 16 * 1024
 INPUT_SCHEMA = {"type": "object", "properties": {
     "category_id": {"type": "string"}, "title": {"type": "string"},
-    "local_shop_id": {"type": "string"}, "platform_shop_id": {"type": "string"}},
+    "local_shop_id": {"type": "string"}, "platform_shop_id": {"type": "string"},
+    "skip_expired_session": {"type": "boolean"}},
     "required": ["category_id", "title", "local_shop_id", "platform_shop_id"],
     "additionalProperties": False}
 _ITEM = {"id", "label", "name", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create"}
@@ -23,6 +24,12 @@ _MODULE = {"module_id", "input_type", "validate_rule", "unit_linkage", "unit_opt
 _VALIDATION = {"data_type", "unit_rules", "min", "max", "precision"}
 _UNIT = {"label", "value"}
 _RULE = {"type", "value"}
+_EXPLICIT_LOGIN_FAILURES = {
+    "未登录", "用户未登录", "请先登录", "请重新登录", "登录失效", "登录已失效",
+    "登录过期", "登录已过期", "登录状态失效", "登录状态已失效", "登录状态已过期",
+    "登录失效请重新登录", "登录过期请重新登录", "登录状态已失效请重新登录",
+    "登录状态已过期请重新登录", "sessionexpired", "loginrequired", "notloggedin",
+}
 
 
 def _safe_scalar(value):
@@ -72,6 +79,20 @@ def _platform_code(value):
     return None
 
 
+def _explicit_login_failure(payload):
+    """Only an explicit login message qualifies; denial or risk alone do not."""
+    if not isinstance(payload, dict):
+        return False
+    for key in ("message", "msg", "error_msg", "error_message"):
+        value = payload.get(key)
+        if not isinstance(value, str) or len(value) > 120:
+            continue
+        normalized = re.sub(r"[\s，。！？、:：!,.；;]+", "", value).lower()
+        if normalized in _EXPLICIT_LOGIN_FAILURES:
+            return True
+    return False
+
+
 def _failure(identity, stage, code, http_status=None, platform_code=None):
     return ExecutionResult(status=ExecutionStatus.FAILED,
         result={**identity, "http_status": http_status, "platform_code": platform_code,
@@ -84,6 +105,8 @@ async def execute(host, task):
     identity = {"kind": SKILL_ID, "category_id": params["category_id"],
                 "device_id": str(host.device_id), "local_shop_id": params["local_shop_id"],
                 "platform_shop_id": params["platform_shop_id"]}
+    if params.get("skip_expired_session") is True:
+        return _failure(identity, "session", "SHOP_SESSION_EXPIRED")
     try:
         session = await host.read_session(params["local_shop_id"], params["platform_shop_id"])
         cookie = host.cookie_header(session)
@@ -105,6 +128,8 @@ async def execute(host, task):
     raw_code = payload.get("code", payload.get("st", payload.get("errno")))
     code = _platform_code(raw_code)
     if status != 200 or code != 0:
+        if status in (200, 401) and _explicit_login_failure(payload):
+            return _failure(identity, "session", "SHOP_SESSION_EXPIRED", status, code)
         return _failure(identity, "platform", "PLATFORM_BUSINESS_REJECTED", status, code)
     data = payload.get("data")
     model = data.get("model") if isinstance(data, dict) else None
