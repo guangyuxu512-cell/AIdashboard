@@ -30,6 +30,13 @@ def get_human_session_token(
 ) -> str:
     """Fail an anonymous request before opening a database session."""
 
+    authorization = request.headers.get("Authorization")
+    if authorization is not None:
+        scheme, separator, token = authorization.partition(" ")
+        if not separator or scheme.lower() != "bearer" or not token or " " in token:
+            from app.modules.api_tokens.exceptions import ApiTokenInvalidError
+            raise ApiTokenInvalidError()
+        return token
     raw_session_token = request.cookies.get(settings.human_session_cookie_name)
     if not raw_session_token:
         raise HumanAuthenticationRequiredError()

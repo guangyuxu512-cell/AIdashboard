@@ -24,6 +24,10 @@ export default defineConfig(({ mode }) => {
           target: env.VITE_API_PROXY_TARGET,
           changeOrigin: true,
         },
+        '/openapi.json': {
+          target: env.VITE_API_PROXY_TARGET,
+          changeOrigin: true,
+        },
       }
     : undefined
 
@@ -36,5 +40,13 @@ export default defineConfig(({ mode }) => {
     },
     server: { proxy },
     preview: { proxy },
+    build: {
+      rollupOptions: {
+        input: {
+          main: fileURLToPath(new URL('./index.html', import.meta.url)),
+          tokenManager: fileURLToPath(new URL('./token-manager/index.html', import.meta.url)),
+        },
+      },
+    },
   }
 })

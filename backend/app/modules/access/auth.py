@@ -19,8 +19,18 @@ def get_human_principal(
         Depends(get_authenticated_human_auth_service),
     ],
 ) -> HumanPrincipal:
-    """从固定HttpOnly Cookie解析人员身份，不接受可伪造身份Header。"""
+    """Authenticate the human cookie or a separately scoped management token."""
 
-    principal = service.resolve_principal(raw_session_token)
+    if request.headers.get("Authorization") is not None:
+        from app.modules.api_tokens.exceptions import ApiTokenPermissionDeniedError
+        from app.modules.api_tokens.service import ApiTokenService
+
+        principal = ApiTokenService(service.session).authenticate(raw_session_token)
+        route = request.scope.get("route")
+        permission = f"{request.method.upper()} {getattr(route, 'path', '')}"
+        if permission not in principal.api_permissions:
+            raise ApiTokenPermissionDeniedError()
+    else:
+        principal = service.resolve_principal(raw_session_token)
     set_request_user_id(request, principal.user_id)
     return principal
