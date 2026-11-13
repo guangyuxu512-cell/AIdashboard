@@ -75,6 +75,8 @@ class Receiver(BaseHTTPRequestHandler):
         self.reply_bytes(status, body, content_type)
 
     def do_GET(self):
+        if self.path == "/openapi.json":
+            return self.reply(200, json.dumps({"openapi": "transport-fixture"}), "application/json")
         if re.fullmatch(r"/api/v1/worker/tasks/[^/]+/precheck-sign/?(?:\?.*)?", self.path):
             return self.reply(405, json.dumps({"backend": "transport-fixture", "method": "GET"}), "application/json")
         if self.path == "/rpa/v1/product-images/00000000000000000000000000000000.png":
@@ -170,6 +172,12 @@ for origin in "$http_origin" "$https_origin"; do
         sleep 1
     done
     test "$ready" = true
+
+    # The independent manager and API contract must not fall through to the PC SPA.
+    curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/token-manager/" -o "$test_root/token-manager.html"
+    grep -q '中控 Token 管理' "$test_root/token-manager.html"
+    test "$(curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/openapi.json")" = '{"openapi": "transport-fixture"}'
+    test "$(curl "${curl_options[@]}" "${trust[@]}" -o /dev/null -w '%{http_code}' "$origin/token-manager/not-present")" = 404
 
     # Small, just above the old 1 MiB boundary, a reported failing size, and a full
     # 10 MiB file. The multipart envelope must also arrive intact at the receiver.
@@ -357,3 +365,4 @@ printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/aut
 printf 'PASS: application Session path reaches the backend only through host TLS and overwrites a spoofed proto (transport fixture only)\n'
 printf 'PASS: ProductDataCenter image GET/HEAD uses the exact public HTTPS prefix; writes are denied and adjacent RPA paths stay frontend\n'
 printf 'PASS: authenticated precheck signing streams at both proxies, preserves path/headers and never logs request bodies\n'
+printf 'PASS: standalone Token manager and OpenAPI reach their intended frontend and backend through both proxies\n'

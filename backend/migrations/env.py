@@ -13,6 +13,7 @@ from app.modules.access.models import (
     TeamModuleAccess,
     TeamShopAccess,
 )
+from app.modules.api_tokens.models import ApiToken, ApiTokenEvent
 from app.modules.audit.models import AuditLog
 from app.modules.ai_workbench.models import (
     AiModel,
@@ -78,6 +79,8 @@ from app.modules.workers.models import (
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 
 _MODELS = (
+    ApiToken,
+    ApiTokenEvent,
     AiModel,
     AutomationApplicationConfig,
     AutomationParameterPreset,

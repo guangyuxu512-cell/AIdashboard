@@ -11,6 +11,9 @@ class HumanPrincipal:
 
     user_id: UUID
     display_name: str
+    api_token_id: UUID | None = None
+    api_permissions: tuple[str, ...] = ()
+    api_team_ids: tuple[UUID, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
