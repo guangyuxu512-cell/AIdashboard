@@ -17,7 +17,7 @@ from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability, Wor
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSubmission, PrecheckTerminal
 from app.modules.workers.precheck_contract import PrecheckSignInput
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
-from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, session_snapshot_expired, sign_current_precheck
+from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, sign_current_precheck
 from app.integrations.douyin_signer.schemas import DouyinSignResult
 
 
@@ -46,7 +46,7 @@ def ready_precheck(postgresql_engine):
     with postgresql_engine.connect() as connection:
         assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
             "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
-            "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover"}
+            "control_center_feat_worker_saved_session"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -70,8 +70,7 @@ def ready_precheck(postgresql_engine):
     principal = ApplicationPrincipal(grant, "synthetic-token")
     yield postgresql_engine, principal, StubAuthorizer(grant), device_id
     with Session(postgresql_engine) as session:
-        tasks = session.scalars(select(Task.task_id).where(Task.created_by_user_id == user_id,
-                                                           Task.skill_id == "douyin.category_schema")).all()
+        tasks = session.scalars(select(ApplicationWorkerPrecheck.task_id).where(ApplicationWorkerPrecheck.client_id == "pdc-test")).all()
         session.execute(delete(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.client_id == "pdc-test"))
         session.execute(delete(Task).where(Task.task_id.in_(tasks)))
         session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == device_id))
@@ -320,220 +319,6 @@ def test_concurrent_distinct_products_rotate_across_saved_shops(ready_precheck):
         assigned = list(pool.map(create, range(4)))
     assert assigned.count("local-1") == 2
     assert assigned.count("local-2") == 2
-
-
-def test_devices_balance_work_and_prefer_distinct_platform_shops(ready_precheck):
-    engine, _, auth, first_device = ready_precheck
-    extra_devices = [uuid4() for _ in range(4)]
-    devices = [first_device, *extra_devices]
-    now = datetime.now(UTC)
-    try:
-        with Session(engine) as session:
-            team_id = session.get(Device, first_device).team_id
-            for index, device_id in enumerate(devices):
-                if device_id != first_device:
-                    session.add(Device(device_id=device_id, team_id=team_id,
-                                       display_name=f"worker-{index}", enabled=True))
-                    session.flush()
-                    session.add_all([
-                        DeviceRuntime(device_id=device_id, worker_version="0.5.2", started_at=now,
-                                      last_seen_at=now, connection_status="online"),
-                        DeviceSkillCapability(device_id=device_id, skill_id="douyin.category_schema",
-                                              display_name="test", runtime="python", skill_version="1",
-                                              classification="internal"),
-                        WorkerRpaShopInventory(device_id=device_id, installation_id=uuid4(),
-                                               available=True, last_discovered_at=now, shops=[]),
-                    ])
-                    session.flush()
-                inventory = session.get(WorkerRpaShopInventory, device_id)
-                inventory.shops = [
-                    {"localShopId": "a-shared", "platformShopId": "shared", "shopName": "shared",
-                     "platform": "douyin", "sessionStored": True},
-                    {"localShopId": "z-unique", "platformShopId": f"unique-{index}", "shopName": "unique",
-                     "platform": "douyin", "sessionStored": True},
-                ]
-            session.commit()
-
-            grant = auth.grant.model_copy(update={"device_ids": tuple(devices),
-                "all_mapped_shops": tuple(devices), "device_shops": ()})
-            authorized = StubAuthorizer(grant)
-            principal = ApplicationPrincipal(grant, "synthetic-token")
-            service = WorkerPrecheckService(session, authorized)
-            assigned = [service.submit(principal, submission(product=f"fairness-{i}")) for i in range(5)]
-            assert len({task.target_device_id for task in assigned}) == 5
-            assert len({task.input_json["platform_shop_id"] for task in assigned}) == 5
-
-            # With just one mapped platform shop there is no artificial global
-            # lock: all five devices may still take work as capacity allows.
-            for device_id in devices:
-                inventory = session.get(WorkerRpaShopInventory, device_id)
-                inventory.shops = [inventory.shops[0]]
-            session.commit()
-            more = [service.submit(principal, submission(product=f"fairness-single-{i}")) for i in range(5)]
-            assert len({task.target_device_id for task in more}) == 5
-            assert {task.input_json["platform_shop_id"] for task in more} == {"shared"}
-    finally:
-        with Session(engine) as session:
-            records = select(ApplicationWorkerPrecheck.task_id).where(
-                ApplicationWorkerPrecheck.client_id == "pdc-test",
-                ApplicationWorkerPrecheck.product_id.like("fairness-%"))
-            task_ids = list(session.scalars(records))
-            session.execute(delete(ApplicationWorkerPrecheck).where(
-                ApplicationWorkerPrecheck.client_id == "pdc-test",
-                ApplicationWorkerPrecheck.product_id.like("fairness-%")))
-            session.execute(delete(Task).where(Task.task_id.in_(task_ids)))
-            session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id.in_(extra_devices)))
-            session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id.in_(extra_devices)))
-            session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(extra_devices)))
-            session.execute(delete(Device).where(Device.device_id.in_(extra_devices)))
-            session.commit()
-
-
-def test_expired_snapshot_is_skipped_and_new_rpa_snapshot_restores_shop(ready_precheck):
-    engine, _, auth, device_id = ready_precheck
-    grant = auth.grant.model_copy(update={"all_mapped_shops": (device_id,), "device_shops": ()})
-    auth, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
-    with Session(engine) as session:
-        inventory = session.get(WorkerRpaShopInventory, device_id)
-        first = {**inventory.shops[0], "sessionRevision": "a" * 64}
-        second = {**first, "localShopId": "local-2", "platformShopId": "456", "sessionRevision": "b" * 64}
-        inventory.shops = [first, second]
-        session.commit()
-        service = WorkerPrecheckService(session, auth)
-        expired = service.submit(principal, submission(product="retry-product").model_copy(update={"delivery": "product"}))
-        assert expired.input_json["local_shop_id"] == "local-1"
-        expired.status = "running"
-        session.commit()
-        context = product_delivery_context(session, auth, device_id, expired.task_id, protocol_v2=True)
-        assert context["session_retry_supported"] is True and not context["superseded"]
-        ack = PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="c" * 64,
-                                              error_code="SHOP_SESSION_EXPIRED")
-        acknowledge_product_delivery(session, device_id, expired.task_id, ack)
-        replacement = service.submit(principal, submission(product="retry-product").model_copy(update={"delivery": "product"}))
-        assert replacement.task_id != expired.task_id
-        assert replacement.input_json["local_shop_id"] == "local-2"
-        replay = product_delivery_context(session, auth, device_id, expired.task_id, protocol_v2=True)
-        assert replay["superseded"] is True and replay["receipt_sha256"] == "c" * 64
-        assert acknowledge_product_delivery(session, device_id, expired.task_id, ack).status == "failed"
-        with pytest.raises(PrecheckNotFound):
-            product_delivery_context(session, auth, device_id, expired.task_id)
-
-        # A transient lack of revision metadata must not reactivate the old
-        # snapshot. A genuinely new saved snapshot is eligible again.
-        inventory = session.get(WorkerRpaShopInventory, device_id)
-        inventory.shops = [{**first, "sessionRevision": None}, second]
-        replacement.status = "success"
-        replacement.finished_at = datetime.now(UTC)
-        session.commit()
-        assert service.submit(principal, submission(product="without-revision")).input_json["local_shop_id"] == "local-2"
-        inventory.shops = [{**first, "sessionRevision": "d" * 64}, second]
-        session.commit()
-        assert service.submit(principal, submission(product="refreshed")).input_json["local_shop_id"] == "local-1"
-
-
-def test_generic_failure_does_not_quarantine_or_redispatch(ready_precheck):
-    engine, principal, auth, device_id = ready_precheck
-    with Session(engine) as session:
-        inventory = session.get(WorkerRpaShopInventory, device_id)
-        inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
-        session.commit()
-        service = WorkerPrecheckService(session, auth)
-        request = submission(product="network-failure").model_copy(update={"delivery": "product"})
-        task = service.submit(principal, request)
-        task.status = "running"
-        session.commit()
-        acknowledge_product_delivery(session, device_id, task.task_id,
-            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="f" * 64,
-                                           error_code="PLATFORM_REQUEST_FAILED"))
-        assert service.submit(principal, request).task_id == task.task_id
-        assert service.submit(principal, submission(product="next-product")).target_device_id == device_id
-
-
-def test_retry_chooses_another_shop_even_when_same_shop_exists_on_another_device(ready_precheck):
-    engine, _, auth, first_device = ready_precheck
-    second_device = uuid4()
-    now = datetime.now(UTC)
-    request = submission(product="same-shop-on-two-devices").model_copy(update={"delivery": "product"})
-    try:
-        with Session(engine) as session:
-            inventory = session.get(WorkerRpaShopInventory, first_device)
-            inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
-            grant = auth.grant.model_copy(update={"all_mapped_shops": (first_device,), "device_shops": ()})
-            authorized = StubAuthorizer(grant)
-            principal = ApplicationPrincipal(grant, "synthetic-token")
-            session.commit()
-            first = WorkerPrecheckService(session, authorized).submit(principal, request)
-            first.status = "running"
-            session.commit()
-            acknowledge_product_delivery(session, first_device, first.task_id,
-                PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="d" * 64,
-                                               error_code="SHOP_SESSION_EXPIRED"))
-            session.add(Device(device_id=second_device, team_id=session.get(Device, first_device).team_id,
-                               display_name="second worker", enabled=True))
-            session.flush()
-            duplicate_shop = {"localShopId": "duplicate", "platformShopId": "123", "shopName": "same shop",
-                              "platform": "douyin", "sessionStored": True, "sessionRevision": "b" * 64}
-            session.add_all([
-                DeviceRuntime(device_id=second_device, worker_version="0.5.2", started_at=now,
-                              last_seen_at=now, connection_status="online"),
-                DeviceSkillCapability(device_id=second_device, skill_id="douyin.category_schema",
-                                      display_name="test", runtime="python", skill_version="1", classification="internal"),
-                WorkerRpaShopInventory(device_id=second_device, installation_id=uuid4(), available=True,
-                                       last_discovered_at=now, shops=[duplicate_shop]),
-            ])
-            session.commit()
-            grant = grant.model_copy(update={"device_ids": (first_device, second_device),
-                                            "all_mapped_shops": (first_device, second_device)})
-            authorized = StubAuthorizer(grant)
-            principal = ApplicationPrincipal(grant, "synthetic-token")
-            service = WorkerPrecheckService(session, authorized)
-            with pytest.raises(PrecheckUnavailable):
-                service.submit(principal, request)
-            session.rollback()
-            inventory = session.get(WorkerRpaShopInventory, second_device)
-            inventory.shops = [duplicate_shop, {**duplicate_shop, "localShopId": "other",
-                                                  "platformShopId": "456", "sessionRevision": "c" * 64}]
-            session.commit()
-            replacement = service.submit(principal, request)
-            assert replacement.target_device_id == second_device
-            assert replacement.input_json["platform_shop_id"] == "456"
-    finally:
-        with Session(engine) as session:
-            task_ids = list(session.scalars(select(Task.task_id).where(
-                Task.created_by_user_id == auth.grant.authorized_by_user_id, Task.skill_id == "douyin.category_schema")))
-            session.execute(delete(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.client_id == "pdc-test"))
-            session.execute(delete(Task).where(Task.task_id.in_(task_ids)))
-            session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == second_device))
-            session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == second_device))
-            session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id == second_device))
-            session.execute(delete(Device).where(Device.device_id == second_device))
-            session.commit()
-
-
-def test_expired_only_shop_waits_until_rpa_saves_a_new_snapshot(ready_precheck):
-    engine, principal, auth, device_id = ready_precheck
-    with Session(engine) as session:
-        inventory = session.get(WorkerRpaShopInventory, device_id)
-        inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
-        session.commit()
-        service = WorkerPrecheckService(session, auth)
-        request = submission(product="wait-for-session").model_copy(update={"delivery": "product"})
-        task = service.submit(principal, request)
-        queued = service.submit(principal, submission(product="already-queued").model_copy(update={"delivery": "product"}))
-        task.status = "running"
-        session.commit()
-        acknowledge_product_delivery(session, device_id, task.task_id,
-            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="e" * 64,
-                                           error_code="SHOP_SESSION_EXPIRED"))
-        assert session_snapshot_expired(session, queued)
-        with pytest.raises(PrecheckUnavailable):
-            service.submit(principal, request)
-        session.rollback()
-        inventory = session.get(WorkerRpaShopInventory, device_id)
-        inventory.shops = [{**inventory.shops[0], "sessionRevision": "b" * 64}]
-        session.commit()
-        replacement = service.submit(principal, request)
-        assert replacement.task_id != task.task_id and replacement.target_device_id == device_id
 
 
 def test_application_precheck_and_legacy_session_switches_are_independent(ready_precheck, tmp_path):

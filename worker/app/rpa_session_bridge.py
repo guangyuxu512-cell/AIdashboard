@@ -6,14 +6,13 @@ are returned only in memory and are never written to Worker runtime files.
 from __future__ import annotations
 
 import asyncio
-from contextlib import asynccontextmanager, closing
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import sqlite3
 import stat
 from typing import AsyncIterator, Literal
 from uuid import UUID
@@ -129,36 +128,12 @@ class LocalShop(BaseModel):
     platform: str = Field(min_length=1, max_length=64)
     browser_open: bool | None = Field(alias="browserOpen", default=None)
     session_stored: bool = Field(alias="sessionStored", default=False)
-    session_revision: str | None = Field(alias="sessionRevision", default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class LocalShopInventory(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, frozen=True)
     installation_id: UUID = Field(alias="installationId")
     shops: list[LocalShop] = Field(max_length=500)
-
-
-def _stored_session_revisions(database_path: str) -> dict[tuple[str, str], str]:
-    """Identify saved snapshots without decrypting or exporting their contents."""
-    revisions: dict[tuple[str, str], str] = {}
-    try:
-        uri = Path(database_path).resolve(strict=True).as_uri() + "?mode=ro"
-        with closing(sqlite3.connect(uri, uri=True, timeout=1)) as connection:
-            connection.execute("PRAGMA query_only=ON")
-            rows = connection.execute(
-                "SELECT local_shop_id, platform_shop_id, captured_at, encrypted_payload "
-                "FROM worker_shop_sessions"
-            )
-            for local_id, platform_id, captured_at, encrypted in rows:
-                if not all(isinstance(v, str) and v for v in (local_id, platform_id, captured_at, encrypted)):
-                    continue
-                revision = hashlib.sha256((captured_at + "\0" + encrypted).encode("utf-8")).hexdigest()
-                revisions[(local_id, platform_id)] = revision
-    except (OSError, sqlite3.Error, UnicodeError, ValueError):
-        # Older RPA databases and transient SQLite contention remain usable by
-        # the legacy path; do not claim that a snapshot has been refreshed.
-        return {}
-    return revisions
 
 
 class LocalCookie(BaseModel):
@@ -251,12 +226,7 @@ class RpaLocalBridge:
                 raise RpaBridgeError("RPA_IDENTITY_MISMATCH")
             if len({shop.local_shop_id for shop in inventory.shops}) != len(inventory.shops):
                 raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
-            revisions = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
-            return inventory.model_copy(update={"shops": [
-                shop.model_copy(update={"session_revision": revisions.get((shop.local_shop_id, shop.platform_shop_id))})
-                if shop.session_stored and shop.platform_shop_id else shop
-                for shop in inventory.shops
-            ]})
+            return inventory
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         async with self._connection() as bridge:
