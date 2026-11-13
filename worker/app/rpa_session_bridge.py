@@ -18,6 +18,7 @@ from typing import AsyncIterator, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from app.shared.subprocesses import windows_no_window_creation_flags
 
 
 _ERROR_CODE = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
@@ -198,6 +199,7 @@ class RpaLocalBridge:
                 self.discovery.helper_path, "--worker-session-stdio",
                 stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.DEVNULL, limit=_MAX_LINE, env=environment,
+                creationflags=windows_no_window_creation_flags(),
             )
         except OSError:
             raise RpaBridgeError("RPA_NOT_READY") from None
