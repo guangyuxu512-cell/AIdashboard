@@ -75,8 +75,10 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
     original = asyncio.create_subprocess_exec
 
     async def fake_spawn(*args, **kwargs):
+        from app.shared.subprocesses import windows_no_window_creation_flags
         assert args[0].endswith("listing-worker.exe")
         assert args[1] == "--worker-session-stdio"
+        assert kwargs.get("creationflags") == windows_no_window_creation_flags()
         return await original(sys.executable, str(script), str(info.installation_id), **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
