@@ -24,6 +24,7 @@ from app.modules.tasks.schemas import (
 )
 from app.modules.tasks.service import TaskService
 from app.modules.workers.auth import get_worker_principal
+from app.modules.workers.precheck_service import session_snapshot_expired
 from app.modules.workers.service import WorkerPrincipal
 
 
@@ -63,7 +64,10 @@ def claim_task(
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     task = claimed.task
     direct_product = task.skill_id == "douyin.category_schema" and task.input_json.get("_result_delivery") == "product"
-    task_input = {key: value for key, value in task.input_json.items() if key != "_result_delivery"} if direct_product else task.input_json
+    task_input = ({key: value for key, value in task.input_json.items() if not key.startswith("_")}
+                  if task.skill_id == "douyin.category_schema" else task.input_json)
+    if task.skill_id == "douyin.category_schema" and session_snapshot_expired(service.session, task):
+        task_input["skip_expired_session"] = True
     return WorkerTaskRead(
         task_id=task.task_id,
         skill_id=task.skill_id,
