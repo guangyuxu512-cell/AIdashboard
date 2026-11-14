@@ -155,8 +155,9 @@ BACKEND_ASSET_STORAGE_VOLUME_SOURCE="$(production_env_read BACKEND_ASSET_STORAGE
 PRODUCTION_BUILDX_BUILDER="$(production_env_read PRODUCTION_BUILDX_BUILDER || true)"
 # ProductDataCenter keeps its image bytes on NAS.  This fixed private-overlay
 # origin is rendered only into the host Nginx vhost; it is never exposed as an
-# application or database upstream.
-PRODUCT_LIBRARY_IMAGE_UPSTREAM="http://100.91.242.119:3612"
+# application or database upstream.  Port 25490 is the image-only service;
+# the former NAS product web port 3612 is no longer active.
+PRODUCT_LIBRARY_IMAGE_UPSTREAM="http://100.91.242.119:25490"
 if [[ -n "$PRODUCTION_BUILDX_BUILDER" && ! "$PRODUCTION_BUILDX_BUILDER" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]]; then
     echo "Production Buildx builder must be a single name containing only letters, digits, dots, underscores or hyphens" >&2
     exit 2
