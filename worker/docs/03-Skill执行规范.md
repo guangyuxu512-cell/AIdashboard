@@ -256,20 +256,20 @@ Production `app.skills` 装配入口，也没有注册副作用，因此正式 W
 ## Task Queue 与 Executor/Provider 并发
 
 Backend Queue 中可以同时存在多个 PENDING Task；Queue 深度与 Worker Execution Slot 是不同概念。
-当前 Worker Core 的主循环一次 Claim 一个 Task，并等待其 Terminal 后才继续 Poll，因此总体实现
-仍是单活动 Task。这个现有限制没有写入 SDK：Business Skill 不得假设永远只有一个 Task，所有
-Context 与 Runtime 状态都必须按 `task_id` 隔离。
+普通任务保持单活动 Task；`douyin.category_schema` 商品预检通过专用 Claim 支持并行：每台设备
+最多 5 家店、每家最多 3 个，同一平台店铺跨设备合计最多 3 个。普通任务与预检互斥，排在前面的
+普通任务不会被持续预检饿死。Business Skill 不得假设永远只有一个 Task，所有 Context 与 Runtime
+状态都必须按 `task_id` 隔离。
 
 Yingdao Provider V1 的 execution capacity 固定为 1。RPAExecutor 使用 Provider 级 Semaphore，
 ShadowBot Adapter 保留自身互斥作为防御层。Skill 内部不得通过 sleep/poll 等待槽。正常情况下，
-当前单活动 Task 主循环使后续影刀 Task 保持 Backend PENDING；前一 Task SUCCESS 或 FAILED 后释放
+普通任务的单活动边界使后续影刀 Task 保持 Backend PENDING；前一 Task SUCCESS 或 FAILED 后释放
 槽并继续下一项。若 Task 已超时但底层影刀调用尚未真正返回，RPAExecutor 返回 FAILED 的同时继续
 占用 Provider 槽；`can_claim()` 暂停新 Claim，直到真实调用退出并完成 cleanup，避免盲目启动第二个
 ShadowBot Application。
 
-当前 Backend Claim API 不能按 Runtime/Provider 选择候选 Task，所以“超时但 Provider 仍活动”
-期间会保守暂停所有新 Claim，包括 Python。未来若开放 Worker 多 Executor 并发，必须先建立
-slot-aware Claim/调度契约，使 Yingdao capacity=1 不限制独立 Python capacity；禁止简单删除
+“超时但 Provider 仍活动”期间仍保守暂停所有新 Claim，包括预检。若将来开放更多 Runtime 的
+并发，必须先建立对应的 slot-aware Claim/调度契约；禁止简单删除
 Provider 槽或改成全局永久锁。Worker 进程崩溃会停止 Claim 并由 Lease 产生 LOST，但内存槽无法
 跨进程保存；在开放自动并发恢复前，还需解决重启后外部 ShadowBot 仍运行时的状态核对。
 

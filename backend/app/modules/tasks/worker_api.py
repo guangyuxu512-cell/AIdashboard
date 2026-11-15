@@ -59,7 +59,30 @@ def claim_task(
     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
     service: Annotated[TaskService, Depends(get_worker_task_service)],
 ) -> WorkerTaskRead | Response:
-    claimed = service.claim_with_account(principal)
+    return _claim_worker_task(principal, service)
+
+
+@router.post(
+    "/claim-precheck",
+    response_model=WorkerTaskRead,
+    response_model_exclude_defaults=True,
+    responses={204: {"description": "当前设备没有可并行的预检任务"}},
+)
+def claim_precheck_task(
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[TaskService, Depends(get_worker_task_service)],
+) -> WorkerTaskRead | Response:
+    return _claim_worker_task(principal, service, precheck_only=True)
+
+
+def _claim_worker_task(
+    principal: WorkerPrincipal,
+    service: TaskService,
+    *,
+    precheck_only: bool = False,
+) -> WorkerTaskRead | Response:
+    claimed = (service.claim_with_account(principal, precheck_only=True)
+               if precheck_only else service.claim_with_account(principal))
     if claimed is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     task = claimed.task

@@ -6,6 +6,7 @@ from uuid import UUID
 from sqlalchemy import (
     String,
     and_,
+    case,
     cast,
     delete,
     exists,
@@ -23,6 +24,7 @@ from app.modules.access.policy import DataScopePolicy
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TERMINAL_TASK_STATUS_VALUES, TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
+from app.modules.workers.precheck_contract import PRECHECK_KIND
 from app.modules.workers.models import (
     DeviceProviderInventory,
     DeviceRuntime,
@@ -393,29 +395,103 @@ class TaskRepository:
         device_id: UUID,
         now: datetime,
         lease_until: datetime,
+        precheck_only: bool = False,
     ) -> Task | None:
-        candidate = (
-            select(Task.task_id)
-            .where(
-                Task.target_device_id == device_id,
-                Task.status == TaskStatus.PENDING.value,
-                exists(
-                    select(Device.device_id).where(
-                        Device.device_id == device_id,
-                        Device.enabled.is_(True),
-                        Device.deleted_at.is_(None),
-                    ),
-                ),
-            )
-            .order_by(Task.created_at.asc(), Task.task_id.asc())
-            .with_for_update(skip_locked=True)
-            .limit(1)
-            .scalar_subquery()
+        # Ordinary RPA tasks remain exclusive. Prechecks may use five shops per
+        # device and three slots per shop. Serialize this device's short claim
+        # transaction; other devices continue independently.
+        device = self.session.scalar(
+            select(Device.device_id).where(
+                Device.device_id == device_id,
+                Device.enabled.is_(True),
+                Device.deleted_at.is_(None),
+            ).with_for_update(),
         )
+        if device is None:
+            return None
+        active = self.session.execute(
+            select(Task.skill_id, Task.input_json["platform_shop_id"].astext).where(
+                Task.target_device_id == device_id,
+                Task.status == TaskStatus.RUNNING.value,
+            ),
+        ).all()
+        if any(skill != PRECHECK_KIND or not shop for skill, shop in active) or len(active) >= 15:
+            return None
+
+        shop_column = Task.input_json["platform_shop_id"].astext
+        device_counts: dict[str, int] = {}
+        for _, shop in active:
+            device_counts[shop] = device_counts.get(shop, 0) + 1
+        global_counts = dict(self.session.execute(
+            select(shop_column, func.count()).where(
+                Task.skill_id == PRECHECK_KIND,
+                Task.status == TaskStatus.RUNNING.value,
+            ).group_by(shop_column),
+        ).all())
+        full_shops = [shop for shop, count in global_counts.items() if shop and count >= 3]
+        predicates = [
+            Task.target_device_id == device_id,
+            Task.status == TaskStatus.PENDING.value,
+        ]
+        if precheck_only or active:
+            predicates.append(Task.skill_id == PRECHECK_KIND)
+            predicates.extend((shop_column.is_not(None), shop_column != ""))
+            if len(device_counts) >= 5:
+                predicates.append(shop_column.in_(list(device_counts)))
+            # A continuous stream of prechecks must not starve an older RPA
+            # task. Drain current slots when an ordinary task reaches the head.
+            barrier = self.session.execute(
+                select(Task.created_at, Task.task_id).where(
+                    Task.target_device_id == device_id,
+                    Task.status == TaskStatus.PENDING.value,
+                    Task.skill_id != PRECHECK_KIND,
+                ).order_by(Task.created_at.asc(), Task.task_id.asc()).limit(1),
+            ).first()
+            if barrier is not None:
+                predicates.append(or_(
+                    Task.created_at < barrier.created_at,
+                    and_(Task.created_at == barrier.created_at, Task.task_id < barrier.task_id),
+                ))
+        if full_shops:
+            predicates.append(or_(
+                Task.skill_id != PRECHECK_KIND,
+                shop_column.is_(None),
+                shop_column.not_in(full_shops),
+            ))
+        order = [Task.created_at.asc(), Task.task_id.asc()]
+        if device_counts:
+            order.insert(0, case(
+                *[(shop_column == shop, count) for shop, count in device_counts.items()],
+                else_=0,
+            ))
+        candidate = self.session.execute(
+            select(Task.task_id, Task.skill_id, shop_column.label("platform_shop_id"))
+            .where(*predicates)
+            .order_by(*order)
+            .with_for_update(skip_locked=True)
+            .limit(1),
+        ).first()
+        if candidate is None:
+            return None
+        if candidate.skill_id == PRECHECK_KIND and candidate.platform_shop_id:
+            # A store mapped to more than one computer still has at most three
+            # in-flight prechecks. This lock covers only allocation, not work.
+            self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(
+                "worker-precheck-shop:" + candidate.platform_shop_id, 0,
+            ))))
+            current_shop_count = self.session.scalar(
+                select(func.count()).select_from(Task).where(
+                    Task.skill_id == PRECHECK_KIND,
+                    Task.status == TaskStatus.RUNNING.value,
+                    shop_column == candidate.platform_shop_id,
+                ),
+            ) or 0
+            if current_shop_count >= 3:
+                return None
         statement = (
             update(Task)
             .where(
-                Task.task_id == candidate,
+                Task.task_id == candidate.task_id,
                 Task.status == TaskStatus.PENDING.value,
             )
             .values(
