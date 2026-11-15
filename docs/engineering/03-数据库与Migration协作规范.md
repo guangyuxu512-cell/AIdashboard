@@ -1,5 +1,10 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-14 中控 AI Token 管理 Slot 释放
+
+- `20261113_0051` 已随 Green dev `360b2860d964068253f70c95628f93a2472ac4c8`（CI `43472043003` 成功）进入共享环境；Integration 与生产现均为单一 `20261113_0051` Head，生产运行 `58da7e302e15c734f6077f874ec691b62984baaa`。
+- `0051` 状态为 `released`；下方较早的 `active` 描述仅保留资源分配时的历史。后续需要新 Migration 的 Feature 按既有规则申请新 Slot，不改写已应用迁移。
+
 ## 2026-11-13 中控 AI Token 管理资源登记
 
 - ca97 已只读核对 Integration、生产均为单一 `20261110_0050`，`0050` 已随 Green dev `9dee4b88a1ab9f3b4071f66f8af3628336cfd44f`（CI `43436103594` 成功）进入共享环境；前述 Worker Feature 的 `0050 active` 记录现核销为 `released`，不改写已应用迁移。
