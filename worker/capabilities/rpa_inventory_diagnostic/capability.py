@@ -1,11 +1,12 @@
 """Read-only diagnostics for the existing same-user RPA inventory bridge.
 
-The result contains only fixed status codes and counts. It never opens a
-browser, decrypts or returns a stored Session, or returns paths or identities.
+The result contains only status, counts and a non-secret binary fingerprint.
+It never opens a browser, decrypts or returns a Session, paths or identities.
 """
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from app.contracts import ExecutionResult, ExecutionStatus
 from app.rpa_session_bridge import BridgeDiscovery, RpaBridgeError, helper_tree_digest
@@ -50,6 +51,8 @@ async def execute(host, task):
             discovery = BridgeDiscovery.model_validate_json(content)
         except Exception:
             return _result("RPA_DISCOVERY_INVALID", facts)
+        if re.fullmatch(r"\d+\.\d+\.\d+(?:-dev\.\d+)?", discovery.app_version):
+            facts["rpa_version"] = discovery.app_version
 
         helper = Path(discovery.helper_path)
         parts = tuple(part.lower() for part in helper.parts[-3:])
@@ -75,10 +78,12 @@ async def execute(host, task):
         try:
             allowed = bridge.trusted_digests()
             facts["signed_helper_list_available"] = bool(allowed)
-            facts["helper_is_trusted"] = helper_tree_digest(helper.parent) in allowed
+            helper_fingerprint = helper_tree_digest(helper.parent)
+            facts["helper_is_trusted"] = helper_fingerprint in allowed
         except Exception:
             return _result("RPA_HELPER_CHECK_UNAVAILABLE", facts)
         if not facts["helper_is_trusted"]:
+            facts["helper_sha256"] = helper_fingerprint
             return _result("RPA_HELPER_UNTRUSTED", facts)
 
         try:
