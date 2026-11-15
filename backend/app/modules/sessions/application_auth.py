@@ -52,6 +52,15 @@ class DeviceShopGrant(BaseModel):
     platform_shop_id: str = Field(min_length=1, max_length=160)
 
 
+class PrecheckContextGrant(BaseModel):
+    """Optional single product revision admitted during a controlled recovery."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    product_id: str = Field(min_length=1, max_length=128)
+    revision: int = Field(gt=0, strict=True)
+
+
 class ClientGrant(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -67,6 +76,7 @@ class ClientGrant(BaseModel):
     # currently mapped shops on that device; legacy grants default to empty.
     all_mapped_shops: tuple[UUID, ...] = Field(default=(), max_length=500)
     device_shops: tuple[DeviceShopGrant, ...] = Field(default=(), max_length=500)
+    precheck_context: PrecheckContextGrant | None = None
 
     @model_validator(mode="after")
     def unique_shop_ids(self) -> ClientGrant:
@@ -80,6 +90,8 @@ class ClientGrant(BaseModel):
             raise ValueError("device grants require Worker precheck opt-in")
         if self.device_shops and not self.worker_precheck_enabled:
             raise ValueError("device shop grants require Worker precheck opt-in")
+        if self.precheck_context is not None and not self.worker_precheck_enabled:
+            raise ValueError("a precheck context requires Worker precheck opt-in")
         if len(set(self.all_mapped_shops)) != len(self.all_mapped_shops):
             raise ValueError("duplicate all-shop device grants")
         if self.all_mapped_shops and (not self.worker_precheck_enabled
