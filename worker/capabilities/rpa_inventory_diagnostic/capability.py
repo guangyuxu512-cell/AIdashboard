@@ -1,7 +1,7 @@
 """Read-only diagnostics for the existing same-user RPA inventory bridge.
 
 The result contains only fixed status codes and counts. It never opens a
-browser, reads a stored Session, or returns local paths or shop identities.
+browser, decrypts or returns a stored Session, or returns paths or identities.
 """
 from __future__ import annotations
 
