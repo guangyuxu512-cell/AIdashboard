@@ -11,7 +11,8 @@ Ecommerce AI Worker 0.5.5 for Windows
 7. “本地输入”默认使用 %LOCALAPPDATA%\EcommerceAIWorker\data 下的 params.json、account.json 和 images；只有影刀应用要求其他固定路径时才需要修改。
 
 升级已有 Worker
-- 直接替换程序文件并双击 ecommerce-worker.exe。
+- 等待当前任务结束，在旧版本目录运行“停止Worker.cmd”停止后台 Core，并退出旧状态界面。
+- 解压新版到单独目录，双击新版 ecommerce-worker.exe；正常上线后再处理旧程序文件。
 - 自动复用 %LOCALAPPDATA%\EcommerceAIWorker\config.json 中原 Device ID、Server 和 DPAPI Token；升级不会覆盖已有 Server。
 - 不会创建新的 Device UUID，也不要求重新签发 Token。
 - 服务器可向当前 Worker 自动发布已签名能力包；Worker 底座本身不会因此自动升级，两项版本分别记录和验收。
