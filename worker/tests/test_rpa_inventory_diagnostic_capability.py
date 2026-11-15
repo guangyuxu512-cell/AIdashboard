@@ -55,13 +55,15 @@ def test_missing_discovery_is_reported_without_paths(tmp_path):
 
 
 def test_reports_signed_helper_mismatch_without_bypassing_it(tmp_path):
-    data, _, _, marker, database = _installation(tmp_path)
+    data, helper, _, marker, database = _installation(tmp_path)
     before = (marker.read_bytes(), database.read_bytes())
     bridge = RpaAutoBridge(data, lambda: frozenset({'a' * 64}))
     bridge.list_shops = AsyncMock()
     result = _run(bridge)
     assert result.result['data']['code'] == 'RPA_HELPER_UNTRUSTED'
     assert result.result['data']['helper_is_trusted'] is False
+    assert result.result['data']['helper_sha256'] == helper_tree_digest(helper.parent)
+    assert str(tmp_path) not in result.model_dump_json()
     bridge.list_shops.assert_not_called()
     assert before == (marker.read_bytes(), database.read_bytes())
 
@@ -96,6 +98,17 @@ def test_reports_helper_error_code_without_exception_details(tmp_path):
     result = _run(bridge)
     assert result.result['data']['code'] == 'RPA_BRIDGE_LIST_EXITED'
     assert str(tmp_path) not in result.model_dump_json()
+
+
+def test_rpa_version_is_restricted_to_numeric_release_format(tmp_path):
+    data, _, discovery, marker, _ = _installation(tmp_path)
+    marker.write_text(discovery.model_copy(update={'app_version': '0.6.0-dev.87'}).model_dump_json(by_alias=True), encoding='utf-8')
+    result = _run(RpaAutoBridge(data, lambda: frozenset()))
+    assert result.result['data']['rpa_version'] == '0.6.0-dev.87'
+    marker.write_text(discovery.model_copy(update={'app_version': 'private-other-data'}).model_dump_json(by_alias=True), encoding='utf-8')
+    result = _run(RpaAutoBridge(data, lambda: frozenset()))
+    assert 'rpa_version' not in result.result['data']
+    assert 'private-other-data' not in result.model_dump_json()
 
 
 def test_unexpected_input_is_not_echoed(tmp_path):
