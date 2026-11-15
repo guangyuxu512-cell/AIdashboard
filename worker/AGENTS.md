@@ -109,7 +109,7 @@ Electron 关闭不能成为 Worker Task 可靠性设计的前提。
 ## 11. 多店铺任务上下文（硬规则）
 
 - 一个 Task 可以携带多个有序 Shop Account Context；Worker Core 不得按 Shop 拆 Task 或创建子 Task。
-- 同一个 Shop 可以被多台 Device 同时执行，不建立 Shop 全局锁；当前 Worker 仍保持单 Active Task。
+- 普通影刀任务保持单 Active Task，不与其他任务并行；`douyin.category_schema` 预检例外：每设备最多 5 店、每店最多 3 个并发，同一平台店铺跨设备合计最多 3 个。领取保护只覆盖短事务，不对整个任务建立全局独占锁。
 - 多 Shop 的串行、并发、切号与单店失败策略由 Yingdao Application 或 Business Skill 决定。
 - Backend、Worker 内部模型和 `ctx.accounts` 均使用英文 Account 字段。
 - 仅 Local Input Bridge 写 `account.json` 时映射中文字段，根对象固定为 `店铺列表`；无账号时也写空列表。

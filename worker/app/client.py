@@ -83,6 +83,18 @@ class WorkerApiClient:
         self._raise_for_error(response)
         return WorkerTask.model_validate(response.json())
 
+    async def claim_precheck(self) -> WorkerTask | None:
+        # A distinct endpoint makes a new Worker safe against an old Backend:
+        # an unknown route cannot accidentally claim an ordinary RPA task.
+        response = await self.client.post("/api/v1/worker/tasks/claim-precheck")
+        if response.status_code in {204, 404}:
+            return None
+        self._raise_for_error(response)
+        task = WorkerTask.model_validate(response.json())
+        if task.skill_id != "douyin.category_schema":
+            raise WorkerApiError("WORKER_CLAIM_INVALID", "预检领取返回了其他任务", 0)
+        return task
+
     async def download_task_asset(self, download_path: str) -> bytes:
         if not download_path.startswith("/api/v1/worker/tasks/"):
             raise WorkerApiError(

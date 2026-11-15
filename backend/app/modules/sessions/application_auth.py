@@ -72,6 +72,10 @@ class ClientGrant(BaseModel):
     # Explicit opt-in: a historical shop grant never grants Worker access.
     worker_precheck_enabled: StrictBool = False
     device_ids: tuple[UUID, ...] = Field(default=(), max_length=500)
+    # Explicit opt-in for the product application to use all eligible online
+    # Workers; development/test devices can remain explicitly excluded.
+    all_precheck_devices: StrictBool = False
+    excluded_precheck_devices: tuple[UUID, ...] = Field(default=(), max_length=500)
     # Each entry explicitly authorizes this application's prechecks for all
     # currently mapped shops on that device; legacy grants default to empty.
     all_mapped_shops: tuple[UUID, ...] = Field(default=(), max_length=500)
@@ -84,8 +88,14 @@ class ClientGrant(BaseModel):
             raise ValueError("duplicate shop grants")
         if len(set(self.device_ids)) != len(self.device_ids):
             raise ValueError("duplicate device grants")
-        if not self.shop_ids and not (self.worker_precheck_enabled and self.device_ids):
+        if not self.shop_ids and not (self.worker_precheck_enabled and (self.device_ids or self.all_precheck_devices)):
             raise ValueError("at least one explicit access grant is required")
+        if self.all_precheck_devices and not self.worker_precheck_enabled:
+            raise ValueError("all-device grants require Worker precheck opt-in")
+        if (len(set(self.excluded_precheck_devices)) != len(self.excluded_precheck_devices)
+                or (self.excluded_precheck_devices and not self.all_precheck_devices)
+                or set(self.excluded_precheck_devices).intersection(self.device_ids)):
+            raise ValueError("invalid excluded precheck devices")
         if self.device_ids and not self.worker_precheck_enabled:
             raise ValueError("device grants require Worker precheck opt-in")
         if self.device_shops and not self.worker_precheck_enabled:

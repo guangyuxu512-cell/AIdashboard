@@ -32,6 +32,8 @@ from app.task_images import TaskImagePreparer, TaskImagePreparationError
 
 
 logger = logging.getLogger(__name__)
+_PRECHECK_KIND = "douyin.category_schema"
+_PRECHECK_DEVICE_LIMIT = 15
 
 
 class ProviderDiscovery(Protocol):
@@ -71,6 +73,7 @@ class Worker:
         self._skill_snapshot_synced = False
         self._skill_snapshot_generation = 0
         self._skill_snapshot_lock = asyncio.Lock()
+        self._terminal_delivery_lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._heartbeat_consecutive_failures = 0
 
@@ -91,29 +94,53 @@ class Worker:
         )
         rpa_task = (asyncio.create_task(self._rpa_inventory_loop(stop_event))
                     if self.capability_runtime is not None else None)
+        prechecks: set[asyncio.Task[None]] = set()
         try:
             while not stop_event.is_set():
                 try:
+                    for finished in tuple(prechecks):
+                        if finished.done():
+                            prechecks.remove(finished)
+                            try:
+                                finished.result()
+                            except asyncio.CancelledError:
+                                pass
+                            except Exception as error:
+                                logger.warning("Worker precheck task failed: %s", error)
                     if not await self._deliver_pending_terminals():
                         await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
                         continue
-                    await self._refresh_capabilities_if_due()
-                    task = (
-                        await self.client.claim()
-                        if self.executor.can_claim()
-                        else None
-                    )
+                    if not prechecks:
+                        # Capability files must not change under active tasks.
+                        await self._refresh_capabilities_if_due()
+                    if not self.executor.can_claim():
+                        task = None
+                    elif prechecks and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
+                        task = await self.client.claim_precheck()
+                    elif prechecks:
+                        task = None
+                    else:
+                        task = await self.client.claim()
                     if task is not None:
+                        if task.skill_id == _PRECHECK_KIND:
+                            prechecks.add(asyncio.create_task(self._execute_task(task)))
+                            # Fill available slots immediately instead of adding
+                            # the ordinary idle-poll interval to every claim.
+                            continue
                         await self._execute_task(task)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
                     logger.warning("Worker poll cycle failed: %s", error)
-                await self._wait_or_stop(
-                    stop_event,
-                    self.settings.poll_interval_seconds,
-                )
+                if prechecks:
+                    await self._wait_for_prechecks_or_stop(prechecks, stop_event)
+                else:
+                    await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
         finally:
+            # As with the existing single-task loop, a normal stop waits for
+            # already claimed work and its durable result before disconnecting.
+            if prechecks:
+                await asyncio.gather(*prechecks, return_exceptions=True)
             heartbeat_supervisor_task.cancel()
             if reporter_task is not None:
                 reporter_task.cancel()
@@ -137,6 +164,21 @@ class Worker:
             if self.local_runtime_state is not None:
                 self.local_runtime_state.stop()
             await self.client.close()
+
+    async def _wait_for_prechecks_or_stop(
+        self, prechecks: set[asyncio.Task[None]], stop_event: asyncio.Event,
+    ) -> None:
+        stop_wait = asyncio.create_task(stop_event.wait())
+        try:
+            await asyncio.wait(
+                [*prechecks, stop_wait],
+                timeout=self.settings.poll_interval_seconds,
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+        finally:
+            if not stop_wait.done():
+                stop_wait.cancel()
+            await asyncio.gather(stop_wait, return_exceptions=True)
 
     async def _heartbeat_supervisor(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
@@ -418,7 +460,6 @@ class Worker:
                     await asyncio.gather(execution_task, return_exceptions=True)
                     raise lease_error
             result = await execution_task
-            lease_task.cancel()
             safe_message = _SENSITIVE_MESSAGE.sub(
                 lambda match: f"{match.group(1)}=[REDACTED]",
                 result.error_message or "Skill execution failed",
@@ -472,8 +513,6 @@ class Worker:
             )
             if self.event_reporter is not None:
                 await self.event_reporter.flush_task(task.task_id)
-            if self.local_runtime_state is not None:
-                self.local_runtime_state.finish_task(task.task_id)
             await self._deliver_pending_terminals()
         finally:
             if not execution_task.done():
@@ -485,10 +524,16 @@ class Worker:
                 lease_task,
                 return_exceptions=True,
             )
+            if self.local_runtime_state is not None:
+                self.local_runtime_state.finish_task(task.task_id)
             await self._send_immediate_heartbeat()
 
     async def _deliver_pending_terminals(self) -> bool:
         """Deliver stored results before claiming another task; never rerun them."""
+        async with self._terminal_delivery_lock:
+            return await self._deliver_pending_terminals_locked()
+
+    async def _deliver_pending_terminals_locked(self) -> bool:
         try:
             pending = self.result_outbox.pending()
         except OutboxError:

@@ -215,7 +215,7 @@ class RpaLocalBridge:
     @asynccontextmanager
     async def _connection(self) -> AsyncIterator["_BridgeProcess"]:
         # Recheck immediately before launch; the marker never chooses an exe.
-        verify_discovery(self.discovery, self.data_directory, self.trust)
+        await asyncio.to_thread(verify_discovery, self.discovery, self.data_directory, self.trust)
         try:
             environment = dict(os.environ)
             environment.pop("SHOP_FLEET_WORKER_TEST", None)
@@ -308,10 +308,12 @@ class RpaAutoBridge:
             raise RpaBridgeError("RPA_HELPER_UNTRUSTED") from None
 
     async def list_shops(self) -> LocalShopInventory:
-        return await self._bridge().list_shops()
+        bridge = await asyncio.to_thread(self._bridge)
+        return await bridge.list_shops()
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
-        return await self._bridge().read_session(local_shop_id, platform_shop_id)
+        bridge = await asyncio.to_thread(self._bridge)
+        return await bridge.read_session(local_shop_id, platform_shop_id)
 
 
 class _BridgeProcess:
