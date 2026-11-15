@@ -46,7 +46,8 @@ def ready_precheck(postgresql_engine):
     with postgresql_engine.connect() as connection:
         assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
             "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
-            "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover"}
+            "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
+            "control_center_feat_worker_parallel_precheck"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -124,6 +125,60 @@ def test_context_revocation_is_rechecked_before_task_insert(ready_precheck):
         session.rollback()
         assert len(calls) == 2
         assert session.scalars(select(ApplicationWorkerPrecheck)).all() == []
+
+
+def test_all_online_workers_join_rotation_and_excluded_test_device_stays_out(ready_precheck):
+    engine, principal, auth, original_device = ready_precheck
+    extra_devices = [uuid4() for _ in range(4)]
+    excluded_device, later_device = uuid4(), uuid4()
+    created_devices = [*extra_devices, excluded_device, later_device]
+    with Session(engine) as session:
+        team_id = session.get(Device, original_device).team_id
+        user_id = principal.grant.authorized_by_user_id
+    grant = ClientGrant.model_validate({**auth.grant.model_dump(), "all_precheck_devices": True,
+                                         "excluded_precheck_devices": [excluded_device]})
+    auth.grant = grant
+    principal = ApplicationPrincipal(grant, "synthetic-token")
+    now = datetime.now(UTC)
+
+    def add_device(session, device_id):
+        session.add(Device(device_id=device_id, team_id=team_id, display_name="parallel fixture", enabled=True))
+        session.flush()
+        session.add_all([
+            DeviceRuntime(device_id=device_id, worker_version="0.5.5", started_at=now,
+                          last_seen_at=now, connection_status="online"),
+            DeviceSkillCapability(device_id=device_id, skill_id="douyin.category_schema",
+                display_name="fixture", runtime="python", skill_version="1", classification="internal"),
+            WorkerRpaShopInventory(device_id=device_id, installation_id=uuid4(), available=True,
+                last_discovered_at=now, shops=[{"localShopId": "local", "platformShopId": str(device_id),
+                    "shopName": "fixture", "platform": "douyin", "sessionStored": True,
+                    "sessionRevision": "a" * 64}]),
+        ])
+
+    try:
+        with Session(engine) as session:
+            for device_id in [*extra_devices, excluded_device]:
+                add_device(session, device_id)
+            session.commit()
+            service = WorkerPrecheckService(session, auth)
+            targets = [service.submit(principal, submission(product=f"parallel-{i}")).target_device_id for i in range(25)]
+            assert set(targets) == {original_device, *extra_devices}
+            assert all(targets.count(device_id) == 5 for device_id in set(targets))
+            assert excluded_device not in targets
+            add_device(session, later_device)
+            session.commit()
+            next_task = service.submit(principal, submission(product="new-online-device"))
+            assert next_task.target_device_id == later_device
+            assert not WorkerPrecheckService._authorized_shop(grant, excluded_device, "local", "shop")
+    finally:
+        with Session(engine) as session:
+            session.execute(delete(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.client_id == "pdc-test"))
+            session.execute(delete(Task).where(Task.created_by_user_id == user_id, Task.skill_id == "douyin.category_schema"))
+            session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id.in_(created_devices)))
+            session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id.in_(created_devices)))
+            session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id.in_(created_devices)))
+            session.execute(delete(Device).where(Device.device_id.in_(created_devices)))
+            session.commit()
 
 
 def test_direct_delivery_requires_new_worker_and_central_keeps_only_receipt(ready_precheck):
@@ -335,6 +390,30 @@ def test_all_mapped_shops_rotate_with_saved_sessions_without_open_browsers(ready
         session.commit()
         assert service.submit(principal, submission(product="new-shop")).input_json["local_shop_id"] == "local-4"
         assert not service._authorized_shop(grant, uuid4(), "local-4", "000")
+
+
+def test_twenty_available_shops_fill_five_groups_of_three(ready_precheck):
+    engine, _, auth, device_id = ready_precheck
+    grant = auth.grant.model_copy(update={"all_mapped_shops": (device_id,), "device_shops": ()})
+    auth, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
+    with Session(engine) as session:
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{"localShopId": f"local-{index}", "platformShopId": f"platform-{index}",
+                            "shopName": "fixture", "platform": "douyin", "sessionStored": True}
+                           for index in range(20)]
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        assignments = [service.submit(principal, submission(product=f"fill-{index}"))
+                       for index in range(15)]
+        counts = {}
+        for task in assignments:
+            shop = task.input_json["local_shop_id"]
+            counts[shop] = counts.get(shop, 0) + 1
+        assert len(counts) == 5 and set(counts.values()) == {3}
+        # The next rotation uses a different shop rather than queuing forever
+        # behind the first five.
+        following = service.submit(principal, submission(product="fill-next"))
+        assert following.input_json["local_shop_id"] not in counts
 
 
 def test_concurrent_distinct_products_rotate_across_saved_shops(ready_precheck):
@@ -624,6 +703,9 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
     from sqlalchemy import text
 
     engine, _, _, device_id = ready_precheck
+    with engine.connect() as connection:
+        if connection.exec_driver_sql("SELECT current_database()").scalar_one() != "control_center_feat_worker_capability_precheck":
+            pytest.skip("The existing 0050 downgrade guard only permits its registered Feature database")
     # Exercise the existing 0050 guard directly. Newer migrations must not be
     # downgraded merely to reach it, since they may contain unrelated data.
     with engine.connect() as connection:

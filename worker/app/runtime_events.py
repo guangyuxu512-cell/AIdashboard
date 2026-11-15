@@ -184,6 +184,7 @@ class LocalRuntimeState:
         self._recent_events: deque[dict[str, Any]] = deque(maxlen=recent_limit)
         self._finished_task_ids: deque[UUID] = deque(maxlen=100)
         self._finished_task_id_set: set[UUID] = set()
+        self._active_tasks: dict[UUID, dict[str, Any]] = {}
         self._snapshot_write_failed = False
         self._state: dict[str, Any] = {
             "device_id": str(device_id),
@@ -203,6 +204,7 @@ class LocalRuntimeState:
             "provider_refreshed_at": None,
             "worker_status": "running",
             "current_task_id": None,
+            "active_task_count": 0,
             "skill_display_name": None,
             "provider": None,
             "app_name": None,
@@ -215,8 +217,7 @@ class LocalRuntimeState:
         self._write()
 
     def begin_task(self, task: WorkerTask, *, skill_display_name: str) -> None:
-        self._state.update(
-            {
+        current = {
                 "current_task_id": str(task.task_id),
                 "skill_display_name": skill_display_name,
                 "provider": None,
@@ -224,8 +225,10 @@ class LocalRuntimeState:
                 "phase": "queued",
                 "latest_message": "任务已领取",
                 "started_at": datetime.now(UTC).isoformat(),
-            },
-        )
+            }
+        self._active_tasks[task.task_id] = current
+        self._state.update(current)
+        self._state["active_task_count"] = len(self._active_tasks)
         self._write()
 
     def set_connection(
@@ -279,21 +282,23 @@ class LocalRuntimeState:
     def consume(self, event: RuntimeEvent) -> None:
         metadata = event.metadata
         if event.task_id not in self._finished_task_id_set:
-            self._state.update(
-                {
+            current = self._active_tasks.get(event.task_id)
+            if current is not None:
+                current.update({
+                    "provider": metadata.get("provider", current.get("provider")),
+                    "app_name": metadata.get("app_name", current.get("app_name")),
+                    "phase": metadata.get("phase", current.get("phase")),
+                    "latest_message": event.message,
+                })
+                self._state.update(current)
+            elif not self._active_tasks:
+                self._state.update({
                     "current_task_id": str(event.task_id),
-                    "provider": metadata.get(
-                        "provider",
-                        self._state.get("provider"),
-                    ),
-                    "app_name": metadata.get(
-                        "app_name",
-                        self._state.get("app_name"),
-                    ),
+                    "provider": metadata.get("provider", self._state.get("provider")),
+                    "app_name": metadata.get("app_name", self._state.get("app_name")),
                     "phase": metadata.get("phase", self._state.get("phase")),
                     "latest_message": event.message,
-                },
-            )
+                })
         self._recent_events.append(
             {
                 "seq": event.seq,
@@ -316,8 +321,13 @@ class LocalRuntimeState:
             self._finished_task_id_set.discard(expired)
         self._finished_task_ids.append(task_id)
         self._finished_task_id_set.add(task_id)
-        self._state.update(
-            {
+        self._active_tasks.pop(task_id, None)
+        self._state["active_task_count"] = len(self._active_tasks)
+        if self._active_tasks:
+            if self._state.get("current_task_id") == str(task_id):
+                self._state.update(next(reversed(self._active_tasks.values())))
+        else:
+            self._state.update({
                 "current_task_id": None,
                 "skill_display_name": None,
                 "provider": None,
@@ -325,8 +335,7 @@ class LocalRuntimeState:
                 "phase": None,
                 "latest_message": None,
                 "started_at": None,
-            },
-        )
+            })
         self._write()
 
     def _write(self) -> None:

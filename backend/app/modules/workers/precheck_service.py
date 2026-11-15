@@ -78,12 +78,15 @@ class WorkerPrecheckService:
         if (current.authorized_by_user_id != principal.grant.authorized_by_user_id or user is None
                 or not user.enabled or not user.is_super_account):
             raise ApplicationAuthenticationError()
-        if not current.worker_precheck_enabled or not current.device_ids or not (current.device_shops or current.all_mapped_shops):
+        if not current.worker_precheck_enabled or not (current.all_precheck_devices or (
+                current.device_ids and (current.device_shops or current.all_mapped_shops))):
             raise PrecheckNotFound()
         return current
 
     @staticmethod
     def _authorized_shop(grant, device_id: UUID, local_shop_id: str, platform_shop_id: str) -> bool:
+        if getattr(grant, "all_precheck_devices", False):
+            return device_id not in grant.excluded_precheck_devices
         return device_id in grant.device_ids and (device_id in grant.all_mapped_shops or any(
             s.device_id == device_id and s.local_shop_id == local_shop_id and s.platform_shop_id == platform_shop_id
             for s in grant.device_shops
@@ -132,12 +135,16 @@ class WorkerPrecheckService:
         # submissions observe each other's latest shop assignment.
         self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended("worker-precheck-shop-rotation", 0))))
         now = datetime.now(UTC)
+        device_scope = (Device.device_id.not_in(grant.excluded_precheck_devices)
+                        if grant.all_precheck_devices else Device.device_id.in_(grant.device_ids))
+        task_device_scope = (Task.target_device_id.not_in(grant.excluded_precheck_devices)
+                             if grant.all_precheck_devices else Task.target_device_id.in_(grant.device_ids))
         rows = self.session.execute(
             select(Device, WorkerRpaShopInventory, DeviceRuntime.worker_version)
             .join(DeviceRuntime, DeviceRuntime.device_id == Device.device_id)
             .join(WorkerRpaShopInventory, WorkerRpaShopInventory.device_id == Device.device_id)
             .join(DeviceSkillCapability, DeviceSkillCapability.device_id == Device.device_id)
-            .where(Device.device_id.in_(grant.device_ids), Device.enabled.is_(True), Device.deleted_at.is_(None),
+            .where(device_scope, Device.enabled.is_(True), Device.deleted_at.is_(None),
                    DeviceRuntime.connection_status == "online", DeviceRuntime.last_seen_at >= now - timedelta(seconds=90),
                    WorkerRpaShopInventory.available.is_(True),
                    WorkerRpaShopInventory.last_discovered_at >= now - timedelta(minutes=5),
@@ -148,15 +155,38 @@ class WorkerPrecheckService:
         platform_key = Task.input_json["platform_shop_id"].astext
         active_by_shop = dict(self.session.execute(
             select(platform_key, func.count())
-            .where(Task.target_device_id.in_(grant.device_ids), Task.skill_id == PRECHECK_KIND,
+            .where(task_device_scope, Task.skill_id == PRECHECK_KIND,
                    Task.status.in_(("pending", "running")))
             .group_by(platform_key)
         ).all())
         local_key = Task.input_json["local_shop_id"].astext
         revision_key = Task.input_json["_session_revision"].astext
+        # Compute the queue state once, rather than issuing two queries for
+        # every store while holding the short assignment lock. A device may
+        # have many stores, and needs five stores with three tasks each to
+        # actually reach its execution capacity.
+        device_loads = dict(self.session.execute(
+            select(Task.target_device_id, func.count())
+            .where(task_device_scope, Task.status.in_(("pending", "running")))
+            .group_by(Task.target_device_id)
+        ).all())
+        active_pairs = {(device_id, local_id): count for device_id, local_id, count in self.session.execute(
+            select(Task.target_device_id, local_key, func.count())
+            .where(task_device_scope, Task.skill_id == PRECHECK_KIND,
+                   Task.status.in_(("pending", "running")), local_key.is_not(None))
+            .group_by(Task.target_device_id, local_key)
+        ).all()}
+        active_shops_per_device: dict[UUID, int] = {}
+        for device_id, _ in active_pairs:
+            active_shops_per_device[device_id] = active_shops_per_device.get(device_id, 0) + 1
+        last_by_pair = {(device_id, local_id): assigned for device_id, local_id, assigned in self.session.execute(
+            select(Task.target_device_id, local_key, func.max(Task.created_at))
+            .where(task_device_scope, Task.skill_id == PRECHECK_KIND, local_key.is_not(None))
+            .group_by(Task.target_device_id, local_key)
+        ).all()}
         latest = self.session.execute(
             select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
-            .where(Task.target_device_id.in_(grant.device_ids), Task.skill_id == PRECHECK_KIND,
+            .where(task_device_scope, Task.skill_id == PRECHECK_KIND,
                    Task.status.in_(("success", "failed")), revision_key.is_not(None))
             .distinct(Task.target_device_id, local_key, platform_key, revision_key)
             .order_by(Task.target_device_id, local_key, platform_key, revision_key,
@@ -211,19 +241,22 @@ class WorkerPrecheckService:
                         or (session_revision is None and (device.device_id, local_id, platform_id) in invalid_shops)
                         or (device.device_id, local_id, platform_id, session_revision) in invalid_snapshots):
                     continue
-                pending = self.session.scalar(select(func.count()).select_from(Task).where(
-                    Task.target_device_id == device.device_id, Task.status.in_(("pending", "running")),
-                )) or 0
-                last_assigned = self.session.scalar(select(func.max(Task.created_at)).where(
-                    Task.target_device_id == device.device_id, Task.skill_id == PRECHECK_KIND,
-                    Task.input_json["local_shop_id"].astext == local_id,
-                ))
-                choices.append((pending, active_by_shop.get(platform_id, 0),
-                                last_assigned or datetime.min.replace(tzinfo=UTC),
+                count = active_pairs.get((device.device_id, local_id), 0)
+                shop_count = active_shops_per_device.get(device.device_id, 0)
+                # First use up to five different shops, then fill each to
+                # three. Once all are full, start the next rotation; the
+                # execution-side limits remain authoritative.
+                if shop_count < 5:
+                    fill_rank = 0 if count == 0 else 1 if count < 3 else 2
+                else:
+                    fill_rank = 0 if 0 < count < 3 else 1 if count == 0 else 2
+                choices.append((device_loads.get(device.device_id, 0), fill_rank,
+                                active_by_shop.get(platform_id, 0),
+                                last_by_pair.get((device.device_id, local_id)) or datetime.min.replace(tzinfo=UTC),
                                 str(device.device_id), local_id, platform_id, session_revision, device))
         if not choices:
             raise PrecheckUnavailable()
-        _, _, _, _, local_id, platform_id, session_revision, device = min(choices, key=lambda row: row[:5])
+        _, _, _, _, _, local_id, platform_id, session_revision, device = min(choices, key=lambda row: row[:6])
         # Re-read protected grant immediately before writing, including the
         # exact chosen local shop; revocation never broadens an old grant.
         grant = self._grant(principal)
