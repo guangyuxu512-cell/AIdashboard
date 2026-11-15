@@ -90,6 +90,42 @@ def submission(*, product="product-a", revision=1, attempt=1, title="fixture"):
         "input": {"category_id": "1000005146", "title": title}})
 
 
+def test_controlled_context_allows_only_one_product_revision(ready_precheck):
+    engine, _, auth, _ = ready_precheck
+    auth.grant = ClientGrant.model_validate({**auth.grant.model_dump(),
+        "precheck_context": {"product_id": "product-a", "revision": 1}})
+    principal = ApplicationPrincipal(auth.grant, "synthetic-token")
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        for candidate in (submission(product="product-b"), submission(revision=2)):
+            with pytest.raises(PrecheckUnavailable):
+                service.submit(principal, candidate)
+            session.rollback()
+        task = service.submit(principal, submission())
+        assert service.submit(principal, submission(attempt=2)).task_id == task.task_id
+        assert len(session.scalars(select(ApplicationWorkerPrecheck)).all()) == 1
+
+
+def test_context_revocation_is_rechecked_before_task_insert(ready_precheck):
+    engine, principal, auth, _ = ready_precheck
+    original = auth.grant
+    restricted = ClientGrant.model_validate({**original.model_dump(),
+        "precheck_context": {"product_id": "another-product", "revision": 1}})
+    calls = []
+
+    class ChangingAuthorizer(StubAuthorizer):
+        def authenticate(self, client_id, token):
+            calls.append(1)
+            return ApplicationPrincipal(original if len(calls) == 1 else restricted, token)
+
+    with Session(engine) as session:
+        with pytest.raises(PrecheckUnavailable):
+            WorkerPrecheckService(session, ChangingAuthorizer(original)).submit(principal, submission())
+        session.rollback()
+        assert len(calls) == 2
+        assert session.scalars(select(ApplicationWorkerPrecheck)).all() == []
+
+
 def test_direct_delivery_requires_new_worker_and_central_keeps_only_receipt(ready_precheck):
     engine, principal, auth, device_id = ready_precheck
     with Session(engine) as session:

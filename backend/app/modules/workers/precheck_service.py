@@ -89,8 +89,16 @@ class WorkerPrecheckService:
             for s in grant.device_shops
         ))
 
+    @staticmethod
+    def _require_allowed_context(grant, data: PrecheckSubmission) -> None:
+        limit = grant.precheck_context
+        if limit is not None and (limit.product_id, limit.revision) != (
+                data.context.product_id, data.context.revision):
+            raise PrecheckUnavailable()
+
     def submit(self, principal: ApplicationPrincipal, data: PrecheckSubmission) -> Task:
         grant = self._grant(principal)
+        self._require_allowed_context(grant, data)
         # The PostgreSQL transaction lock serializes same-claim creation across
         # server processes without depending on the product's transient attempt.
         lock_key = json.dumps([grant.client_id, data.context.product_id, data.context.revision],
@@ -219,6 +227,7 @@ class WorkerPrecheckService:
         # Re-read protected grant immediately before writing, including the
         # exact chosen local shop; revocation never broadens an old grant.
         grant = self._grant(principal)
+        self._require_allowed_context(grant, data)
         if not self._authorized_shop(grant, device.device_id, local_id, platform_id):
             raise PrecheckNotFound()
         task = Task(
