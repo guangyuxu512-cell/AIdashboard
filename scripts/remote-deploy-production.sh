@@ -96,15 +96,6 @@ for required_path in \
     pnpm-lock.yaml \
     pnpm-workspace.yaml \
     electron/package.json \
-    mobile/package.json \
-    mobile/index.html \
-    mobile/vite.config.ts \
-    mobile/src/main.ts \
-    mobile/public/manifest.webmanifest \
-    mobile/public/icons/icon-192.png \
-    mobile/public/icons/icon-512.png \
-    mobile/public/icons/icon-maskable-512.png \
-    mobile/public/icons/apple-touch-icon.png \
     backend/Dockerfile \
     backend/compose.yaml \
     backend/pyproject.toml \
@@ -298,56 +289,10 @@ wait_for_http() {
     return 1
 }
 
-verify_mobile_frontend() {
-    local frontend_origin="http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}"
-    local mobile_document
-    local mobile_redirect_headers
-    local asset_path
-    local -a asset_paths
-
-    mobile_redirect_headers="$(
-        curl --fail --silent --show-error --head \
-            --header "Host: ${PRODUCTION_DOMAIN}" \
-            --header 'X-Forwarded-Proto: https' \
-            "$frontend_origin/mobile" |
-            tr -d '\r'
-    )"
-    if ! printf '%s\n' "$mobile_redirect_headers" | grep -Eq '^HTTP/[0-9.]+ 308' ||
-        ! printf '%s\n' "$mobile_redirect_headers" | grep -Eqi '^Location: /mobile/$'; then
-        echo "Mobile /mobile must return 308 with the proxy-safe relative Location /mobile/" >&2
-        return 1
-    fi
-
-    mobile_document="$(curl --fail --silent --show-error "$frontend_origin/mobile/")"
-    if ! printf '%s' "$mobile_document" | grep -Eq '/mobile/assets/[^" ]+\.js' ||
-        ! printf '%s' "$mobile_document" | grep -Eq '/mobile/assets/[^" ]+\.css'; then
-        echo "Mobile production document is missing its built JS or CSS assets" >&2
-        return 1
-    fi
-    mapfile -t asset_paths < <(
-        printf '%s' "$mobile_document" |
-            grep -Eo '/mobile/assets/[^" ]+\.(css|js)' |
-            sort -u
-    )
-    if [[ "${#asset_paths[@]}" -lt 2 ]]; then
-        echo "Mobile production document is missing its built JS or CSS assets" >&2
-        return 1
-    fi
-    for asset_path in "${asset_paths[@]}"; do
-        curl --fail --silent --show-error "$frontend_origin$asset_path" >/dev/null
-    done
-
-    curl --fail --silent --show-error "$frontend_origin/mobile/manifest.webmanifest" >/dev/null
-    curl --fail --silent --show-error "$frontend_origin/mobile/icons/icon-192.png" >/dev/null
-    curl --fail --silent --show-error "$frontend_origin/mobile/icons/icon-512.png" >/dev/null
-}
-
 wait_for_health control-center-douyin-signer-prod
 wait_for_health control-center-backend-prod
 wait_for_http "http://127.0.0.1:${BACKEND_BIND_PORT:-18001}/health"
 wait_for_http "http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}/"
-wait_for_http "http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}/mobile/"
-verify_mobile_frontend
 
 rendered_nginx="$release_directory/.control-center-production.conf"
 envsubst '$PRODUCTION_DOMAIN $PRODUCTION_TLS_CERTIFICATE_PATH $PRODUCTION_TLS_CERTIFICATE_KEY_PATH $PRODUCTION_ACME_WEBROOT_DIR $BACKEND_BIND_PORT $FRONTEND_BIND_PORT $PRODUCT_LIBRARY_IMAGE_UPSTREAM' \

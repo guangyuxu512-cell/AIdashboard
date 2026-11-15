@@ -6,7 +6,7 @@ import { root } from "./contracts.mjs";
 
 const project = process.argv[2];
 if (
-  !["frontend", "mobile"].includes(project) ||
+  project !== "frontend" ||
   !process.env.VERIFY_EMPTY_ENV_DIR
 )
   throw new Error("Use root verify with its isolated environment");
