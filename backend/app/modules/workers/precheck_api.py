@@ -61,6 +61,14 @@ def submit_precheck(data: PrecheckSubmission, response: Response,
     return {"task_id": str(task.task_id), "status": task.status}
 
 
+@application_router.get("/worker-prechecks/shops", dependencies=[Depends(_enabled)])
+def get_worker_precheck_shops(response: Response,
+                              principal: Annotated[ApplicationPrincipal, Depends(require_precheck_application)],
+                              service: Annotated[WorkerPrecheckService, Depends(_service)]) -> list[dict]:
+    response.headers["Cache-Control"] = "no-store"
+    return service.available_shops(principal)
+
+
 @application_router.get("/worker-prechecks/{task_id}", dependencies=[Depends(_enabled)])
 def get_precheck(task_id: UUID, response: Response,
                  principal: Annotated[ApplicationPrincipal, Depends(require_precheck_application)],
@@ -95,7 +103,8 @@ def get_delivery_context(task_id: UUID, response: Response,
                          auth: Annotated[ApplicationAuthenticator, Depends(_precheck_authenticator)],
                          protocol: Annotated[str | None, Header(alias="X-Precheck-Protocol")] = None) -> dict:
     response.headers["Cache-Control"] = "no-store"
-    return product_delivery_context(session, auth, principal.device_id, task_id, protocol_v2=protocol == "2")
+    return product_delivery_context(session, auth, principal.device_id, task_id,
+                                    protocol_v2=protocol in {"2", "3"}, protocol_v3=protocol == "3")
 
 
 @worker_router.post("/tasks/{task_id}/precheck-delivered", dependencies=[Depends(_enabled)])

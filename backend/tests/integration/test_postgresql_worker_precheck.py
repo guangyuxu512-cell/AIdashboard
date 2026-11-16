@@ -15,7 +15,7 @@ from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSubmission, PrecheckTerminal
-from app.modules.workers.precheck_contract import PrecheckSignInput
+from app.modules.workers.precheck_contract import PrecheckSignInput, mapped_shop_id
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, session_snapshot_expired, sign_current_precheck
 from app.integrations.douyin_signer.schemas import DouyinSignResult
@@ -47,7 +47,7 @@ def ready_precheck(postgresql_engine):
         assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
             "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
             "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
-            "control_center_feat_worker_parallel_precheck"}
+            "control_center_feat_worker_parallel_precheck", "control_center_feat_worker_category_ops"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -346,6 +346,47 @@ def test_signer_is_scoped_to_current_device_and_task(ready_precheck):
         with pytest.raises(PrecheckNotFound):
             sign_current_precheck(session, auth, signer, device_id, task.task_id, headers)
         assert len(signer.requests) == 1
+
+
+@pytest.mark.parametrize(("operation", "path", "method"), [
+    ("tree", "/product/tproduct/categoryOptionsN", "GET"),
+    ("search", "/product/tproduct/searchCategoryN", "GET"),
+    ("predict", "/product/tproduct/predictCategoryN", "POST"),
+])
+def test_category_operations_require_updated_capability_and_freeze_the_target(ready_precheck, operation, path, method):
+    engine, principal, auth, device_id = ready_precheck
+
+    class Signer:
+        def sign(self, request):
+            assert request.method == method and path in request.full_url
+            return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
+
+    request_input = {"category_id": "0", "title": "商品", "operation": operation,
+                     "shop_id": str(mapped_shop_id("123"))}
+    if operation == "predict":
+        request_input["image_url"] = "https://image.test/example.jpg"
+    payload = PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+        "context": {"product_id": "product-category", "revision": 1, "attempt": 1}, "input": request_input})
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        assert service.available_shops(principal) == []
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, payload)
+        session.rollback()
+        capability = session.scalar(select(DeviceSkillCapability).where(DeviceSkillCapability.device_id == device_id,
+                                           DeviceSkillCapability.skill_id == "douyin.category_schema"))
+        capability.skill_version = "2.0.0"
+        session.commit()
+        assert [item["shop_id"] for item in service.available_shops(principal)] == [mapped_shop_id("123")]
+        task = service.submit(principal, payload)
+        assert task.input_json["operation"] == operation and task.input_json["local_shop_id"] == "local-1"
+        task.status, task.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        signed = sign_current_precheck(session, auth, Signer(), device_id, task.task_id,
+                                      PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        assert set(signed) == {"url", "body"} and path in signed["url"]
+        context = product_delivery_context(session, auth, device_id, task.task_id, protocol_v2=True, protocol_v3=True)
+        assert context["operation"] == operation
 
 
 def test_safe_string_business_code_survives_failure_and_replay(ready_precheck):
@@ -651,6 +692,32 @@ def test_expired_only_shop_waits_until_rpa_saves_a_new_snapshot(ready_precheck):
         assert replacement.task_id != task.task_id and replacement.target_device_id == device_id
 
 
+def test_late_success_does_not_reenable_an_expired_session_snapshot(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        first = service.submit(principal, submission(product="first").model_copy(update={"delivery": "product"}))
+        late = service.submit(principal, submission(product="late").model_copy(update={"delivery": "product"}))
+        queued = service.submit(principal, submission(product="queued").model_copy(update={"delivery": "product"}))
+        first.status = late.status = "running"
+        session.commit()
+        acknowledge_product_delivery(session, device_id, first.task_id,
+            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="a" * 64, error_code="SHOP_SESSION_EXPIRED"))
+        acknowledge_product_delivery(session, device_id, late.task_id,
+            PrecheckDeliveryAcknowledgement(status="success", payload_sha256="b" * 64))
+        assert session_snapshot_expired(session, queued)
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, submission(product="new-after-expiry"))
+        session.rollback()
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{**inventory.shops[0], "sessionRevision": "b" * 64}]
+        session.commit()
+        assert service.submit(principal, submission(product="new-after-refresh")).target_device_id == device_id
+
+
 def test_application_precheck_and_legacy_session_switches_are_independent(ready_precheck, tmp_path):
     import hashlib
     import json
@@ -719,8 +786,11 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 
 
-@pytest.mark.parametrize("delivery_mode", ["central", "product"])
-def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode):
+@pytest.mark.parametrize(("delivery_mode", "operation"), [
+    ("central", "schema"), ("product", "schema"), ("product", "tree"),
+    ("product", "search"), ("product", "predict"),
+])
+def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode, operation):
     import asyncio
     import base64
     import hashlib
@@ -770,7 +840,7 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
     blob = buffer.getvalue()
     digest = hashlib.sha256(blob).hexdigest()
     manifest = json.dumps({"schema_version": 1, "sequence": 1, "packages": [{
-        "skill_id": "douyin.category_schema", "version": "1.0", "entrypoint": "capability.py",
+        "skill_id": "douyin.category_schema", "version": "2.0.0", "entrypoint": "capability.py",
         "host_api_version": 1, "sha256": digest, "size": len(blob)}]}, separators=(",", ":")).encode()
     artifacts = tmp_path / "server-artifacts"
     (artifacts / "packages").mkdir(parents=True)
@@ -811,18 +881,30 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
     def platform(request):
         platform_calls.append(request.url.path)
         assert request.headers["cookie"] == "session=synthetic-cookie"
-        return httpx.Response(200, json={"code": "0", "data": {"model": {"category_properties": {
-            "items": [{"id": "large", "options": [{"id": index, "name": "选项" * 8} for index in range(2500)]}]
-        }}}})
+        if operation == "schema":
+            data = {"model": {"category_properties": {"items": [
+                {"id": "large", "options": [{"id": index, "name": "选项" * 8} for index in range(2500)]}]}}}
+        elif operation == "tree":
+            data = [{"id": 1, "name": "家居", "parent_cid": 0, "is_leaf": False}]
+        elif operation == "search":
+            data = [{"id": 1, "name": "家居"}]
+        else:
+            data = {"predict_cid": 1, "candidate_category_details": [{"first_cid": 1, "first_cname": "家居"}]}
+        return httpx.Response(200, json={"code": "0", "data": data})
 
     async def product(request):
         product_calls.append(request.url.path)
         payload = json.loads(request.content)
-        assert payload["result"]["items"][0]["options"][-1]["id"] == 2499
+        if operation == "schema":
+            assert payload["result"]["items"][0]["options"][-1]["id"] == 2499
+        else:
+            assert payload["result"]["operation"] == operation and "data" in payload["result"]
         task_id = request.url.path.rsplit("/", 1)[-1]
-        context = await central_clients[0].get(f"/api/v1/worker/tasks/{task_id}/precheck-delivery-context")
+        context = await central_clients[0].get(f"/api/v1/worker/tasks/{task_id}/precheck-delivery-context",
+                                               headers={"X-Precheck-Protocol": "3"})
         assert context.status_code == 200 and context.json()["client_id"] == principal.grant.client_id
         assert context.json()["product_id"] == "product-a" and "result" not in context.json()
+        assert context.json()["operation"] == operation
         return httpx.Response(200, json={"task_id": task_id, "accepted": True})
 
     class FakeRpa:
@@ -853,6 +935,12 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
             assert runtime.descriptors()[0].skill_id == "douyin.category_schema"
             await worker._heartbeat_once()
             request = submission().model_copy(update={"delivery": delivery_mode})
+            if operation != "schema":
+                inputs = {"category_id": "0", "title": "fixture", "operation": operation}
+                if operation == "predict":
+                    inputs["image_url"] = "https://image.test/a.jpg"
+                request = PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": delivery_mode,
+                    "context": {"product_id": "product-a", "revision": 1, "attempt": 1}, "input": inputs})
             created = await http.post("/internal/applications/v1/worker-prechecks", json=request.model_dump())
             assert created.status_code == 202
             task = await client.claim()
@@ -872,7 +960,8 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
                 assert product_calls == [f"/api/v1/worker-precheck-results/{task.task_id}"]
             assert "synthetic-cookie" not in status.text and "synthetic-signature" not in status.text
             assert worker.result_outbox.pending() == []
-            assert platform_calls == ["/product/tproduct/getSchema"]
+            assert platform_calls == [{"schema": "/product/tproduct/getSchema", "tree": "/product/tproduct/categoryOptionsN",
+                                       "search": "/product/tproduct/searchCategoryN", "predict": "/product/tproduct/predictCategoryN"}[operation]]
             assert (await client.claim()) is None
     try:
         asyncio.run(exercise())
