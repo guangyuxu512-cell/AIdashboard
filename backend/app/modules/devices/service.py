@@ -20,6 +20,7 @@ from app.modules.shops.repository import ShopDeviceBindingRepository
 from app.modules.tasks.repository import TaskRepository
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.precheck_models import WorkerRpaShopInventory
+from app.modules.workers.session_health import merge_session_observations, worker_session_observation
 from app.modules.tasks.models import Task
 
 
@@ -96,13 +97,17 @@ class DeviceService:
             .limit(5000),
         ).all()
         observations = {}
+        now = datetime.now(UTC)
         for params, state, error, finished_at in recent:
             key = (params.get("local_shop_id"), params.get("platform_shop_id"), params.get("_session_revision"))
             if not all(isinstance(value, str) and value for value in key):
                 continue
+            if not finished_at or finished_at.tzinfo is None:
+                continue
             if state == "success":
-                observations.setdefault(key, ("valid", finished_at))
-            elif error == "SHOP_SESSION_EXPIRED":
+                status = "valid" if finished_at >= now - timedelta(minutes=30) else "unknown"
+                observations.setdefault(key, (status, finished_at))
+            elif state == "failed" and error == "SHOP_SESSION_EXPIRED":
                 observations.setdefault(key, ("invalid", finished_at))
         shops = []
         for shop in inventory.shops:
@@ -116,6 +121,10 @@ class DeviceService:
                 state, observed_at = observations.get(
                     (local_id, platform_id, shop.get("sessionRevision")), ("unknown", None),
                 )
+                reported = worker_session_observation(shop, now=now)
+                state, observed_at = merge_session_observations(
+                    (state, observed_at) if observed_at else None, reported,
+                ) or ("unknown", None)
             shops.append(DeviceLocalShopRead(
                 local_shop_id=local_id, platform_shop_id=platform_id,
                 shop_name=name, platform=platform, session_status=state,
@@ -123,7 +132,7 @@ class DeviceService:
             ))
         available = bool(
             inventory.available
-            and inventory.last_discovered_at >= datetime.now(UTC) - timedelta(minutes=5)
+            and inventory.last_discovered_at >= now - timedelta(minutes=5)
         )
         return DeviceLocalShopInventoryRead(
             device_id=device_id, available=available,

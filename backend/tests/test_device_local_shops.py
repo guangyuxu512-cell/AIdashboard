@@ -13,6 +13,7 @@ from app.main import create_app
 from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.service import DeviceService
 from app.modules.workers.auth import get_worker_principal
+from app.modules.workers.precheck_contract import LocalShopSummary
 
 
 def test_local_inventory_uses_only_matching_worker_observations():
@@ -72,6 +73,76 @@ def test_stale_inventory_is_not_reported_as_current():
     session.execute.return_value.all.return_value = []
     result = DeviceService(session, repository=repository).get_local_shops(Mock(), uuid4())
     assert not result.available
+
+
+def test_stale_success_does_not_resurrect_an_older_expiry():
+    now = datetime.now(UTC)
+    repository = Mock()
+    repository.get_for_actor.return_value = object()
+    session = Mock()
+    session.get.return_value = SimpleNamespace(
+        available=True, last_discovered_at=now,
+        shops=[{"localShopId": "a", "platformShopId": "1", "shopName": "A",
+                "platform": "douyin", "sessionStored": True, "sessionRevision": "same"}],
+    )
+    params = {"local_shop_id": "a", "platform_shop_id": "1", "_session_revision": "same"}
+    session.execute.return_value.all.return_value = [
+        (params, "success", None, now - timedelta(minutes=31)),
+        (params, "failed", "SHOP_SESSION_EXPIRED", now - timedelta(minutes=45)),
+    ]
+    result = DeviceService(session, repository=repository).get_local_shops(Mock(), uuid4())
+    assert result.shops[0].session_status == "unknown"
+
+
+def test_current_worker_observation_is_used_and_stale_valid_is_unknown():
+    now = datetime.now(UTC)
+    repository = Mock()
+    repository.get_for_actor.return_value = object()
+    session = Mock()
+    base = {"platform": "douyin", "sessionStored": True, "sessionRevision": "a" * 64}
+    session.get.return_value = SimpleNamespace(available=True, last_discovered_at=now, shops=[
+        {**base, "localShopId": "a", "platformShopId": "1", "shopName": "A",
+         "sessionStatus": "valid", "sessionCheckedAt": now.isoformat()},
+        {**base, "localShopId": "b", "platformShopId": "2", "shopName": "B",
+         "sessionStatus": "invalid", "sessionCheckedAt": now.isoformat()},
+        {**base, "localShopId": "c", "platformShopId": "3", "shopName": "C",
+         "sessionStatus": "valid", "sessionCheckedAt": (now - timedelta(minutes=31)).isoformat()},
+    ])
+    session.execute.return_value.all.return_value = []
+    result = DeviceService(session, repository=repository).get_local_shops(Mock(), uuid4())
+    assert [item.session_status for item in result.shops] == ["valid", "invalid", "unknown"]
+    assert result.shops[0].status_observed_at == now
+    assert "sessionRevision" not in result.model_dump_json()
+
+
+def test_general_login_cannot_clear_category_auth_failure_for_the_same_snapshot():
+    now = datetime.now(UTC)
+    repository = Mock()
+    repository.get_for_actor.return_value = object()
+    session = Mock()
+    session.get.return_value = SimpleNamespace(available=True, last_discovered_at=now, shops=[{
+        "localShopId": "a", "platformShopId": "1", "shopName": "A", "platform": "douyin",
+        "sessionStored": True, "sessionRevision": "same", "sessionStatus": "valid",
+        "sessionCheckedAt": now.isoformat(),
+    }])
+    session.execute.return_value.all.return_value = [
+        ({"local_shop_id": "a", "platform_shop_id": "1", "_session_revision": "same"},
+         "failed", "SHOP_SESSION_EXPIRED", now - timedelta(minutes=1)),
+    ]
+    result = DeviceService(session, repository=repository).get_local_shops(Mock(), uuid4())
+    assert result.shops[0].session_status == "invalid"
+
+
+def test_worker_observation_must_match_a_saved_snapshot():
+    values = {"localShopId": "a", "platformShopId": "1", "shopName": "A", "platform": "douyin",
+              "sessionStored": True, "sessionRevision": "a" * 64,
+              "sessionStatus": "valid", "sessionCheckedAt": datetime.now(UTC).isoformat()}
+    assert LocalShopSummary.model_validate(values).session_status == "valid"
+    for invalid in ({**values, "sessionRevision": None}, {**values, "sessionStored": False},
+                    {**values, "sessionCheckedAt": None}, {**values, "platform": "pdd"},
+                    {**values, "cookie": "synthetic"}):
+        with pytest.raises(ValueError):
+            LocalShopSummary.model_validate(invalid)
 
 
 def test_worker_inventory_is_independent_of_product_precheck_switch():

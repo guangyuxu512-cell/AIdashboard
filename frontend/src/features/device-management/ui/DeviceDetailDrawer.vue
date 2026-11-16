@@ -5,6 +5,7 @@ import {
   DeviceConnectionStatusTag,
   DeviceEnabledStatusTag,
   DeviceIdentity,
+  formatRelativeTime,
   type DeviceLocalShopInventoryDto,
   type DeviceLocalShopDto,
   type DeviceListItemViewModel,
@@ -48,9 +49,9 @@ defineProps<{
 }>()
 
 const sessionLabels: Record<DeviceLocalShopDto['session_status'], string> = {
-  valid: '有效',
-  invalid: '失效',
-  reauthorization_required: '需重新登录',
+  valid: '登录有效',
+  invalid: '登录失效',
+  reauthorization_required: '未保存登录态',
   unknown: '未确认',
 }
 
@@ -136,7 +137,12 @@ defineEmits<{
         <dl v-if="localShops?.shops.length" class="capability-facts">
           <div v-for="shop in localShops.shops" :key="shop.local_shop_id">
             <dt>{{ shop.shop_name }}</dt>
-            <dd>{{ sessionLabels[shop.session_status] }}</dd>
+            <dd>
+              {{ sessionLabels[shop.session_status] }}
+              <small v-if="shop.status_observed_at">
+                · {{ formatRelativeTime(shop.status_observed_at) }}{{ shop.session_status === 'reauthorization_required' ? '上报' : '验证' }}
+              </small>
+            </dd>
           </div>
         </dl>
         <EmptyState v-else description="暂无本机店铺信息" />

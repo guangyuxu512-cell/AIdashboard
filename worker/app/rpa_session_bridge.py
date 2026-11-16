@@ -315,6 +315,13 @@ class RpaAutoBridge:
         bridge = await asyncio.to_thread(self._bridge)
         return await bridge.read_session(local_shop_id, platform_shop_id)
 
+    async def session_revision(self, local_shop_id: str, platform_shop_id: str) -> str | None:
+        """Read the saved snapshot identity without decrypting or exporting it."""
+        revisions = await asyncio.to_thread(
+            _stored_session_revisions, str(self.data_directory / "shop-manager.db"),
+        )
+        return revisions.get((local_shop_id, platform_shop_id))
+
 
 class _BridgeProcess:
     def __init__(self, process: asyncio.subprocess.Process, timeout: float) -> None:
