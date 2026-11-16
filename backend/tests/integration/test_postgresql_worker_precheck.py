@@ -757,7 +757,7 @@ def test_application_precheck_does_not_expose_legacy_session_routes(ready_preche
         assert client.get(f"/internal/applications/v1/shops/{uuid4()}/session", headers=headers).status_code == 404
 
 
-def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
+def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck, monkeypatch):
     import importlib
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
@@ -765,17 +765,20 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
 
     engine, _, _, device_id = ready_precheck
     with engine.connect() as connection:
-        if connection.exec_driver_sql("SELECT current_database()").scalar_one() != "control_center_feat_worker_capability_precheck":
-            pytest.skip("The existing 0050 downgrade guard only permits its registered Feature database")
+        database_name = connection.exec_driver_sql("SELECT current_database()").scalar_one()
+        if database_name not in {"control_center_feat_worker_capability_precheck", "control_center_feat_windows_execution_slim"}:
+            pytest.skip("The 0050 downgrade guard is exercised only on an isolated Feature database")
+        initial_head = connection.scalar(text("SELECT version_num FROM alembic_version"))
     # Exercise the existing 0050 guard directly. Newer migrations must not be
     # downgraded merely to reach it, since they may contain unrelated data.
     with engine.connect() as connection:
         migration = importlib.import_module("migrations.versions.20261110_0050_worker_rpa_precheck_v1")
+        monkeypatch.setattr(migration, "FEATURE_DATABASE", database_name)
         with Operations.context(MigrationContext.configure(connection)):
             with pytest.raises(RuntimeError, match="retain schema and audit data"):
                 migration.downgrade()
         connection.rollback()
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261114_0052"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == initial_head
         assert connection.scalar(select(WorkerRpaShopInventory.device_id).where(
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 
