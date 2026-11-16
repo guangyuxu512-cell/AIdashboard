@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import type { YingdaoInventoryViewModel } from '@/entities/device'
 
 import {
-  loadDeviceBindingCounts,
+  loadDeviceLocalShops,
   loadDeviceInventories,
 } from './device-management-context'
 
@@ -40,13 +40,13 @@ describe('device management auxiliary context', () => {
     })
   })
 
-  it('falls back binding counts independently when the shop query fails', async () => {
+  it('keeps other devices independent when a local shop inventory fails', async () => {
     const loader = vi.fn(async () => {
       throw new Error('binding query unavailable')
     })
 
     await expect(
-      loadDeviceBindingCounts(['device-a', 'device-b'], loader),
+      loadDeviceLocalShops(['device-a', 'device-b'], loader),
     ).resolves.toEqual({
       'device-a': null,
       'device-b': null,
@@ -57,9 +57,10 @@ describe('device management auxiliary context', () => {
     const inventoryLoader = vi.fn(async () => {
       throw new Error('provider unavailable')
     })
-    const bindingLoader = vi.fn(async () => {
+    const localShopLoader = vi.fn(async () => {
       throw new Error('binding unavailable')
     })
+    const cached = { device_id: 'device-a', available: true, last_discovered_at: null, shops: [] }
 
     await expect(
       loadDeviceInventories(['device-a'], inventoryLoader, {
@@ -67,9 +68,9 @@ describe('device management auxiliary context', () => {
       }),
     ).resolves.toEqual({ 'device-a': inventory })
     await expect(
-      loadDeviceBindingCounts(['device-a'], bindingLoader, {
-        'device-a': 8,
+      loadDeviceLocalShops(['device-a'], localShopLoader, {
+        'device-a': cached,
       }),
-    ).resolves.toEqual({ 'device-a': 8 })
+    ).resolves.toEqual({ 'device-a': cached })
   })
 })

@@ -93,6 +93,18 @@ function button(wrapper: ReturnType<typeof mount>, text: string) {
     .find((item) => item.text() === text)!
 }
 describe('product data view and recovery', () => {
+  it('keeps historical data readable without showing a collection action', async () => {
+    const source = createMockProductDataSource()
+    const { wrapper, dispose } = render(ProductDataView, {
+      source, contextKey: 'history:team', userId: 'history',
+    })
+    try {
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('更新数据')
+    } finally {
+      dispose()
+    }
+  })
   it('validates ranges before querying, applies immutable drafts across all data, and keeps hidden-field filters on page one', async () => {
     const source = createMockProductDataSource(),
       list = vi.spyOn(source, 'list')

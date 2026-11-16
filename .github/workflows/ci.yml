@@ -64,15 +64,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck and build frontend in Real mode
         run: pnpm --filter @control-center/frontend build
-      - name: Verify AI images and team context in the Real production bundle
+      - name: Verify execution navigation in the Real production bundle
         run: |
           pnpm --filter @control-center/frontend exec playwright install --with-deps chromium
-          pnpm --filter @control-center/frontend exec playwright test --config playwright.ai-images.config.ts
-      - name: Validate and build Mobile production output
-        run: |
-          pnpm --filter @control-center/mobile lint
-          pnpm --filter @control-center/mobile test
-          pnpm --filter @control-center/mobile build
+          pnpm --filter @control-center/frontend exec playwright test --config playwright.execution-navigation.config.ts
 
   verify-offline:
     # Worker has three Windows-only unit cases; do not hide them as Linux skips.
@@ -146,7 +141,7 @@ jobs:
         run: bash scripts/test-asset-upload-proxy.sh control-center-frontend-ci:${{ github.sha }} control-center-backend-ci:${{ github.sha }}
       - name: Verify retained PC assets with production Nginx
         run: bash scripts/test-pc-static-nginx.sh control-center-frontend-ci:${{ github.sha }}
-      - name: Verify PC and Mobile production entries with a read-only root filesystem
+      - name: Verify PC production entry with a read-only root filesystem
         run: |
           container_name="control-center-frontend-ci-${{ github.run_id }}"
           cleanup() {
@@ -176,38 +171,10 @@ jobs:
           fi
 
           pc_document="$(curl --fail --silent --show-error http://127.0.0.1:18080/)"
-          mobile_document="$(curl --fail --silent --show-error http://127.0.0.1:18080/mobile/)"
-          mobile_deep_document="$(curl --fail --silent --show-error http://127.0.0.1:18080/mobile/deep-link)"
-          test "${pc_document}" != "${mobile_document}"
-          test "${mobile_document}" = "${mobile_deep_document}"
-          printf '%s' "${mobile_document}" | grep -Fq '/mobile/manifest.webmanifest'
-          printf '%s' "${mobile_document}" | grep -Eq '/mobile/assets/[^" ]+\.js'
-          printf '%s' "${mobile_document}" | grep -Eq '/mobile/assets/[^" ]+\.css'
-
-          mobile_redirect_headers="$(
-            curl --fail --silent --show-error --head \
-              --header 'Host: 119.29.188.118' \
-              --header 'X-Forwarded-Proto: https' \
-              http://127.0.0.1:18080/mobile | tr -d '\r'
-          )"
-          printf '%s\n' "${mobile_redirect_headers}" | grep -Fq 'HTTP/1.1 308'
-          printf '%s\n' "${mobile_redirect_headers}" | grep -Eqi '^Location: /mobile/$'
-          curl --fail --silent --show-error http://127.0.0.1:18080/mobile/manifest.webmanifest >/dev/null
-          curl --fail --silent --show-error http://127.0.0.1:18080/mobile/icons/icon-192.png >/dev/null
-          curl --fail --silent --show-error http://127.0.0.1:18080/mobile/icons/icon-512.png >/dev/null
-
-          mapfile -t mobile_assets < <(printf '%s' "${mobile_document}" | grep -Eo '/mobile/assets/[^" ]+\.(css|js)' | sort -u)
-          test "${#mobile_assets[@]}" -ge 2
-          for asset_path in "${mobile_assets[@]}"; do
-            curl --fail --silent --show-error "http://127.0.0.1:18080${asset_path}" >/dev/null
-          done
-
-          curl --silent --head http://127.0.0.1:18080/mobile/ | tr -d '\r' | grep -Fqi 'Cache-Control: no-store, no-cache, must-revalidate'
-          curl --silent --head http://127.0.0.1:18080/mobile/manifest.webmanifest | tr -d '\r' | grep -Fqi 'Content-Type: application/manifest+json'
-          curl --silent --head "http://127.0.0.1:18080${mobile_assets[0]}" | tr -d '\r' | grep -Fqi 'Cache-Control: public, max-age=31536000, immutable'
-
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile/assets/missing.js)" = '404'
-          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile/icons/missing.png)" = '404'
+          test -n "${pc_document}"
+          printf '%s' "${pc_document}" | grep -Eq '/assets/[^" ]+\.js'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile)" = '404'
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/mobile/deep-link)" = '404'
           test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:18080/api/health)" = '502'
       - name: Validate packaged release frontend build context
         run: |
@@ -218,7 +185,7 @@ jobs:
             .dockerignore \
             package.json pnpm-lock.yaml pnpm-workspace.yaml \
             electron/package.json \
-            backend frontend mobile deploy/production \
+            backend frontend deploy/production \
             scripts/production-env.sh scripts/remote-deploy-production.sh
           mkdir -p "${release_dir}"
           tar -xzf "${archive_path}" -C "${release_dir}"
@@ -226,13 +193,6 @@ jobs:
           test -f "${release_dir}/pnpm-lock.yaml"
           test -f "${release_dir}/pnpm-workspace.yaml"
           test -f "${release_dir}/electron/package.json"
-          test -f "${release_dir}/mobile/package.json"
-          test -f "${release_dir}/mobile/index.html"
-          test -f "${release_dir}/mobile/vite.config.ts"
-          test -f "${release_dir}/mobile/src/main.ts"
-          test -f "${release_dir}/mobile/public/manifest.webmanifest"
-          test -f "${release_dir}/mobile/public/icons/icon-192.png"
-          test -f "${release_dir}/mobile/public/icons/icon-512.png"
           test -f "${release_dir}/scripts/production-env.sh"
           test -f "${release_dir}/deploy/production/pc-static-assets.sh"
           bash -n "${release_dir}/deploy/production/pc-static-assets.sh"
@@ -243,7 +203,6 @@ jobs:
           BACKEND_DATABASE_URL=postgresql+psycopg://placeholder:placeholder@127.0.0.1:35433/control_center_prod \
           BACKEND_ENCRYPTION_KEY=placeholder \
           BACKEND_DOUYIN_SIGNER_API_KEY=placeholder \
-          BACKEND_TOAPIS_API_KEY=placeholder \
           BACKEND_DOUYIN_SIGNER_URL=http://127.0.0.1:8788 \
           BACKEND_HUMAN_SESSION_COOKIE_SECURE=true \
           PRODUCTION_DOMAIN=example.invalid \

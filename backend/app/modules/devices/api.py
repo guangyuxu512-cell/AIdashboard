@@ -9,7 +9,9 @@ from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
-from app.modules.devices.schemas import DeviceCreate, DeviceRead, DeviceUpdate
+from app.modules.devices.schemas import (
+    DeviceCreate, DeviceLocalShopInventoryRead, DeviceRead, DeviceUpdate,
+)
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
 from app.modules.workers.schemas import (
@@ -96,6 +98,15 @@ def get_device(
     device = service.get(actor, device_id)
     runtime = worker_service.get_runtime_reads([device_id]).get(device_id)
     return to_device_read(device, runtime)
+
+
+@router.get("/{device_id}/local-shops", response_model=DeviceLocalShopInventoryRead)
+def get_device_local_shops(
+    device_id: UUID,
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    service: Annotated[DeviceService, Depends(get_device_service)],
+) -> DeviceLocalShopInventoryRead:
+    return service.get_local_shops(actor, device_id)
 
 
 @router.get(

@@ -15,18 +15,6 @@ from app.modules.access.models import (
 )
 from app.modules.api_tokens.models import ApiToken, ApiTokenEvent
 from app.modules.audit.models import AuditLog
-from app.modules.ai_workbench.models import (
-    AiModel,
-    GenerationItem,
-    GenerationItemAsset,
-    GenerationJob,
-    GenerationProviderExecution,
-    MaterialGroupAsset,
-    MaterialGroupTemplateBinding,
-    ProductMaterialGroup,
-    PromptTemplate,
-    TemplateGroup,
-)
 from app.modules.assets.models import Asset
 from app.modules.automation_apps.models import (
     AutomationApplicationConfig,
@@ -40,17 +28,6 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionItem,
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
-)
-from app.modules.product_collection.models import (
-    ProductCollectionCaptureAttempt,
-    ProductCollectionDispatch,
-    ProductCollectionItem,
-    ProductCollectionPersistReceipt,
-    ProductCollectionRequest,
-    ProductCollectionUploadReceipt,
-    ProductLibraryGroup,
-    ProductLibraryProduct,
-    ProductLibraryProductVersion,
 )
 from app.modules.product_selection.models import (
     ProductSelectionCandidate,
@@ -81,27 +58,10 @@ from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, Worke
 _MODELS = (
     ApiToken,
     ApiTokenEvent,
-    AiModel,
     AutomationApplicationConfig,
     AutomationParameterPreset,
     Asset,
     AuditLog,
-    GenerationItem,
-    GenerationItemAsset,
-    GenerationJob,
-    GenerationProviderExecution,
-    MaterialGroupAsset,
-    MaterialGroupTemplateBinding,
-    ProductMaterialGroup,
-    ProductCollectionCaptureAttempt,
-    ProductCollectionDispatch,
-    ProductCollectionItem,
-    ProductCollectionPersistReceipt,
-    ProductCollectionRequest,
-    ProductCollectionUploadReceipt,
-    ProductLibraryGroup,
-    ProductLibraryProduct,
-    ProductLibraryProductVersion,
     ProductSelectionCandidate,
     ProductSelectionObservation,
     ProductSelectionRun,
@@ -111,8 +71,6 @@ _MODELS = (
     ShopProductDataSeries,
     ShopProductDataGeneration,
     ShopProductDataMetricSnapshot,
-    PromptTemplate,
-    TemplateGroup,
     Device,
     DeviceProviderInventory,
     DeviceRuntime,

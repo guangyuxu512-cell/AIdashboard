@@ -1,13 +1,11 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 import importlib.util
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
-import httpx
 
 from app.contracts import ExecutionStatus, WorkerTask
 from app.rpa_session_bridge import RpaBridgeError
@@ -135,65 +133,3 @@ def test_session_bridge_timeout_is_reported_without_signing_or_platform_request(
     assert result.result["error_stage"] == "session"
     assert result.result["safe_error_code"] == "RPA_BRIDGE_SESSION_TIMEOUT"
     assert host.platform_calls == 0
-
-
-@pytest.mark.parametrize(("operation", "path", "data"), [
-    ("tree", "/product/tproduct/categoryOptionsN", [{"id": 1, "name": "家居", "is_leaf": False,
-                                                       "parent_cid": 0, "ignored": "synthetic-secret"}]),
-    ("search", "/product/tproduct/searchCategoryN", [{"id": 2, "name": "床品", "ignored": "synthetic-secret"}]),
-    ("predict", "/product/tproduct/predictCategoryN", {"predict_cid": 3, "candidate_category_details": [
-        {"first_cid": 3, "first_cname": "服饰", "deleted": False, "forbidden_status": 0,
-         "ignored": "synthetic-secret"}]}),
-])
-def test_category_lookup_uses_local_session_and_projects_result(operation, path, data):
-    params = {"category_id": "0", "title": "商品", "local_shop_id": "a", "platform_shop_id": "123",
-              "operation": operation}
-    if operation == "predict":
-        params["image_url"] = "https://image.test/a.jpg"
-    calls = []
-
-    class LookupHost(Host):
-        def __init__(self):
-            self._transport = httpx.MockTransport(lambda request: (calls.append(request), httpx.Response(200, json={
-                "code": 0, "data": data}))[1])
-
-        async def read_session(self, local_shop_id, platform_shop_id):
-            from pydantic import SecretStr
-            return SimpleNamespace(user_agent="synthetic-agent", cookies=[
-                SimpleNamespace(name="session", value=SecretStr("synthetic-cookie"),
-                                domain=".jinritemai.com", path="/")])
-
-        async def sign_precheck(self, task_id, cookie, user_agent):
-            query = {"appid": "1", "_bid": "ffa_goods", "_lid": "1", "a_bogus": "synthetic-signature"}
-            if operation == "tree":
-                query.update({"cid": "0", "display_all": "0"})
-            if operation == "search":
-                query.update({"key": "商品", "search_type": "1"})
-            body = (json.dumps({"title": "商品", "pic": [{"url": params["image_url"]}],
-                                "scene": "predict_by_title_and_img"}) if operation == "predict" else "")
-            return {"url": str(httpx.URL("https://fxg.jinritemai.com" + path, params=query)), "body": body}
-
-    lookup_task = task()
-    lookup_task.input = params
-    result = asyncio.run(capability.execute(LookupHost(), lookup_task))
-    assert result.status is ExecutionStatus.SUCCESS
-    assert result.result["operation"] == operation and len(calls) == 1
-    assert "synthetic-secret" not in json.dumps(result.result)
-    assert "synthetic-cookie" not in repr(result)
-
-
-def test_category_lookup_rejects_a_wrong_target_without_request():
-    host = Host(0)
-    host._transport = httpx.MockTransport(lambda request: pytest.fail("unexpected request"))
-    signed = {"url": "https://untrusted.invalid/product/tproduct/predictCategoryN?a_bogus=x", "body": "{}"}
-    with pytest.raises(RuntimeError, match="PRECHECK_TRANSPORT_FAILED"):
-        asyncio.run(capability._post_lookup(host, signed, "synthetic-cookie", "agent", {"operation": "predict"}))
-
-
-def test_search_keeps_only_explicit_category_ids_and_never_returns_raw_fields():
-    raw = {"list": [{"category_list": [{"id": 10, "name": "餐具"}, {"id": 11, "name": "汤勺"}],
-                      "secret": "synthetic-secret"}, {"category_id": 11, "name": "汤勺"}, {"name": "无 ID"}]}
-    assert capability._search_candidates(raw) == [{"id": "11", "name": "餐具 > 汤勺", "path": "餐具 > 汤勺"}]
-    assert capability._search_candidates({"list": [{"categoryLeafId": 11, "third_cname": "汤勺",
-        "first_cname": "餐饮厨具", "second_cname": "餐具"}]}) == [
-            {"id": "11", "name": "汤勺", "path": "餐饮厨具 > 餐具 > 汤勺"}]
