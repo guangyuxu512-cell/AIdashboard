@@ -1,4 +1,4 @@
-"""Authorized database reads and explicit finite manual collection only."""
+"""Authorized reads of previously collected product metrics."""
 
 from datetime import date
 from typing import Annotated, Literal
@@ -14,12 +14,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
 from app.modules.product_data.exceptions import ProductDataQueryInvalidError
-from app.modules.product_data.schemas import (
-    ProductDataCollectionBatchRead, ProductDataCollectionBatchRequest,
-    ProductDataCollectionRequest, ProductDataCollectionShopRead,
-    ProductDataGenerationRead, ProductDataListRead, ProductDataMetricRange,
-    ProductDataQuery,
-)
+from app.modules.product_data.schemas import ProductDataListRead, ProductDataMetricRange, ProductDataQuery
 from app.modules.product_data.service import ProductDataService
 from app.modules.product_data.source import NativePeriod
 
@@ -28,8 +23,6 @@ router = APIRouter(prefix="/api/v1/product-data", tags=["product-data"], respons
     **COMMON_ERROR_RESPONSES,
     401: {"model": ErrorResponse, "description": "需要有效人员会话"},
     403: {"model": ErrorResponse, "description": "模块或当前店铺无权访问"},
-    409: {"model": ErrorResponse, "description": "采集冲突或会话需要验证"},
-    503: {"model": ErrorResponse, "description": "环境未启用手动采集"},
 })
 get_product_data_actor = require_module_access(ModuleCode.SHOP)
 
@@ -66,55 +59,3 @@ def list_product_data(
     query: Annotated[ProductDataQuery, Depends(product_data_query)],
 ) -> ProductDataListRead:
     return service.list(actor, query)
-
-
-@router.post("/collections", response_model=ProductDataGenerationRead, status_code=202)
-def collect_product_data(
-    command: ProductDataCollectionRequest,
-    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
-    service: Annotated[ProductDataService, Depends(get_product_data_service)],
-) -> ProductDataGenerationRead:
-    receipt, _lease_id = service.request_collection(actor, command)
-    return receipt
-
-
-@router.get("/collection-shops", response_model=list[ProductDataCollectionShopRead])
-def list_product_data_collection_shops(
-    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
-    service: Annotated[ProductDataService, Depends(get_product_data_service)],
-) -> list[ProductDataCollectionShopRead]:
-    return service.list_collection_shops(actor)
-
-
-@router.post(
-    "/collection-batches",
-    response_model=ProductDataCollectionBatchRead,
-    status_code=202,
-)
-def collect_product_data_batch(
-    command: ProductDataCollectionBatchRequest,
-    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
-    service: Annotated[ProductDataService, Depends(get_product_data_service)],
-) -> ProductDataCollectionBatchRead:
-    return service.request_collection_batch(actor, command)
-
-
-@router.get(
-    "/collection-batches/{collection_batch_id}",
-    response_model=ProductDataCollectionBatchRead,
-)
-def read_product_data_collection_batch(
-    collection_batch_id: UUID,
-    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
-    service: Annotated[ProductDataService, Depends(get_product_data_service)],
-) -> ProductDataCollectionBatchRead:
-    return service.read_batch(actor, collection_batch_id)
-
-
-@router.get("/collections/{generation_id}", response_model=ProductDataGenerationRead)
-def read_product_data_collection(
-    generation_id: UUID,
-    actor: Annotated[ActorContext, Depends(get_product_data_actor)],
-    service: Annotated[ProductDataService, Depends(get_product_data_service)],
-) -> ProductDataGenerationRead:
-    return service.read_generation(actor, generation_id)
