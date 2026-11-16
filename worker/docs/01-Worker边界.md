@@ -21,13 +21,12 @@ Worker：
 
 - 只主动访问 Backend，不监听本地 HTTP 端口。
 - 不直接访问 PostgreSQL，不持有数据库账号。
-- 不获取店铺密码、Cookie 或 Session Payload。
+- 店铺状态验证通过受信任的本机 RPA 桥读取已保存会话，不打开浏览器，状态上报不包含会话内容。现行类目预检为服务器签名临时发送本店 Cookie，再由 Worker 在本机请求平台。
 - 不承载 Vue/Electron UI。
 - 不接受命令、Shell、脚本路径或 EXE 路径。
 - 当前存在 PythonExecutor 与 RPAExecutor；Browser、Node、EXE Executor 尚未实现。
 
-Worker 只处理执行目标为 `WORKER` 的 Action。AI、财务、报表和常规订单/商品数据
-处理默认属于 Backend Server Modules，不应为了统一入口而绕经 Worker。
+新业务以 Worker 执行的代码能力为目标。已有影刀任务暂为兼容保留，纯代码替代完成前不改变既有定时。
 
 ## Device 生命周期约束
 

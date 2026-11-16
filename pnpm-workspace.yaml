@@ -1,7 +1,6 @@
 packages:
   - frontend
   - electron
-  - mobile
 
 allowBuilds:
   electron: true

@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response, status
-from fastapi.security import HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.integrations.douyin_signer.client import DouyinSignerClient
-from app.modules.sessions.application_api import bearer
 from app.modules.sessions.application_auth import ApplicationAuthenticationError, ApplicationAuthenticator, ApplicationPrincipal, ApplicationTransportError
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport
@@ -21,6 +20,7 @@ from app.modules.workers.service import WorkerPrincipal
 
 application_router = APIRouter(prefix="/internal/applications/v1", tags=["application-worker-precheck"])
 worker_router = APIRouter(prefix="/api/v1/worker", tags=["worker-precheck"])
+bearer = HTTPBearer(auto_error=False, scheme_name="ApplicationWorkerPrecheck")
 
 
 def _enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
@@ -71,8 +71,7 @@ def get_precheck(task_id: UUID, response: Response,
             "error_code": task.error_code, "error_message": task.error_message}
 
 
-@worker_router.put("/rpa-shop-inventory", status_code=status.HTTP_204_NO_CONTENT,
-                   dependencies=[Depends(_enabled)])
+@worker_router.put("/rpa-shop-inventory", status_code=status.HTTP_204_NO_CONTENT)
 def put_rpa_inventory(data: RpaInventoryReport,
                       principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
                       session: Annotated[Session, Depends(get_database_session)]) -> Response:

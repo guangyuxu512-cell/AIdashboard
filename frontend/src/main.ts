@@ -1,6 +1,6 @@
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import { createPinia } from 'pinia'
-import { createApp, watch } from 'vue'
+import { createApp } from 'vue'
 
 import App from './App.vue'
 import router from './app/router'
@@ -10,7 +10,6 @@ import {
   queryClient,
   resetQueriesForActorContextChange,
 } from './app/providers/query-client'
-import { useAiWorkbenchSessionStore } from './features/ai-workbench/generation/model/useAiWorkbenchSessionStore'
 import { configureHumanRequestContext } from './shared/api'
 import { cancelAllAutoSearches } from './shared/composables/useAutoSearch'
 import { configureAuthEffects, useAuthStore } from './stores/auth'
@@ -22,43 +21,15 @@ const pinia = createPinia()
 
 app.use(pinia)
 const authStore = useAuthStore(pinia)
-const aiWorkbenchSessionStore = useAiWorkbenchSessionStore(pinia)
 configureAuthEffects({
   onTeamChanged: () => {
     cancelAllAutoSearches()
-    aiWorkbenchSessionStore.clearActiveActorContext()
     void resetQueriesForActorContextChange()
   },
   onAuthCleared: () => {
-    aiWorkbenchSessionStore.clearActiveActorContext()
     queryClient.clear()
   },
-  onAuthRestoreRejected: () => {
-    aiWorkbenchSessionStore.clearLastPersistedActorContext()
-  },
 })
-watch(
-  [
-    () => authStore.status,
-    () => authStore.currentUser?.userId ?? null,
-    () => authStore.activeTeamId,
-    () => authStore.currentModuleAccess,
-  ],
-  ([status, userId, teamId, moduleAccess]) => {
-    if (
-      status === 'authenticated' &&
-      userId &&
-      teamId &&
-      moduleAccess?.moduleCodes.includes('ai-workbench')
-    ) {
-      if (!aiWorkbenchSessionStore.hasActiveActorContext) {
-        aiWorkbenchSessionStore.activateActorContext({ userId, teamId })
-      }
-      void aiWorkbenchSessionStore.resumePendingSubmissions()
-    }
-  },
-  { immediate: true, flush: 'post' },
-)
 configureHumanRequestContext({
   getActiveTeamId: () => authStore.activeTeamId,
   onSessionInvalid: () => {

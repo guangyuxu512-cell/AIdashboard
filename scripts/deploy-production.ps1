@@ -78,7 +78,7 @@ function Invoke-ProductionDeployment {
     $archive = Join-Path $ArtifactDirectory 'release.tar.gz'
     $archivePaths = @(
         '.dockerignore', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml',
-        'electron/package.json', 'backend', 'frontend', 'mobile', 'deploy/production',
+        'electron/package.json', 'backend', 'frontend', 'deploy/production',
         'scripts/production-env.sh', 'scripts/remote-deploy-production.sh'
     )
     $archiveExclusions = @(':(exclude)**/.env', ':(exclude)**/.env.*')

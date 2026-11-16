@@ -182,8 +182,6 @@ rm -- "$remote_root/current"
 migration_source="$test_root/migration-source"
 mkdir -p \
     "$migration_source/electron" \
-    "$migration_source/mobile/public/icons" \
-    "$migration_source/mobile/src" \
     "$migration_source/backend/app" \
     "$migration_source/backend/migrations" \
     "$migration_source/backend/douyin-signer" \
@@ -196,15 +194,6 @@ touch \
     "$migration_source/pnpm-lock.yaml" \
     "$migration_source/pnpm-workspace.yaml" \
     "$migration_source/electron/package.json" \
-    "$migration_source/mobile/package.json" \
-    "$migration_source/mobile/index.html" \
-    "$migration_source/mobile/vite.config.ts" \
-    "$migration_source/mobile/src/main.ts" \
-    "$migration_source/mobile/public/manifest.webmanifest" \
-    "$migration_source/mobile/public/icons/icon-192.png" \
-    "$migration_source/mobile/public/icons/icon-512.png" \
-    "$migration_source/mobile/public/icons/icon-maskable-512.png" \
-    "$migration_source/mobile/public/icons/apple-touch-icon.png" \
     "$migration_source/backend/Dockerfile" \
     "$migration_source/backend/compose.yaml" \
     "$migration_source/backend/pyproject.toml" \
@@ -231,7 +220,6 @@ BACKEND_ENCRYPTION_KEY=placeholder
 BACKEND_HUMAN_SESSION_COOKIE_SECURE=true
 BACKEND_DOUYIN_SIGNER_API_KEY=placeholder
 BACKEND_DOUYIN_SIGNER_URL=http://127.0.0.1:8788
-BACKEND_TOAPIS_API_KEY=placeholder
 PRODUCTION_DOMAIN=203.0.113.1
 PRODUCTION_TLS_CERTIFICATE_PATH=$test_certificate
 PRODUCTION_TLS_CERTIFICATE_KEY_PATH=$test_certificate_key

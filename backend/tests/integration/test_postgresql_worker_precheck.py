@@ -10,14 +10,14 @@ from pydantic import ValidationError
 
 from app.modules.access.models import Team
 from app.modules.devices.models import Device
-from app.modules.sessions.application_auth import ApplicationPrincipal, ApplicationShopNotFoundError, ClientGrant, DeviceShopGrant
+from app.modules.sessions.application_auth import ApplicationPrincipal, ClientGrant, DeviceShopGrant
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSubmission, PrecheckTerminal
-from app.modules.workers.precheck_contract import PrecheckSignInput
+from app.modules.workers.precheck_contract import PrecheckSignInput, RpaInventoryReport
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
-from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, session_snapshot_expired, sign_current_precheck
+from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, save_rpa_inventory, session_snapshot_expired, sign_current_precheck
 from app.integrations.douyin_signer.schemas import DouyinSignResult
 
 
@@ -32,10 +32,6 @@ class StubAuthorizer:
         assert client_id == self.grant.client_id
         return ApplicationPrincipal(self.grant, token)
 
-    def reauthorize_shop(self, shop_id):
-        if shop_id not in self.grant.shop_ids:
-            raise ApplicationShopNotFoundError()
-
     def current_grant(self, client_id):
         assert client_id == self.grant.client_id
         return self.grant
@@ -47,7 +43,7 @@ def ready_precheck(postgresql_engine):
         assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
             "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
             "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
-            "control_center_feat_worker_parallel_precheck"}
+            "control_center_feat_worker_parallel_precheck", "control_center_feat_windows_execution_slim"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -277,9 +273,6 @@ def test_concurrent_claim_reuses_one_task_and_checks_changed_request(ready_prech
             service.submit(principal, submission(title="different"))
         session.rollback()
         assert len(session.scalars(select(ApplicationWorkerPrecheck)).all()) == 1
-    assert auth.grant.shop_ids == ()
-    with pytest.raises(ApplicationShopNotFoundError):
-        auth.reauthorize_shop(uuid4())
 
 
 def test_lost_result_replay_large_payload_and_revision_fence(ready_precheck):
@@ -564,6 +557,76 @@ def test_generic_failure_does_not_quarantine_or_redispatch(ready_precheck):
         assert service.submit(principal, submission(product="next-product")).target_device_id == device_id
 
 
+def test_worker_observed_expiry_is_snapshot_bound_and_can_recover(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        install = inventory.installation_id
+        shop = {**inventory.shops[0], "sessionRevision": "a" * 64}
+        inventory.shops = [shop]
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        queued = service.submit(principal, submission(product="health-before"))
+        checked = datetime.now(UTC)
+        report = lambda item: RpaInventoryReport.model_validate({
+            "available": True, "installation_id": install, "shops": [item],
+        })
+        save_rpa_inventory(session, device_id, report({
+            **shop, "sessionStatus": "invalid", "sessionCheckedAt": checked.isoformat(),
+        }))
+        assert session_snapshot_expired(session, queued)
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, submission(product="health-expired"))
+        session.rollback()
+
+        # A network error/restart reporting no new result does not make a
+        # confirmed expired snapshot usable again.
+        save_rpa_inventory(session, device_id, report(shop))
+        assert session.get(WorkerRpaShopInventory, device_id).shops[0]["sessionStatus"] == "invalid"
+        assert session_snapshot_expired(session, queued)
+
+        save_rpa_inventory(session, device_id, report({
+            **shop, "sessionStatus": "valid", "sessionCheckedAt": (checked + timedelta(seconds=1)).isoformat(),
+        }))
+        assert not session_snapshot_expired(session, queued)
+
+        # A newly saved Session is a different snapshot, not the old failure.
+        save_rpa_inventory(session, device_id, report({**shop, "sessionRevision": "b" * 64}))
+        assert session.get(WorkerRpaShopInventory, device_id).shops[0]["sessionStatus"] is None
+        assert service.submit(principal, submission(product="health-refreshed")).target_device_id == device_id
+
+
+def test_network_failure_does_not_clear_an_earlier_confirmed_expiry(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        first, second, queued = [service.submit(principal, submission(product=name).model_copy(
+            update={"delivery": "product"})) for name in ("expired-first", "network-next", "queued-last")]
+        first.status = second.status = "running"
+        session.commit()
+        acknowledge_product_delivery(session, device_id, first.task_id,
+            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="a" * 64,
+                                           error_code="SHOP_SESSION_EXPIRED"))
+        acknowledge_product_delivery(session, device_id, second.task_id,
+            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="b" * 64,
+                                           error_code="PLATFORM_REQUEST_FAILED"))
+        assert session_snapshot_expired(session, queued)
+        # The general merchant identity endpoint cannot prove the more
+        # specific category precheck login has recovered on the same snapshot.
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        checked = datetime.now(UTC) + timedelta(seconds=1)
+        save_rpa_inventory(session, device_id, RpaInventoryReport.model_validate({
+            "available": True, "installation_id": inventory.installation_id,
+            "shops": [{**inventory.shops[0], "sessionStatus": "valid", "sessionCheckedAt": checked.isoformat()}],
+        }))
+        assert session_snapshot_expired(session, queued)
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, submission(product="still-expired"))
+
+
 def test_retry_chooses_another_shop_even_when_same_shop_exists_on_another_device(ready_precheck):
     engine, _, auth, first_device = ready_precheck
     second_device = uuid4()
@@ -651,7 +714,7 @@ def test_expired_only_shop_waits_until_rpa_saves_a_new_snapshot(ready_precheck):
         assert replacement.task_id != task.task_id and replacement.target_device_id == device_id
 
 
-def test_application_precheck_and_legacy_session_switches_are_independent(ready_precheck, tmp_path):
+def test_application_precheck_does_not_expose_legacy_session_routes(ready_precheck, tmp_path):
     import hashlib
     import json
 
@@ -662,7 +725,6 @@ def test_application_precheck_and_legacy_session_switches_are_independent(ready_
     from app.core.database import get_database_session
     from app.core.exceptions import install_exception_handlers
     from app.core.security import SecretCipher, get_secret_cipher
-    from app.modules.sessions.application_api import router as session_router
     from app.modules.workers.precheck_api import application_router
 
     engine, principal, _, device_id = ready_precheck
@@ -673,7 +735,6 @@ def test_application_precheck_and_legacy_session_switches_are_independent(ready_
     path.write_text(json.dumps({"version": 1, "clients": [grant]}), encoding="utf-8")
     application = FastAPI()
     install_exception_handlers(application)
-    application.include_router(session_router)
     application.include_router(application_router)
     state = {"settings": Settings(application_worker_precheck_enabled=True,
                                    application_worker_precheck_clients_file=path,
@@ -688,11 +749,11 @@ def test_application_precheck_and_legacy_session_switches_are_independent(ready_
     headers = {"Authorization": f"Bearer {token}", "X-Application-ID": grant["client_id"]}
     with TestClient(application, base_url="https://integration.test") as client:
         assert client.post("/internal/applications/v1/worker-prechecks", json=submission().model_dump(), headers=headers).status_code == 202
-        assert client.get("/internal/applications/v1/shops", headers=headers).status_code == 503
+        assert client.get("/internal/applications/v1/shops", headers=headers).status_code == 404
         state["settings"] = Settings(application_worker_precheck_enabled=False,
             application_shop_session_enabled=True, application_shop_session_clients_file=path)
         assert client.post("/internal/applications/v1/worker-prechecks", json=submission().model_dump(), headers=headers).status_code == 503
-        assert client.get("/internal/applications/v1/shops", headers=headers).json() == []
+        assert client.get("/internal/applications/v1/shops", headers=headers).status_code == 404
         assert client.get(f"/internal/applications/v1/shops/{uuid4()}/session", headers=headers).status_code == 404
 
 
@@ -714,7 +775,7 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
             with pytest.raises(RuntimeError, match="retain schema and audit data"):
                 migration.downgrade()
         connection.rollback()
-        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261113_0051"
+        assert connection.scalar(text("SELECT version_num FROM alembic_version")) == "20261114_0052"
         assert connection.scalar(select(WorkerRpaShopInventory.device_id).where(
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 
