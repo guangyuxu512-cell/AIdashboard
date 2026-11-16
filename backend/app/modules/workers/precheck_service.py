@@ -270,7 +270,7 @@ class WorkerPrecheckService:
         observations = {(device_id, local_id, platform_id, revision):
                         ("invalid" if status == "failed" else "valid", finished or created)
                         for device_id, local_id, platform_id, revision, status, error, finished, created in latest}
-        for device, inventory, _ in rows:
+        for device, inventory, _, _ in rows:
             for shop in inventory.shops:
                 observed = worker_session_observation(shop)
                 key = (device.device_id, shop.get("localShopId"), shop.get("platformShopId"), shop.get("sessionRevision"))
