@@ -2,6 +2,7 @@ from datetime import datetime
 import hashlib
 import json
 import re
+from time import monotonic
 from typing import Any
 from uuid import UUID
 
@@ -32,6 +33,7 @@ class WorkerApiClient:
         product_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.settings = settings
+        self._inventory_health_retry_at = 0.0
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(
             base_url=str(settings.server_url).rstrip("/"),
@@ -135,7 +137,25 @@ class WorkerApiClient:
         return bytes(payload)
 
     async def report_rpa_inventory(self, payload: dict[str, Any]) -> None:
-        response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=payload)
+        shops = payload.get("shops")
+        extended = isinstance(shops, list) and any(
+            isinstance(shop, dict) and ("sessionStatus" in shop or "sessionCheckedAt" in shop)
+            for shop in shops
+        )
+        legacy = ({**payload, "shops": [
+            {key: value for key, value in shop.items() if key not in ("sessionStatus", "sessionCheckedAt")}
+            if isinstance(shop, dict) else shop for shop in shops
+        ]} if extended else payload)
+        use_extended = extended and monotonic() >= self._inventory_health_retry_at
+        response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=payload if use_extended else legacy)
+        if use_extended and response.status_code == 422:
+            # An old Backend rejects new optional fields. Keep shop inventory
+            # and prechecks working while the Backend is being upgraded.
+            response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=legacy)
+            if response.is_success:
+                self._inventory_health_retry_at = monotonic() + 300
+        elif use_extended and response.is_success:
+            self._inventory_health_retry_at = 0.0
         self._raise_for_error(response)
 
     async def sign_precheck(self, task_id: UUID, *, cookie: str, user_agent: str) -> dict[str, str]:

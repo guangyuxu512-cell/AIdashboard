@@ -109,7 +109,7 @@ def test_single_sided_price_rejected_before_categories_or_run(selection_context)
 
 def test_formal_price_post_replay_and_connector_query(selection_context):
     from app.modules.product_selection.api import get_selection_run_service
-    from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+    from app.modules.product_selection.platform_io import build_rank_query
     context, queries, reads = selection_context, [], []
     command = _priced(context, price_below="40.00")
     def dependency():
@@ -136,7 +136,7 @@ def test_formal_price_post_replay_and_connector_query(selection_context):
             return CompassRankPage((_product(rank=1),), 1, 10, 1)
     class Platform(WindowPlatform):
         def rank(self, auth_context, request, page_no):
-            return SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(auth_context, request, page_no)
+            return Connector().rank(auth_context, build_rank_query(request, page_no))
     _executor(context, Platform(receipt.execution.request_conditions, {})).execute_available()
     run = _get(context, receipt)
     actual = run.request_conditions.actual_scope()

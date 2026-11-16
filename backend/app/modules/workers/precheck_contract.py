@@ -8,7 +8,7 @@ from typing import Any, Literal
 from urllib.parse import urlsplit
 from uuid import UUID, NAMESPACE_URL, uuid5
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 
 PRECHECK_KIND = "douyin.category_schema"
@@ -97,6 +97,19 @@ class LocalShopSummary(BaseModel):
     browser_open: bool | None = Field(default=None, alias="browserOpen")
     session_stored: bool = Field(default=False, alias="sessionStored")
     session_revision: str | None = Field(default=None, alias="sessionRevision", pattern=r"^[0-9a-f]{64}$")
+    session_status: Literal["valid", "invalid"] | None = Field(default=None, alias="sessionStatus")
+    session_checked_at: AwareDatetime | None = Field(default=None, alias="sessionCheckedAt")
+
+    @model_validator(mode="after")
+    def check_session_observation(self) -> LocalShopSummary:
+        if (self.session_status is None) != (self.session_checked_at is None):
+            raise ValueError("session status and check time must be paired")
+        if self.session_status is not None and (
+            not self.session_stored or not self.session_revision or not self.platform_shop_id
+            or self.platform != "douyin"
+        ):
+            raise ValueError("session observation requires the saved shop snapshot")
+        return self
 
 
 class RpaInventoryReport(BaseModel):

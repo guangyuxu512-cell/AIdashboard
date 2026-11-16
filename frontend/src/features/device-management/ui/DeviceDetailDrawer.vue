@@ -5,6 +5,9 @@ import {
   DeviceConnectionStatusTag,
   DeviceEnabledStatusTag,
   DeviceIdentity,
+  formatRelativeTime,
+  type DeviceLocalShopInventoryDto,
+  type DeviceLocalShopDto,
   type DeviceListItemViewModel,
   type YingdaoInventoryViewModel,
   type WorkerCredentialReadDto,
@@ -35,7 +38,7 @@ defineProps<{
   providerInventoryError?: string | null
   yingdaoRefreshing?: boolean
   currentExecution?: DeviceCurrentExecutionViewModel | null
-  boundShopCount?: number | null
+  localShops?: DeviceLocalShopInventoryDto | null
   recentExecutions?: DeviceRecentExecutionViewModel[]
   statusChanging?: boolean
   removing?: boolean
@@ -44,6 +47,13 @@ defineProps<{
   workerCredentialError?: string | null
   workerCredentialSubmitting?: boolean
 }>()
+
+const sessionLabels: Record<DeviceLocalShopDto['session_status'], string> = {
+  valid: '登录有效',
+  invalid: '登录失效',
+  reauthorization_required: '未保存登录态',
+  unknown: '未确认',
+}
 
 defineEmits<{
   'update:show': [value: boolean]
@@ -116,10 +126,27 @@ defineEmits<{
             <strong>{{ device.lastHeartbeatAtDisplay }}</strong>
           </div>
           <div class="device-overview__item">
-            <span>绑定店铺</span>
-            <strong>{{ boundShopCount ?? '—' }}</strong>
+            <span>本机店铺</span>
+            <strong>{{ localShops?.available ? localShops.shops.length : '—' }}</strong>
           </div>
         </div>
+      </section>
+
+      <section class="device-detail__section">
+        <h3>本机店铺与会话</h3>
+        <dl v-if="localShops?.shops.length" class="capability-facts">
+          <div v-for="shop in localShops.shops" :key="shop.local_shop_id">
+            <dt>{{ shop.shop_name }}</dt>
+            <dd>
+              {{ sessionLabels[shop.session_status] }}
+              <small v-if="shop.status_observed_at">
+                · {{ formatRelativeTime(shop.status_observed_at) }}{{ shop.session_status === 'reauthorization_required' ? '上报' : '验证' }}
+              </small>
+            </dd>
+          </div>
+        </dl>
+        <EmptyState v-else description="暂无本机店铺信息" />
+        <small v-if="localShops && !localShops.available">设备店铺信息暂不可用，显示的是上次上报结果</small>
       </section>
 
       <section class="device-detail__section">

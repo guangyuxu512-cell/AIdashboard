@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import pytest
 
-from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+from app.modules.product_selection.platform_io import build_rank_query
 from app.modules.product_selection.request_mapping import freeze_short_video_request
 from app.modules.product_selection.run_contract import SelectionDateOutcome, SelectionResolvedRequest, BRAND_TYPES
 from tests.test_selection_request_mapping import _original
@@ -68,15 +68,10 @@ def test_all_three_saved_labels_reach_the_exact_final_platform_query(brand, code
     """Hard-coded wire expectations prevent the labels being swapped together."""
     captured = []
 
-    class Connector:
-        def rank(self, context, query):
-            captured.append(query)
-            return None
-
     request = freeze_short_video_request(
         _original(brand=brand), datetime(2026, 10, 10, 16, tzinfo=UTC),
     )
-    SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(None, request, 1)
+    captured.append(build_rank_query(request, 1))
     assert captured == [{
         "page_no": "1",
         "page_size": "10",

@@ -1,16 +1,13 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 
 import { requireModuleDefinition } from '@/app/modules/registry'
-import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 const foundationModule = requireModuleDefinition('foundation')
 const shopModule = requireModuleDefinition('shop')
 const assetModule = requireModuleDefinition('asset')
-const aiWorkbenchModule = requireModuleDefinition('ai-workbench')
 const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
 const productDataModule = requireModuleDefinition('product-data')
 const productSelectionModule = requireModuleDefinition('product-selection')
-const productLibraryModule = requireModuleDefinition('product-library')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
@@ -22,7 +19,7 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: shopModule.routePath,
+      redirect: deviceModule.routePath,
     },
     {
       path: '/login',
@@ -49,31 +46,6 @@ const router = createRouter({
       meta: { moduleCode: assetModule.moduleCode },
     },
     {
-      path: AI_WORKBENCH_ROUTES.generate.path,
-      name: AI_WORKBENCH_ROUTES.generate.name,
-      component: () => import('@/pages/ai-workbench/AiGeneratePage.vue'),
-      meta: { moduleCode: aiWorkbenchModule.moduleCode },
-    },
-    {
-      path: AI_WORKBENCH_ROUTES.assets.path,
-      name: AI_WORKBENCH_ROUTES.assets.name,
-      component: () => import('@/pages/ai-workbench/AiAssetLibraryPage.vue'),
-      meta: { moduleCode: aiWorkbenchModule.moduleCode },
-    },
-    {
-      path: AI_WORKBENCH_ROUTES.templates.path,
-      name: AI_WORKBENCH_ROUTES.templates.name,
-      component: () => import('@/pages/ai-workbench/AiTemplateLibraryPage.vue'),
-      meta: { moduleCode: aiWorkbenchModule.moduleCode },
-    },
-    {
-      path: AI_WORKBENCH_ROUTES.records.path,
-      name: AI_WORKBENCH_ROUTES.records.name,
-      component: () =>
-        import('@/pages/ai-workbench/AiGenerationRecordsPage.vue'),
-      meta: { moduleCode: aiWorkbenchModule.moduleCode },
-    },
-    {
       path: operatingDashboardModule.routePath,
       name: operatingDashboardModule.routeName,
       component: () =>
@@ -91,12 +63,6 @@ const router = createRouter({
       name: productSelectionModule.routeName,
       component: () => import('@/pages/products/ProductSelectionPage.vue'),
       meta: { moduleCode: productSelectionModule.moduleCode },
-    },
-    {
-      path: productLibraryModule.routePath,
-      name: productLibraryModule.routeName,
-      component: () => import('@/pages/products/ProductLibraryPage.vue'),
-      meta: { moduleCode: productLibraryModule.moduleCode },
     },
     {
       path: deviceModule.routePath,
@@ -142,15 +108,13 @@ const router = createRouter({
       meta: { requiresAccessAdministrator: true },
     },
     {
-      path: '/settings/ai-models',
-      name: 'ai-model-management',
-      component: () => import('@/pages/settings/AiModelManagementPage.vue'),
-      meta: { requiresAccessAdministrator: true },
-    },
-    {
       path: '/permission-denied',
       name: 'permission-denied',
       component: () => import('@/pages/PermissionDeniedPage.vue'),
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: deviceModule.routePath,
     },
   ],
 })

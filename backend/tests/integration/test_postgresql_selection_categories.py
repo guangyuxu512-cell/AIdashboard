@@ -8,6 +8,7 @@ import pytest
 from sqlalchemy.orm import Session
 from sqlalchemy import delete
 
+from app.core.config import Settings
 from app.modules.access.models import TeamShopAccess
 from app.modules.product_selection.category_service import SelectionCategoryService
 from app.modules.product_selection.category_cache import SelectionCategoryCache
@@ -21,7 +22,7 @@ from tests.integration.test_postgresql_product_selection import selection_contex
 pytestmark = pytest.mark.integration
 
 
-def _service(context, before_return=None, mismatch=False, cache=None, tree=None):
+def _service(context, before_return=None, mismatch=False, cache=None, tree=None, enabled=True):
     open_sessions, calls = [], []
 
     @contextmanager
@@ -48,7 +49,25 @@ def _service(context, before_return=None, mismatch=False, cache=None, tree=None)
                 before_return()
             return tree or CompassCategoryTree((CompassCategoryNode("7", "行业", ()),), "7", "行业", None)
 
-    return SelectionCategoryService(factory, platform=Platform(), cache=cache or SelectionCategoryCache()), calls
+    settings = Settings(_env_file=None, product_selection_execution_enabled=enabled)
+    return SelectionCategoryService(factory, platform=Platform(), cache=cache or SelectionCategoryCache(), settings=settings), calls
+
+
+def test_paused_selection_category_read_never_requests_platform(selection_context):
+    from app.modules.product_selection.api import get_selection_category_service
+    from app.modules.product_selection.exceptions import SelectionExecutionDisabledError
+
+    context = selection_context
+    service, calls = _service(context, enabled=False)
+    with _api_client(context) as client:
+        client.app.dependency_overrides[get_selection_category_service] = lambda: service
+        params = {"shop_id": str(context[3][0])}
+        headers = {"X-Team-ID": str(context[1][0])}
+        for refresh in (False, True):
+            response = client.get("/api/v1/product-selection/categories", params={**params, "refresh": refresh}, headers=headers)
+            assert response.status_code == 409
+            assert response.json()["code"] == SelectionExecutionDisabledError.code
+    assert calls == []
 
 
 def test_category_api_uses_authorized_shop_and_keeps_io_outside_transactions(selection_context):
@@ -151,7 +170,7 @@ def test_display_and_formal_submit_share_the_process_cache(selection_context, mo
     )),), "7", "行业", None)
     display, calls = _service(context, tree=tree)
     monkeypatch.setattr(category_service, "get_selection_category_cache", lambda: display.cache)
-    monkeypatch.setattr(category_service, "SelectionStoredSessionIO", lambda factory: display.platform)
+    monkeypatch.setattr(category_service, "SelectionUnavailableIO", lambda: display.platform)
     display.read(context[4][0], context[3][0])
     command = _input(context)
     with Session(context[0]) as session:

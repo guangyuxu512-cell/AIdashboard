@@ -21,7 +21,7 @@ Feature Gate 1
 - 仅接受等于最新 `origin/main` 的完整 40 位小写 SHA；用该仓库正式 `ci.yml` 的 main push 运行核对
   精确 SHA，以最新 Run 的结果为准，必须 completed/success。无运行、失败、取消及运行中都拒绝；
   同 SHA 的旧成功记录不能覆盖新的失败。Deploy 在第一次 SSH 前再次读取 main/CI，Plan 不构成发布批准。
-- 归档只由 `git archive --format=tar.gz --output=... <sha>` 从提交生成。完整 Backend、PC、Mobile、
+- 归档只由 `git archive --format=tar.gz --output=... <sha>` 从提交生成。完整 Backend、PC、
   Compose 与原远程脚本沿用原白名单；上传的脚本也从同一归档提取，不读取本地未提交源码或 `.env`。
 - 本地与应急入口在服务器同一 `.deploy.lock` 上互斥；`flock` 不可用或已有部署持锁时失败，不并行迁移、
   切换 `current` 或回滚。锁覆盖读取旧 current 到 EXIT 清理，退出码 75 表示有部署正在进行。
@@ -60,7 +60,6 @@ Browser HTTPS
   → exact `/rpa/v1/product-images/` → ProductDataCenter :100.91.242.119:3612 over Tailnet
   → Frontend :127.0.0.1:18080
       → PC `/`
-      → Mobile `/mobile/`
   → /api/ reverse proxy
   → Backend :127.0.0.1:18001
   → PostgreSQL :127.0.0.1:35433 / control_center_prod
@@ -71,7 +70,7 @@ Backend → existing Docker Asset volume (local mode) / verified NAS mount (moun
 
 - Production Backend、Signer 与 Frontend 都只监听主机回环地址；不得直接发布 Docker 端口。
 - Frontend 保持只读根文件系统；Nginx 官方入口运行时渲染的 `/etc/nginx/conf.d`、缓存、运行时和临时目录使用受限 `tmpfs`，不得因此放宽整个容器的写入权限。`NGINX_ENVSUBST_FILTER` 使用变量名正则，只允许渲染 `FRONTEND_BIND_HOST`、`FRONTEND_BIND_PORT` 与 `BACKEND_BIND_PORT`。
-- 同一个 Frontend image 同时提供 PC 根入口与 Mobile `/mobile/`，不新增容器或端口。`/mobile` 以代理安全的相对 `Location: /mobile/` 重定向，禁止泄漏内部 HTTP scheme 或 `18080` 上游端口；Mobile SPA fallback 只在 `/mobile/` 内生效，缺失的 Mobile JS、CSS、Manifest 或图标必须返回 `404`，不能回退到 PC `index.html`。`/api/` 继续使用同一 Backend proxy；Host Nginx 的精确 `/health` 直接代理到 Backend，避免被 PC SPA fallback 返回 HTML，供 Worker 在不携带 Token 的第一步健康检查使用。
+- Frontend image 提供 PC 根入口；旧手机网页入口 `/mobile` 及 `/mobile/` 返回 404。`/api/` 与手机采集的 `/internal/mobile-collection/v1/` 继续代理 Backend；Host Nginx 的精确 `/health` 直接代理到 Backend，避免被 PC SPA fallback 返回 HTML。
 - 公网入口仅由现有 BaoTa Nginx vhost 管理。本部署的明确决策是直接使用 VPS 公网 IPv4，而非 DNS 域名。Let’s Encrypt 的 IP 证书必须使用 `shortlived` profile，约 160 小时有效；因此 `control-center-production-ip-acme-renew.timer` 每日运行两次，续期后由 host Nginx reload 读取新证书。明文 HTTP 只用于 ACME HTTP-01 challenge 和 HTTPS 重定向，不能作为应用入口。
 - 商品库图片只复用该公网 HTTPS vhost 的精确 `/rpa/v1/product-images/` 前缀，且只允许 GET/HEAD 下载；私有上游固定为 ProductDataCenter 在 NAS 上的 Tailnet HTTP 服务 `100.91.242.119:3612`。图片字节仍由商品库自己的 NAS 持久目录管理；中控 Asset Storage 不接收或复制这些文件。该路由必须清除浏览器可能携带的 `Authorization`、`Cookie`，并丢弃上游 `Set-Cookie`，避免中控 Session 进入 NAS 或由图片响应写回公网入口。相邻的 `/rpa/v1/products`、`/rpa/v1/product-images-*`、管理 API、数据库及文件共享端口不得因本路由公开。商品库管理、导出与 RPA 数据包应返回 `https://119.29.188.118/rpa/v1/product-images/...` 同一地址。
 - 上述图片路由随受审 `host-nginx.conf.template` 和正式 main SHA 发布；远程部署只把固定私有上游渲染进 host vhost，`nginx -t` 或 reload 失败继续恢复旧 vhost。容器回归只证明精确前缀、图片字节/类型和相邻路径隔离；生产验收必须从未加入 NAS Tailnet 的实际 RPA 机器使用数据包原始 URL 下载并打开图片，记录 HTTP 状态、Content-Type 和下载结果。局域网、VPS 回环或健康接口成功不能替代该验收。
@@ -84,7 +83,7 @@ Backend → existing Docker Asset volume (local mode) / verified NAS mount (moun
 发布前仍打开的 PC/Electron 窗口可能请求旧哈希文件。`/assets/` 先读取当前镜像，再读取只读挂载
 `/opt/ecommerce-control-center/production/pc-static-assets/public → /var/lib/control-center-static`；
 缺失 JS/CSS 返回真实 404，不回退首页。PC 首页使用 no-store，存在的哈希资源使用 immutable 缓存。
-Mobile 的 `/mobile/` 规则不变。Compose 的共享路径禁止自动创建；部署脚本在启动容器前准备资源。
+Compose 的共享路径禁止自动创建；部署脚本在启动容器前准备资源。
 
 `deploy/production/pc-static-assets.sh` 只保留 Vite 带哈希的 JS/MJS、CSS、字体与图片，支持含 `.vue_...`
 的依赖名称；不导出历史 index.html、sourcemap、API 数据、环境文件、日志或 symlink。
@@ -316,9 +315,8 @@ CI：`.github/workflows/ci.yml`
 
 - Backend pytest；
 - Frontend Real typecheck/build；
-- Mobile lint、unit、typecheck 与 `/mobile/` production build；
 - Production Backend Docker build，并在容器内验证 Node、PDD `anti_content.js` 与签名调用；
-- Production Frontend Docker build，在只读根文件系统下验证 PC `/`、Mobile `/mobile/`、Manifest、安装图标、hash 静态资源与缺失资源 `404`，并校验 Compose 契约。
+- Production Frontend Docker build，在只读根文件系统下验证 PC `/`、已退役的 `/mobile/` 返回 404、hash 静态资源与缺失资源 `404`，并校验 Compose 契约。
 
 GitHub 手动应急部署：`.github/workflows/production-deploy.yml`，checkout 明确固定 `ref: main`，
 即使手动触发时选择其他分支，入口仍来自受审 main。
@@ -331,7 +329,7 @@ GitHub 手动应急部署：`.github/workflows/production-deploy.yml`，checkout
 - `PRODUCTION_DEPLOY_SSH_PRIVATE_KEY`
 - `PRODUCTION_SSH_KNOWN_HOSTS`
 
-共享入口上传提交归档，先核归档 SHA-256，再执行原远程脚本构建镜像、前向 Alembic、Signer/Backend/PC/Mobile
+共享入口上传提交归档，先核归档 SHA-256，再执行原远程脚本构建镜像、前向 Alembic、Signer/Backend/PC
 健康与静态资源检查，并切换 Nginx。随后在发起端验证公网 `/health` 的 application/json 与精确
 `{ "status": "ok" }` 契约。Backend/Frontend HTTP 就绪仍最多等待45秒。archive/脚本名使用每次独立UUID
 隔离，应用环境变量继续留在服务器。依赖构建仍在原服务器，移动SSH发起端不承诺缩短Docker构建时间。
@@ -367,6 +365,6 @@ GitHub 手动应急部署：`.github/workflows/production-deploy.yml`，checkout
 4. Douyin Signer health、PDD Node signer 运行；
 5. Asset 上传后重启服务仍可读取；
 6. 配置齐全时，一次最小 ToAPIs 生成；人工平台登录需要在真实页面完成，并如实标记未覆盖项。
-7. PC 根入口与 Mobile `https://119.29.188.118/mobile/` 同时可用；Mobile 正式账号登录、刷新恢复、Team/Module Access 与退出正常，Manifest 和安装图标可读取。添加至主屏幕、独立窗口启动、关闭重开与版本刷新必须由真实支持的手机浏览器验收；浏览器模拟视口不能冒充真机安装通过。
+7. PC 根入口可用，旧手机网页入口返回 404；既有手机采集接口仍由 Backend 提供。
 
 公网 IP 已确定为部署入口；但首次验收仍需要 IP 证书、ACME 联系邮箱、首位管理员身份和生产 ToAPIs 配置。在这些前置条件具备前，任何结果只能标记为“代码已发布”，不能标记为“生产已部署”。

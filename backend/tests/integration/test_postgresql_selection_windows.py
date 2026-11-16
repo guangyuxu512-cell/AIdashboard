@@ -58,7 +58,7 @@ class WindowPlatform(FakePlatform):
 
 def test_formal_post_validates_full_industry_tree_and_emits_category_only_query(selection_context):
     from app.modules.product_selection.api import get_selection_run_service
-    from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+    from app.modules.product_selection.platform_io import build_rank_query
     from app.modules.product_selection.run_contract import SelectionRunReceipt
     context, queries, category_reads = selection_context, [], []
     command = _input(context, rank_from=1, rank_to=1)
@@ -88,7 +88,7 @@ def test_formal_post_validates_full_industry_tree_and_emits_category_only_query(
             return CompassRankPage((_product(rank=1),), 1, 10, 1)
     class Platform(WindowPlatform):
         def rank(self, auth_context, request, page_no):
-            return SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(auth_context, request, page_no)
+            return Connector().rank(auth_context, build_rank_query(request, page_no))
     _executor(context, Platform(receipt.execution.request_conditions, {})).execute_available()
     run = _get(context, receipt)
     actual = run.request_conditions.actual_scope()
