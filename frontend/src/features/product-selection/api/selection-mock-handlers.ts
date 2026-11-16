@@ -6,10 +6,7 @@ import {
   type SelectionCandidate,
   type SelectionStrategy,
   type SelectionService,
-  type BatchCollectReceipt,
-  type BatchCollectItemResult,
 } from '../model/contracts'
-import { enqueueCandidateCollectionTasks } from '@/features/product-collection/api/collection-task-mock-store'
 
 // Local photographs are test fixtures; they are removed from the Real build.
 const photographs = Object.values(
@@ -120,7 +117,6 @@ export function createSelectionMockHandlers(
               : 'known',
         firstDiscoveredAt: '2026-10-07T10:00:00+08:00',
         metricsRetrievedAt: '2026-10-08T12:00:00+08:00',
-        collectionStatus: 'not-collected',
         firstListed: index % 3 === 0,
         userPaidAmountRange: index % 6 === 0 ? null : '1万–5万',
         userPaidAmountUnit: null,
@@ -137,18 +133,6 @@ export function createSelectionMockHandlers(
     const row = candidates.find((row) => row.id === id)
     if (!row) throw new Error('演示候选不存在')
     return row
-  }
-  function collect(id: string): BatchCollectItemResult {
-    const row = findCandidate(id)
-    for (const candidate of candidates)
-      if (candidate.productId === row.productId)
-        candidate.collectionStatus = 'demo-collected'
-    return {
-      candidateId: row.id,
-      productId: row.productId,
-      state: 'demo',
-      message: '商品资料采集流程演示；未发起真实采集，未写入正式商品库',
-    }
   }
   function validate(
     input: Parameters<SelectionService['retrieve']>[0],
@@ -333,62 +317,12 @@ export function createSelectionMockHandlers(
     },
     async demoAction(id, action) {
       const row = findCandidate(id)
-      if (action === 'collect')
-        return { mode: 'mock', count: 1, message: collect(id).message }
       row.blocked = action === 'block'
       return {
         mode: 'mock',
         count: 1,
         message: action === 'block' ? '已在演示列表屏蔽' : '已恢复演示候选',
       }
-    },
-    async collectBatch(candidateIds) {
-      const results: BatchCollectReceipt['results'] = []
-      const products = new Map<string, BatchCollectReceipt['results'][number]>()
-      for (const id of new Set(candidateIds)) {
-        let productId: string | null = null
-        try {
-          const row = findCandidate(id)
-          productId = row.productId
-          const previous = products.get(row.productId)
-          if (previous) {
-            previous.candidateIds.push(id)
-            continue
-          }
-          const result = { ...collect(id), candidateIds: [id] }
-          products.set(row.productId, result)
-          results.push(result)
-        } catch (error) {
-          const failure: BatchCollectReceipt['results'][number] = {
-            candidateId: id,
-            candidateIds: [id],
-            productId,
-            state: 'failed',
-            message: error instanceof Error ? error.message : '演示采集失败',
-          }
-          results.push(failure)
-          if (productId !== null) products.set(productId, failure)
-        }
-      }
-      const succeeded = results.filter((result) => result.state === 'demo')
-      enqueueCandidateCollectionTasks(
-        succeeded.flatMap((result) => {
-          const row = candidates.find(
-            (candidate) => candidate.productId === result.productId,
-          )
-          return row
-            ? [
-                {
-                  candidateId: row.id,
-                  productId: row.productId,
-                  title: row.title,
-                  platform: 'douyin' as const,
-                },
-              ]
-            : []
-        }),
-      )
-      return { mode: 'mock', results }
     },
   }
 }

@@ -41,15 +41,10 @@ server {
     }
 
     location ^~ /internal/mobile-collection/v1/ {
-        proxy_pass http://127.0.0.1:${BACKEND_BIND_PORT};
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+        return 404;
     }
 
-    # The former mobile web UI has been retired; collection APIs remain active.
+    # The former mobile web UI and central collection endpoint have retired.
     location = /mobile { return 404; }
     location ^~ /mobile/ { return 404; }
 

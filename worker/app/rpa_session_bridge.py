@@ -269,7 +269,7 @@ class RpaLocalBridge:
             if session.local_shop_id != local_shop_id or session.platform_shop_id != platform_shop_id:
                 raise RpaBridgeError("RPA_SHOP_IDENTITY_MISMATCH")
             for cookie in session.cookies:
-                if cookie.domain.lstrip(".").lower() not in {"jinritemai.com", "fxg.jinritemai.com"}:
+                if cookie.domain.lstrip(".").lower() not in {"jinritemai.com", "fxg.jinritemai.com", "compass.jinritemai.com"}:
                     raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
                 if not cookie.path.startswith("/"):
                     raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")

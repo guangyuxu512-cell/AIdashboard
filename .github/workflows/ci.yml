@@ -64,10 +64,10 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Typecheck and build frontend in Real mode
         run: pnpm --filter @control-center/frontend build
-      - name: Verify AI images and team context in the Real production bundle
+      - name: Verify execution navigation in the Real production bundle
         run: |
           pnpm --filter @control-center/frontend exec playwright install --with-deps chromium
-          pnpm --filter @control-center/frontend exec playwright test --config playwright.ai-images.config.ts
+          pnpm --filter @control-center/frontend exec playwright test --config playwright.execution-navigation.config.ts
 
   verify-offline:
     # Worker has three Windows-only unit cases; do not hide them as Linux skips.
@@ -203,7 +203,6 @@ jobs:
           BACKEND_DATABASE_URL=postgresql+psycopg://placeholder:placeholder@127.0.0.1:35433/control_center_prod \
           BACKEND_ENCRYPTION_KEY=placeholder \
           BACKEND_DOUYIN_SIGNER_API_KEY=placeholder \
-          BACKEND_TOAPIS_API_KEY=placeholder \
           BACKEND_DOUYIN_SIGNER_URL=http://127.0.0.1:8788 \
           BACKEND_HUMAN_SESSION_COOKIE_SECURE=true \
           PRODUCTION_DOMAIN=example.invalid \

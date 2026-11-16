@@ -6,11 +6,13 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.modules.access.contracts import ActorContext
 from app.modules.product_selection.category_cache import (
     SelectionCategoryCache, get_selection_category_cache,
 )
 from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+from app.modules.product_selection.exceptions import SelectionExecutionDisabledError
 from app.modules.product_selection.schemas import SelectionCategoriesRead, SelectionCategoryRead
 from app.modules.product_selection.service import ProductSelectionFactService
 from app.modules.shops.enums import ShopPlatform
@@ -29,10 +31,12 @@ class SelectionCategoryService:
         self, session_factory: Callable[[], AbstractContextManager[Session]], *,
         platform: SelectionStoredSessionIO | None = None,
         cache: SelectionCategoryCache | None = None,
+        settings: Settings | None = None,
     ):
         self.session_factory = session_factory
         self.platform = platform or SelectionStoredSessionIO(session_factory)
         self.cache = cache if cache is not None else get_selection_category_cache()
+        self.settings = settings or get_settings()
 
     def _authorize(self, actor: ActorContext, shop_id: UUID):
         with self.session_factory() as session:
@@ -44,6 +48,8 @@ class SelectionCategoryService:
         self, actor: ActorContext, shop_id: UUID, *, refresh: bool = False,
     ) -> SelectionCategoriesRead:
         self._authorize(actor, shop_id)
+        if not self.settings.product_selection_execution_enabled:
+            raise SelectionExecutionDisabledError()
 
         def load() -> SelectionCategoriesRead:
             return self._load(actor, shop_id)

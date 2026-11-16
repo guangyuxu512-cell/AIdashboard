@@ -21,10 +21,8 @@ import type {
 import { runResult, runWindow } from '../model/run-display'
 import CandidatePool from './CandidatePool.vue'
 import StrategyList from './StrategyList.vue'
-import CollectionTasksPanel from '@/features/product-collection/ui/CollectionTasksPanel.vue'
-
 defineProps<{
-  panel: 'candidate-pool' | 'selection-strategy' | 'collection-tasks'
+  panel: 'candidate-pool' | 'selection-strategy'
 }>()
 const auth = useAuthStore()
 const message = useMessage()
@@ -100,12 +98,7 @@ watch(feedback.error, (error) => {
 </script>
 
 <template>
-  <CollectionTasksPanel
-    v-if="panel === 'collection-tasks'"
-    :key="`collection:${contextKey}`"
-    :context-key="contextKey"
-  />
-  <PageSection v-else-if="error"
+  <PageSection v-if="error"
     ><ErrorState :description="error" retryable @retry="load"
   /></PageSection>
   <PageSection v-else-if="!service"><LoadingState /></PageSection>

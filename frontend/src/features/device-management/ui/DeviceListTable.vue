@@ -122,11 +122,11 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
     render: (device) => device.yingdaoInventory?.applicationCount ?? '—',
   },
   {
-    title: '绑定店铺',
-    key: 'boundShopCount',
+    title: '本机店铺',
+    key: 'localShopCount',
     width: 90,
     align: 'center',
-    render: (device) => device.boundShopCount ?? '—',
+    render: (device) => device.localShopCount ?? '—',
   },
   {
     title: '最后心跳',
