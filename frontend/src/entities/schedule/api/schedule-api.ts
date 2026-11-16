@@ -18,11 +18,15 @@ export interface ScheduleListApiParams {
   viewTimezone: string | null
 }
 
+export interface ScheduleListPageDto extends PageDto<ScheduleListItemReadDto> {
+  execution_enabled: boolean
+}
+
 export const scheduleApi = {
   async list(
     params: ScheduleListApiParams,
-  ): Promise<PageDto<ScheduleListItemReadDto>> {
-    const response = await httpClient.get<PageDto<ScheduleListItemReadDto>>(
+  ): Promise<ScheduleListPageDto> {
+    const response = await httpClient.get<ScheduleListPageDto>(
       '/api/v1/schedules',
       {
         params: {

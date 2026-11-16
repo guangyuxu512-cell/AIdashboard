@@ -45,7 +45,7 @@ def ready_precheck(postgresql_engine):
             "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
             "control_center_feat_worker_parallel_precheck", "control_center_feat_windows_execution_slim",
             "control_center_feat_worker_category_ops", "control_center_feat_worker_only_v1",
-            "control_center_feat_worker_only_v2"}
+            "control_center_feat_worker_only_v2", "control_center_feat_worker_schedule_resume_v1"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:

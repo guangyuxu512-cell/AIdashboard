@@ -1,10 +1,14 @@
+import asyncio
+from contextlib import suppress
 from datetime import UTC, datetime, time, timedelta
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import delete
-from sqlalchemy.orm import Session
+from sqlalchemy import delete, select
+from sqlalchemy.orm import Session, sessionmaker
 
+from app.core.config import get_settings
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.models import Team, TeamDeviceAccess
@@ -12,6 +16,7 @@ from app.modules.devices.models import Device
 from app.modules.schedules.models import Schedule, ScheduleRun
 from app.modules.schedules.schemas import ScheduleCreate
 from app.modules.schedules.service import ScheduleService
+from app.modules.schedules import scheduler
 from app.modules.tasks.exceptions import TaskInputInvalidError
 from app.modules.tasks.models import Task
 from app.modules.tasks.schemas import TaskCreate, WorkerTaskRead
@@ -124,3 +129,100 @@ def test_schedule_uses_local_shops_and_is_disabled_by_default_in_form(worker_con
         with pytest.raises(ValueError):
             ScheduleCreate(name='legacy', target_device_id=device_id, execution_type='yingdao_application',
                            application_id='legacy', local_time=time(9, 0), timezone='Asia/Shanghai')
+
+
+def test_enabled_worker_scheduler_dispatches_once_without_old_plans(worker_context, monkeypatch):
+    engine, actor, device_id = worker_context
+    now = datetime.now(UTC).replace(second=0, microsecond=0)
+    due = now + timedelta(minutes=2)
+    local_due = due.astimezone(ZoneInfo('Asia/Shanghai'))
+    with Session(engine) as session:
+        plan = ScheduleService(session).create(ScheduleCreate(
+            name='new worker fixture', target_device_id=device_id, local_shop_ids=['local-1'],
+            skill_id='system.echo', parameters={'message': 'safe'}, schedule_type='once',
+            local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
+            timezone='Asia/Shanghai', enabled=True), actor, now=now)
+        legacy = Schedule(team_id=actor.team_id, created_by_user_id=actor.user_id,
+            name='legacy yingdao fixture', enabled=True, target_device_id=device_id,
+            skill_id='yingdao.app.run', execution_display_name='legacy', schedule_type='once',
+            local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
+            timezone='Asia/Shanghai', task_input_json={}, next_run_at=now)
+        disabled = Schedule(team_id=actor.team_id, created_by_user_id=actor.user_id,
+            name='disabled old worker fixture', enabled=False, target_device_id=device_id,
+            skill_id='system.echo', execution_display_name='old', schedule_type='once',
+            local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
+            timezone='Asia/Shanghai', task_input_json={'message': 'old'}, next_run_at=now)
+        session.add_all([legacy, disabled])
+        session.commit()
+        legacy_id, disabled_id = legacy.schedule_id, disabled.schedule_id
+
+    monkeypatch.setenv('BACKEND_WORKER_SCHEDULE_EXECUTION_ENABLED', 'true')
+    monkeypatch.setenv('BACKEND_PRODUCT_SELECTION_EXECUTION_ENABLED', 'true')
+    monkeypatch.setenv('BACKEND_PRODUCT_SELECTION_SCHEDULE_ENABLED', 'true')
+    get_settings.cache_clear()
+    monkeypatch.setattr(scheduler, 'get_session_factory', lambda: sessionmaker(bind=engine))
+    def reject_selection(*args, **kwargs):
+        pytest.fail('paused selection must never be scanned')
+    monkeypatch.setattr(scheduler, 'SelectionScheduleService', reject_selection)
+    try:
+        assert scheduler.trigger_due_schedules_once(now=due - timedelta(seconds=1)) == 0
+        assert scheduler.trigger_due_schedules_once(now=due) == 1
+        assert scheduler.trigger_due_schedules_once(now=due) == 0
+        with Session(engine) as session:
+            runs = list(session.scalars(select(ScheduleRun).where(
+                ScheduleRun.schedule_id.in_([plan.schedule_id, legacy_id, disabled_id]))))
+            assert len(runs) == 1 and runs[0].schedule_id == plan.schedule_id
+            task = session.get(Task, runs[0].task_id)
+            assert task is not None and task.status == 'pending' and task.skill_id == 'system.echo'
+            claimed = TaskService(session).claim_with_context(WorkerPrincipal(device_id=device_id), now=due)
+            assert claimed is not None and claimed.task.task_id == task.task_id
+            assert claimed.local_shops == [{'local_shop_id': 'local-1', 'platform': 'douyin',
+                                            'platform_shop_id': '123'}]
+    finally:
+        get_settings.cache_clear()
+
+
+def test_worker_scheduler_loop_dispatches_at_actual_due_time(worker_context, monkeypatch):
+    engine, actor, device_id = worker_context
+    now = datetime.now(UTC)
+    # ScheduleCreate normalizes wall time to the minute; leave enough time to
+    # start the loop before the next selected minute even on a slow database.
+    due = (now + timedelta(seconds=70)).replace(second=0, microsecond=0)
+    local_due = due.astimezone(ZoneInfo('Asia/Shanghai'))
+    with Session(engine) as session:
+        plan = ScheduleService(session).create(ScheduleCreate(
+            name='wall clock worker fixture', target_device_id=device_id, local_shop_ids=['local-1'],
+            skill_id='system.echo', parameters={'message': 'safe'}, schedule_type='once',
+            local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
+            timezone='Asia/Shanghai', enabled=True), actor, now=now)
+
+    monkeypatch.setenv('BACKEND_WORKER_SCHEDULE_EXECUTION_ENABLED', 'true')
+    monkeypatch.setenv('BACKEND_SCHEDULE_SCAN_INTERVAL_SECONDS', '1')
+    monkeypatch.setattr(scheduler, 'get_session_factory', lambda: sessionmaker(bind=engine))
+    get_settings.cache_clear()
+
+    async def observe():
+        loop = asyncio.create_task(scheduler.trigger_due_schedules_forever())
+        try:
+            deadline = asyncio.get_running_loop().time() + 90
+            while asyncio.get_running_loop().time() < deadline:
+                with Session(engine) as session:
+                    run = session.scalar(select(ScheduleRun).where(ScheduleRun.schedule_id == plan.schedule_id))
+                    if run is not None:
+                        assert datetime.now(UTC) >= due
+                        assert run.scheduled_for == due
+                        claimed = TaskService(session).claim_with_context(
+                            WorkerPrincipal(device_id=device_id))
+                        assert claimed is not None and claimed.task.task_id == run.task_id
+                        return
+                await asyncio.sleep(0.5)
+            pytest.fail('worker scheduler did not dispatch the due plan')
+        finally:
+            loop.cancel()
+            with suppress(asyncio.CancelledError):
+                await loop
+
+    try:
+        asyncio.run(observe())
+    finally:
+        get_settings.cache_clear()

@@ -29,11 +29,15 @@ export interface ScheduleListParams {
   filters: ScheduleListFilters
 }
 
+export interface ScheduleListResult extends PageResult<ScheduleListItemViewModel> {
+  executionEnabled: boolean
+}
+
 export interface ScheduleDataSource {
   readonly mode: ApiMode
   list(
     params: ScheduleListParams,
-  ): Promise<PageResult<ScheduleListItemViewModel>>
+  ): Promise<ScheduleListResult>
   get(scheduleId: string): Promise<ScheduleDetailViewModel>
   create(input: ScheduleSaveInput): Promise<ScheduleDetailViewModel>
   update(
@@ -167,6 +171,7 @@ function createMockScheduleDataSource(): ScheduleDataSource {
         total: filtered.length,
         page: params.page,
         pageSize: params.pageSize,
+        executionEnabled: false,
       }
     },
     async get(scheduleId) {
@@ -265,6 +270,7 @@ const realScheduleDataSource: ScheduleDataSource = {
       total: page.total,
       page: page.page,
       pageSize: page.page_size,
+      executionEnabled: page.execution_enabled === true,
     }
   },
   async get(scheduleId) {

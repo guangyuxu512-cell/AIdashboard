@@ -94,6 +94,8 @@ class ScheduleRepository:
             .where(
                 Schedule.enabled.is_(True),
                 Schedule.target_kind == "pc",
+                ~Schedule.skill_id.like("yingdao.%"),
+                Schedule.parameter_preset_id.is_(None),
                 Schedule.deleted_at.is_(None),
                 Schedule.next_run_at.is_not(None),
                 Schedule.next_run_at <= now,
