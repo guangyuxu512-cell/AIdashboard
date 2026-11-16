@@ -1,5 +1,7 @@
+import asyncio
 from dataclasses import replace
 from datetime import UTC, date, datetime, timedelta
+from threading import Barrier
 from uuid import uuid4
 
 import pytest
@@ -166,3 +168,58 @@ def test_limit_failure_only_carries_a_safe_existing_integer_total(total, expecte
     assert error.expected_total == expected
     assert error.details is None
     assert "229" not in str(error)
+
+
+def test_disabled_durable_consumer_does_not_open_database_or_platform(monkeypatch):
+    from app.modules.product_data import executor
+
+    monkeypatch.setattr(
+        executor,
+        "build_product_data_executor",
+        lambda *_: pytest.fail("disabled consumer must not build an executor"),
+    )
+    monkeypatch.setattr(
+        executor,
+        "get_settings",
+        lambda: Settings(product_data_collection_execution_enabled=False),
+    )
+    asyncio.run(executor.execute_product_data_collections_forever())
+
+
+@pytest.mark.parametrize("capacity", [1, 3])
+def test_enabled_durable_consumer_starts_exact_configured_capacity(
+    monkeypatch,
+    capacity,
+):
+    from app.modules.product_data import executor
+
+    executed = []
+    first_pass = Barrier(capacity)
+
+    class FakeExecutor:
+        def execute_available(self):
+            executed.append(True)
+            first_pass.wait(timeout=5)
+            return 0
+
+    async def stop(_seconds):
+        raise asyncio.CancelledError()
+
+    monkeypatch.setattr(
+        executor,
+        "get_settings",
+        lambda: Settings(
+            product_data_collection_execution_enabled=True,
+            product_data_collection_max_running=capacity,
+        ),
+    )
+    monkeypatch.setattr(
+        executor,
+        "build_product_data_executor",
+        lambda *_: FakeExecutor(),
+    )
+    monkeypatch.setattr(executor.asyncio, "sleep", stop)
+
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(executor.execute_product_data_collections_forever())
+    assert executed == [True] * capacity

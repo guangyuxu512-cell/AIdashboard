@@ -1,10 +1,10 @@
 # 数据库与 Migration 协作规范
 
-## 2026-11-16 中控旧商品库移除（active）
+## 2026-11-16 中控旧商品库移除（预留）
 
-- `20261114_0052` 已在 Integration 应用，并随 Green dev `a20f7b23405808704c8c166f8a9cabaa161f7e65` 通过 GitHub CI `43824644327`，现释放 Slot。ca97 已登记唯一 active Slot，顺序包括 `20261116_0053_remove_central_product_library`（down 0052）和 `20261116_0054_retire_product_data_collection_permissions`（down 0053）。0053 已在 Feature 库应用，不得改写；0054 仅删除旧商品数据采集接口的 API Token 权限，保留其他权限。Feature 使用 `control_center_feat_windows_execution_slim`，不得在 Integration 或生产开发 Migration。
+- 用户要求完整移除中控自有商品库，独立商品库不变，选品底座和既有事实保留。预留 `20261116_0053_remove_central_product_library`，计划 down revision 为 `20261114_0052`；当前唯一 active 仍为 0052，0053 仅 `reserved`，尚不允许编写或执行 DDL。
 - 预留范围为中控 `product_library_*` 三表及与其强耦合的旧中控手机采集请求、派发、尝试和回执表，不包含独立商品库、Worker 预检、通用任务事件、资产、设备、选品和定时表。最终范围以依赖及 Gate 审核为准。
-- 用户已明确不再需要中控旧商品库、其数据及采集任务，包括已有的历史请求。0053 可按正式迁移删除这些中控表及记录；独立商品库、NAS 和手机不在迁移范围。经营商品指标历史、选品数据和通用任务保留；旧服务器商品数据采集执行入口另行从应用移除。共享及生产升级前须验证备份，不能手工改生产表或直接取消、重试外部任务。
+- 用户已明确不再需要中控旧商品库、其数据及采集任务，包括已有的历史请求。0053 可按正式迁移删除这些中控表及记录；独立商品库、NAS 和手机不在迁移范围。仍须先验证备份、完成 0052 Gate 与精确 Green 并释放槽位，不能手工改生产表或直接取消、重试外部任务。
 
 ## 2026-11-14 Windows 执行层精简
 
