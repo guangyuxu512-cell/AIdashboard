@@ -773,12 +773,20 @@ def test_late_success_does_not_reenable_an_expired_session_snapshot(ready_preche
         acknowledge_product_delivery(session, device_id, late.task_id,
             PrecheckDeliveryAcknowledgement(status="success", payload_sha256="b" * 64))
         assert session_snapshot_expired(session, queued)
+        from unittest.mock import Mock
+        from app.modules.devices.service import DeviceService
+        repository = Mock()
+        repository.get_for_actor.return_value = object()
+        view = DeviceService(session, repository=repository).get_local_shops(Mock(), device_id)
+        assert view.shops[0].session_status == "invalid"
         with pytest.raises(PrecheckUnavailable):
             service.submit(principal, submission(product="new-after-expiry"))
         session.rollback()
         inventory = session.get(WorkerRpaShopInventory, device_id)
         inventory.shops = [{**inventory.shops[0], "sessionRevision": "b" * 64}]
         session.commit()
+        view = DeviceService(session, repository=repository).get_local_shops(Mock(), device_id)
+        assert view.shops[0].session_status == "unknown"
         assert service.submit(principal, submission(product="new-after-refresh")).target_device_id == device_id
 
 

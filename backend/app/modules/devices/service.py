@@ -1,7 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
@@ -86,18 +86,20 @@ class DeviceService:
             return DeviceLocalShopInventoryRead(
                 device_id=device_id, available=False, last_discovered_at=None, shops=[],
             )
+        now = datetime.now(UTC)
         recent = self.session.execute(
             select(Task.input_json, Task.status, Task.error_code, Task.finished_at)
             .where(
                 Task.target_device_id == device_id,
                 Task.skill_id == "douyin.category_schema",
-                Task.status.in_(("success", "failed")),
+                or_(
+                    and_(Task.status == "success", Task.finished_at >= now - timedelta(minutes=30)),
+                    and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED"),
+                ),
             )
             .order_by(Task.finished_at.desc().nullslast(), Task.created_at.desc())
-            .limit(5000),
         ).all()
         observations = {}
-        now = datetime.now(UTC)
         for params, state, error, finished_at in recent:
             key = (params.get("local_shop_id"), params.get("platform_shop_id"), params.get("_session_revision"))
             if not all(isinstance(value, str) and value for value in key):
@@ -108,7 +110,11 @@ class DeviceService:
                 status = "valid" if finished_at >= now - timedelta(minutes=30) else "unknown"
                 observations.setdefault(key, (status, finished_at))
             elif state == "failed" and error == "SHOP_SESSION_EXPIRED":
-                observations.setdefault(key, ("invalid", finished_at))
+                # A late success from the same snapshot cannot undo a clear
+                # expiry; the dispatcher also waits for a new RPA snapshot.
+                previous = observations.get(key)
+                if previous is None or previous[0] != "invalid":
+                    observations[key] = ("invalid", finished_at)
         shops = []
         for shop in inventory.shops:
             local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
