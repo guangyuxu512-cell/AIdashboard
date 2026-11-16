@@ -74,6 +74,15 @@ export interface ProductDataSource {
   readonly available: boolean
   readonly groupsAvailable?: boolean
   list(query: ProductDataQuery): Promise<ProductDataPage>
+  collect?(
+    command: ProductDataCollectionCommand,
+  ): Promise<ProductDataCollection>
+  collection?(id: string): Promise<ProductDataCollection>
+  collectionShops?(): Promise<ProductDataCollectionShop[]>
+  collectBatch?(
+    command: ProductDataCollectionBatchCommand,
+  ): Promise<ProductDataCollectionBatch>
+  collectionBatch?(id: string): Promise<ProductDataCollectionBatch>
   groups(shopId: string): Promise<ProductGroup[]>
   saveGroup(
     shopId: string,
@@ -95,4 +104,57 @@ export interface ProductDataPage extends PageResult<ProductDataRow> {
     collectionAvailable: boolean
     unitUnconfirmedCodes: string[]
   }
+}
+
+export interface ProductDataCollectionCommand {
+  shopId: string
+  period: '1d' | '7d' | '30d'
+  submissionKey: string
+}
+export interface ProductDataCollectionBatchCommand {
+  shopIds: string[]
+  period: ProductDataCollectionCommand['period']
+  submissionKey: string
+}
+export interface ProductDataCollection {
+  id: string
+  period: ProductDataCollectionCommand['period']
+  startDate: string
+  endDate: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed'
+  stage: string
+  receivedPages: number
+  expectedTotal: number | null
+  receivedTotal: number | null
+  pagesComplete: boolean
+  rawCompleteRows: number | null
+  unitCompleteRows: number | null
+  failureCode: string | null
+  attemptCount: number
+  lastHeartbeatAt: string | null
+  createdAt: string
+  startedAt: string | null
+  finishedAt: string | null
+  publishedAt: string | null
+  leaseExpired: boolean
+}
+export interface ProductDataCollectionShop {
+  shopId: string
+  shopName: string
+}
+export interface ProductDataCollectionItem {
+  shopId: string
+  shopName: string
+  generation: ProductDataCollection
+}
+export interface ProductDataCollectionBatch {
+  id: string
+  status: 'pending' | 'running' | 'succeeded' | 'partial' | 'failed'
+  totalCount: number
+  pendingCount: number
+  runningCount: number
+  succeededCount: number
+  failedCount: number
+  createdAt: string
+  items: ProductDataCollectionItem[]
 }

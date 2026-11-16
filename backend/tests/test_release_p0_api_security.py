@@ -20,6 +20,15 @@ from app.modules.access.dependencies import (
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
 from app.modules.access.module_access import ModuleCode
+from app.modules.authentication.api import (
+    get_management_onboarding_service,
+    get_shop_authorized_actor as get_onboarding_shop_authorized_actor,
+    router as onboarding_router,
+)
+from app.modules.authentication.schemas import (
+    ManagementOnboardingResult,
+    PddManagementLoginIdentityResult,
+)
 from app.modules.automation_apps.api import (
     get_catalog_service as get_automation_catalog_service,
     get_device_authorized_actor as get_automation_device_authorized_actor,
@@ -42,12 +51,23 @@ from app.modules.notifications.api import (
     get_settings_authorized_actor,
     router as notifications_router,
 )
+from app.modules.sessions.api import (
+    get_shop_authorized_actor as get_session_shop_authorized_actor,
+    get_shop_session_refresh_service,
+    router as sessions_router,
+)
+from app.modules.sessions.enums import ShopSessionStatus
+from app.modules.sessions.schemas import (
+    ShopSessionMetadataRead,
+    ShopSessionRefreshLeaseRead,
+)
 from app.modules.shops.api import (
     get_shop_authorized_actor,
     get_shop_service,
     router as shops_router,
 )
 from app.modules.shops.enums import ShopPlatform
+from app.modules.shops.schemas import ShopRead
 from tests.support import FakeSession
 
 
@@ -93,6 +113,17 @@ class ShopServiceStub:
     def remove(self, actor: ActorContext, shop_id: UUID) -> None:
         assert actor == SUPER_ACTOR
         assert shop_id == SHOP_ID
+
+
+class SessionRefreshServiceStub:
+    def acquire(self, shop_id: UUID) -> ShopSessionRefreshLeaseRead:
+        assert shop_id == SHOP_ID
+        return ShopSessionRefreshLeaseRead(
+            shop_id=shop_id,
+            lease_id=uuid4(),
+            expected_version=1,
+            expires_at=datetime.now(UTC),
+        )
 
 
 class CredentialServiceStub:
@@ -143,6 +174,51 @@ class NotificationServiceStub:
         assert now.tzinfo is not None
 
 
+class ManagementOnboardingServiceStub:
+    def complete(self, command: object) -> ManagementOnboardingResult:
+        del command
+        return ManagementOnboardingResult(
+            shop=shop_read(),
+            credential=credential_status(),
+            session=ShopSessionMetadataRead(
+                session_id=uuid4(),
+                configured=True,
+                status=ShopSessionStatus.CAPTURED,
+                version=1,
+                source_device_id=None,
+                captured_at=datetime.now(UTC),
+                validated_at=None,
+                expires_at=None,
+            ),
+        )
+
+    def verify_pdd_identity(
+        self,
+        command: object,
+    ) -> PddManagementLoginIdentityResult:
+        del command
+        return PddManagementLoginIdentityResult(
+            platform_shop_id="release-p0-pdd-shop",
+            shop_display_name="Release P0 PDD Shop",
+        )
+
+
+def shop_read() -> ShopRead:
+    now = datetime.now(UTC)
+    return ShopRead(
+        shop_id=SHOP_ID,
+        display_name="Release P0 Shop",
+        platform=ShopPlatform.DOUYIN,
+        platform_shop_id="release-p0-shop",
+        enabled=True,
+        owner_user_id=None,
+        note=None,
+        deleted_at=None,
+        created_at=now,
+        updated_at=now,
+    )
+
+
 def credential_status() -> CredentialStatusRead:
     return CredentialStatusRead(
         credential_id=CREDENTIAL_ID,
@@ -159,6 +235,9 @@ def configured_app() -> Any:
     application = create_app()
     application.dependency_overrides[get_database_session] = lambda: FakeSession()
     application.dependency_overrides[get_shop_service] = ShopServiceStub
+    application.dependency_overrides[
+        get_shop_session_refresh_service
+    ] = SessionRefreshServiceStub
     application.dependency_overrides[get_credential_service] = CredentialServiceStub
     application.dependency_overrides[
         get_automation_service
@@ -167,6 +246,9 @@ def configured_app() -> Any:
         get_automation_catalog_service
     ] = AutomationApplicationCatalogServiceStub
     application.dependency_overrides[get_notification_service] = NotificationServiceStub
+    application.dependency_overrides[
+        get_management_onboarding_service
+    ] = ManagementOnboardingServiceStub
     return application
 
 
@@ -196,6 +278,7 @@ def request(
 
 MANAGEMENT_OPERATIONS = [
     ("DELETE", f"/api/v1/shops/{SHOP_ID}", {}, ModuleCode.SHOP),
+    ("POST", f"/api/v1/shops/{SHOP_ID}/session/refresh-lease", {}, ModuleCode.SHOP),
     ("POST", f"/api/v1/credentials/{CREDENTIAL_ID}/disable", {}, ModuleCode.SHOP),
     (
         "PUT",
@@ -204,6 +287,28 @@ MANAGEMENT_OPERATIONS = [
         ModuleCode.DEVICE,
     ),
     ("POST", f"/api/v1/notification-channels/{CHANNEL_ID}/test", {}, ModuleCode.SETTINGS),
+    (
+        "POST",
+        "/api/v1/shop-onboarding/complete",
+        {
+            "json": {
+                "platform": "douyin",
+                "platform_shop_id": "release-p0-shop",
+                "shop_display_name": "Release P0 Shop",
+                "login_identifier": "release-p0@example.com",
+                "secret": "safe-test-secret",
+                "session_payload_base64": "eA==",
+                "session_captured_at": "2026-09-06T00:00:00Z",
+            }
+        },
+        ModuleCode.SHOP,
+    ),
+    (
+        "POST",
+        "/api/v1/shop-onboarding/pdd/identity",
+        {"json": {"session_payload_base64": "eA=="}},
+        ModuleCode.SHOP,
+    ),
 ]
 
 
@@ -242,8 +347,11 @@ def test_public_resource_management_rejects_non_super_accounts(
     ("method", "path", "kwargs", "_module_code", "status_code"),
     [
         (*MANAGEMENT_OPERATIONS[0], 204),
-        (*MANAGEMENT_OPERATIONS[1], 200),
+        (*MANAGEMENT_OPERATIONS[1], 201),
         (*MANAGEMENT_OPERATIONS[2], 200),
+        (*MANAGEMENT_OPERATIONS[3], 200),
+        (*MANAGEMENT_OPERATIONS[5], 201),
+        (*MANAGEMENT_OPERATIONS[6], 200),
     ],
 )
 def test_super_account_can_complete_public_resource_management_operations(
@@ -259,7 +367,7 @@ def test_super_account_can_complete_public_resource_management_operations(
 
 
 def test_notification_management_remains_a_team_module_permission() -> None:
-    method, path, kwargs, module_code = MANAGEMENT_OPERATIONS[3]
+    method, path, kwargs, module_code = MANAGEMENT_OPERATIONS[4]
 
     denied = ModuleAccessProbe(False)
     denied_response = request(method, path, module_access=denied, **kwargs)
@@ -294,7 +402,9 @@ def test_yingdao_application_catalog_requires_existing_device_module_access() ->
 @pytest.mark.parametrize(
     ("router", "authorized_actor", "expected_count"),
     [
+        (sessions_router, get_super_account, 5),
         (credentials_router, get_super_account, 4),
+        (onboarding_router, get_super_account, 2),
         (notifications_router, get_settings_authorized_actor, 4),
     ],
 )
@@ -316,7 +426,7 @@ def test_mixed_management_routers_keep_read_module_guards_and_mutation_super_gua
         route for route in automation_router.routes if isinstance(route, APIRoute)
     ]
 
-    assert len(shop_routes) == 8
+    assert len(shop_routes) == 9
     assert len(automation_routes) == 3
     assert any(
         dependency.call is get_shop_authorized_actor
