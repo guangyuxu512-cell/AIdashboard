@@ -119,12 +119,15 @@ class WorkerPrecheckService:
                    WorkerRpaShopInventory.last_discovered_at >= now - timedelta(minutes=5),
                    DeviceSkillCapability.skill_id == PRECHECK_KIND)
         ).all()
+        if not rows:
+            return []
         local_key = Task.input_json["local_shop_id"].astext
         platform_key = Task.input_json["platform_shop_id"].astext
         revision_key = Task.input_json["_session_revision"].astext
         latest = self.session.execute(
             select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
-            .where(task_device_scope, Task.skill_id == PRECHECK_KIND, revision_key.is_not(None),
+            .where(task_device_scope, Task.target_device_id.in_([row[0].device_id for row in rows]),
+                   Task.skill_id == PRECHECK_KIND, revision_key.is_not(None),
                    or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")))
             .distinct(Task.target_device_id, local_key, platform_key, revision_key)
             .order_by(Task.target_device_id, local_key, platform_key, revision_key,

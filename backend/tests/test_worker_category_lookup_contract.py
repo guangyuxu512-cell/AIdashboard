@@ -11,6 +11,7 @@ from app.modules.workers.precheck_contract import (
 def test_existing_schema_hash_input_is_unchanged():
     data = PrecheckInput(category_id="123", title="商品")
     assert data.model_dump(mode="json", exclude_defaults=True) == {"category_id": "123", "title": "商品"}
+    assert PrecheckInput(category_id="0", title=" ").operation == "schema"
     assert not supports_category_lookup("1.9.9")
     assert supports_category_lookup("2.0.0")
     assert mapped_shop_id("shop-1") == mapped_shop_id("shop-1") != mapped_shop_id("shop-2")

@@ -44,9 +44,9 @@ class PrecheckInput(BaseModel):
 
     @model_validator(mode="after")
     def validate_operation(self) -> PrecheckInput:
-        if not self.title.strip() or any(ord(value) < 32 for value in self.title):
+        if self.operation in {"search", "predict"} and not self.title.strip():
             raise ValueError("invalid title")
-        if self.operation == "schema" and (len(self.title) > 500 or not int(self.category_id)):
+        if self.operation == "schema" and len(self.title) > 500:
             raise ValueError("invalid category schema")
         if self.operation in {"search", "predict"} and self.category_id != "0":
             raise ValueError("unexpected category")
