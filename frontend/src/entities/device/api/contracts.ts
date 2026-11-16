@@ -49,53 +49,6 @@ export interface DeviceUpdateDto {
   note?: string | null
 }
 
-export interface ProviderApplicationInventoryDto {
-  app_id: string
-  app_name: string
-  version_id: string | null
-  updated_at: string | null
-  app_type: string | null
-  group_id: string | null
-}
-
-export interface YingdaoProviderInventoryDto {
-  provider: 'yingdao'
-  available: boolean
-  status:
-    | 'not_installed'
-    | 'version_unsupported'
-    | 'starting'
-    | 'need_login'
-    | 'interface_unreachable'
-    | 'ready'
-  status_reason_code: string | null
-  status_reason: string | null
-  provider_version: string | null
-  execution_available?: boolean
-  execution_version?: string | null
-  execution_unavailable_reason?: string | null
-  logged_in: boolean
-  account_display: string | null
-  account_type: string | null
-  enterprise_account: boolean | null
-  user_id: string | null
-  applications: ProviderApplicationInventoryDto[]
-  discovered_at: string
-}
-
-export interface DeviceProviderInventoryReadDto {
-  device_id: string
-  provider_code: 'yingdao'
-  available: boolean
-  provider_version: string | null
-  account_display: string | null
-  account_type: string | null
-  enterprise_account: boolean | null
-  last_discovered_at: string
-  inventory: YingdaoProviderInventoryDto
-  updated_at: string
-}
-
 export interface DeviceSkillCapabilityReadDto {
   device_id: string
   skill_id: string

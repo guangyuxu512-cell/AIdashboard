@@ -77,7 +77,7 @@ class PythonExecutor:
                 task_id=task.task_id,
                 skill_id=task.skill_id,
                 params=task.input,
-                accounts=task.accounts,
+                local_shops=task.local_shops,
                 paths=SkillProcessPaths(images=self.images_dir),
             ).model_dump(mode="json"),
         )

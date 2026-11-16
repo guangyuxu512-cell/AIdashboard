@@ -95,7 +95,6 @@ for required_path in \
     package.json \
     pnpm-lock.yaml \
     pnpm-workspace.yaml \
-    electron/package.json \
     backend/Dockerfile \
     backend/compose.yaml \
     backend/pyproject.toml \

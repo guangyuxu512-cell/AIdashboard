@@ -24,7 +24,7 @@ const args = process.argv.slice(2);
 const verificationStarted = Date.now();
 if (args.includes("--help")) {
   console.log(
-    "pnpm verify [--strict] [--full] [--only=backend,frontend,electron,worker] [--report=path]\nDefault: offline contracts + checker self-tests + in-memory API/client probes.\n--full: declared full-offline profile, not PG/runtime/native/production. Exit 0 scoped checks pass (known differences remain WARN); 1 new/stale difference or test failure; 2 blocked/missing dependency or skipped applicable tests. No installation, ports, platform calls or migration.\n--strict: every known contract difference also fails. --only selects full-profile suites; quick checks always run.",
+    "pnpm verify [--strict] [--full] [--only=backend,frontend,worker] [--report=path]\nDefault: offline contracts + checker self-tests + in-memory API/client probes.\n--full: declared full-offline profile, not PG/runtime/production. Exit 0 scoped checks pass (known differences remain WARN); 1 new/stale difference or test failure; 2 blocked/missing dependency or skipped applicable tests. No installation, ports, platform calls or migration.\n--strict: every known contract difference also fails. --only selects full-profile suites; quick checks always run.",
   );
   process.exit(0);
 }
@@ -42,10 +42,10 @@ if (!full && args.some((arg) => arg.startsWith("--only=")))
 const suites = args
   .find((x) => x.startsWith("--only="))
   ?.slice(7)
-  .split(",") ?? ["backend", "frontend", "electron", "worker"];
+  .split(",") ?? ["backend", "frontend", "worker"];
 if (
   suites.some(
-    (x) => !["backend", "frontend", "electron", "worker"].includes(x),
+    (x) => !["backend", "frontend", "worker"].includes(x),
   )
 )
   throw new Error("Unknown full-offline suite");
@@ -88,19 +88,18 @@ const report = {
   },
   notRun: [
     "local/shared/production PostgreSQL and migrations",
-    "container/runtime/real platform/native Electron/visual E2E",
+    "container/runtime/real platform/visual E2E",
     ...(full && suites.includes("backend")
       ? [
           "backend/tests/test_douyin_signer_runtime.py (opens ports; original CI retains it)",
           "backend/tests/test_notification_webhook_e2e.py (opens ports; original CI retains it)",
-          "backend/tests/test_application_shop_session_postgres.py (requires isolated PostgreSQL; backend CI retains it)",
         ]
       : []),
     ...(full
-      ? ["backend", "frontend", "electron", "worker"]
+      ? ["backend", "frontend", "worker"]
           .filter((x) => !suites.includes(x))
           .map((x) => `${x} full suite not selected`)
-      : ["four full validation suites (use --full)"]),
+      : ["full validation suites (use --full)"]),
   ],
 };
 let blocked = false,
@@ -285,23 +284,18 @@ try {
           suite,
         ]);
       } else {
-        if (suite !== "electron") packageRun(suite, "lint");
+        packageRun(suite, "lint");
         packageRun(suite, "typecheck");
         packageRun(
           suite,
           "test",
-          suite === "electron"
-            ? []
-            : ["--config", path.join(root, "scripts/verify/unit.config.ts")],
+          ["--config", path.join(root, "scripts/verify/unit.config.ts")],
         );
-        if (suite !== "electron")
-          run(
-            `${suite}:Real production build (existing Vite config; no env files)`,
-            process.execPath,
-            [path.join(root, "scripts/verify/build.mjs"), suite],
-          );
-        // Electron's existing test script already performs its TypeScript build;
-        // it runs Node tests, not the Electron executable or Windows packaging.
+        run(
+          `${suite}:Real production build (existing Vite config; no env files)`,
+          process.execPath,
+          [path.join(root, "scripts/verify/build.mjs"), suite],
+        );
       }
     }
 } finally {

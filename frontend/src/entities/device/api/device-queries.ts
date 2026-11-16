@@ -7,7 +7,6 @@ import {
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import type { DeviceSaveInput } from '../model/types'
-import { getYingdaoInventory } from './device-provider-data-source'
 import { getDeviceSkillCapabilities } from './device-skill-capability-data-source'
 import { deviceDataSource, type DeviceListParams } from './device-data-source'
 import { deviceApi } from './device-api'
@@ -16,12 +15,20 @@ export const deviceQueryKeys = {
   all: ['devices'] as const,
   list: (params: DeviceListParams) => ['devices', 'list', params] as const,
   detail: (deviceId: string | null) => ['devices', 'detail', deviceId] as const,
-  providerInventories: (deviceId: string | null) =>
-    ['devices', 'provider-inventories', deviceId] as const,
   skillCapabilities: (deviceId: string | null) =>
     ['devices', 'skill-capabilities', deviceId] as const,
   workerCredential: (deviceId: string | null) =>
     ['devices', 'worker-credential', deviceId] as const,
+  localShops: (deviceId: string | null) =>
+    ['devices', 'local-shops', deviceId] as const,
+}
+
+export function useDeviceLocalShopsQuery(deviceId: MaybeRefOrGetter<string | null>) {
+  return useQuery({
+    queryKey: computed(() => deviceQueryKeys.localShops(toValue(deviceId))),
+    queryFn: () => deviceApi.getLocalShops(toValue(deviceId)!),
+    enabled: computed(() => Boolean(toValue(deviceId))),
+  })
 }
 
 export function useDeviceWorkerCredentialQuery(
@@ -33,21 +40,6 @@ export function useDeviceWorkerCredentialQuery(
       deviceQueryKeys.workerCredential(toValue(deviceId)),
     ),
     queryFn: () => deviceApi.getWorkerCredential(toValue(deviceId)!),
-    enabled: computed(
-      () => Boolean(toValue(deviceId)) && Boolean(toValue(enabled)),
-    ),
-  })
-}
-
-export function useDeviceProviderInventoriesQuery(
-  deviceId: MaybeRefOrGetter<string | null>,
-  enabled: MaybeRefOrGetter<boolean> = true,
-) {
-  return useQuery({
-    queryKey: computed(() =>
-      deviceQueryKeys.providerInventories(toValue(deviceId)),
-    ),
-    queryFn: () => getYingdaoInventory(toValue(deviceId)!),
     enabled: computed(
       () => Boolean(toValue(deviceId)) && Boolean(toValue(enabled)),
     ),

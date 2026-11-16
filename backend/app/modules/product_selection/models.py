@@ -29,7 +29,7 @@ class ProductSelectionStrategy(TimestampMixin, Base):
     strategy_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=generate_id)
     team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False)
     created_by_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
-    request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
+    request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -118,7 +118,7 @@ class ProductSelectionRun(TimestampMixin, Base):
     result_detail_version: Mapped[int | None] = mapped_column(Integer)
     team_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("teams.team_id", ondelete="RESTRICT"), nullable=False)
     created_by_user_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("users.user_id", ondelete="RESTRICT"), nullable=False)
-    request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
+    request_shop_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"), nullable=False)
     submission_key: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), nullable=False)
     strategy_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("product_selection_strategies.strategy_id", name="fk_selection_run_strategy", ondelete="RESTRICT"),
@@ -205,7 +205,7 @@ class ProductSelectionObservation(TimestampMixin, Base):
         nullable=False,
     )
     request_shop_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        Uuid(as_uuid=True), ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"),
         nullable=False,
     )
     last_run_id: Mapped[UUID | None] = mapped_column(

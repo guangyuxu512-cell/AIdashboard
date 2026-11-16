@@ -181,7 +181,6 @@ rm -- "$remote_root/current"
 
 migration_source="$test_root/migration-source"
 mkdir -p \
-    "$migration_source/electron" \
     "$migration_source/backend/app" \
     "$migration_source/backend/migrations" \
     "$migration_source/backend/douyin-signer" \
@@ -193,7 +192,6 @@ touch \
     "$migration_source/package.json" \
     "$migration_source/pnpm-lock.yaml" \
     "$migration_source/pnpm-workspace.yaml" \
-    "$migration_source/electron/package.json" \
     "$migration_source/backend/Dockerfile" \
     "$migration_source/backend/compose.yaml" \
     "$migration_source/backend/pyproject.toml" \

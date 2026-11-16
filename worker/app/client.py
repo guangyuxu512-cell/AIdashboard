@@ -10,7 +10,6 @@ import httpx
 
 from app.config import WorkerSettings
 from app.contracts import (
-    ProviderInventoryReport,
     RuntimeEvent,
     SkillCapabilitySnapshot,
     WorkerTask,
@@ -47,8 +46,11 @@ class WorkerApiClient:
         )
         self._owns_product_client = product_client is None
         product_origin = str(settings.product_precheck_origin).rstrip("/") if settings.product_precheck_origin else None
-        if product_origin is None and str(settings.server_url).rstrip("/") == "https://119.29.188.118":
-            product_origin = "https://119.29.188.118:19001"
+        if product_origin is None and str(settings.server_url).rstrip("/") in {
+            "https://119.29.188.118",  # Existing installations keep their stored address.
+            "https://center.mysiyuai.top",
+        }:
+            product_origin = "https://pdc.mysiyuai.top"
         self.product_client = product_client
         if self.product_client is None and product_origin is not None:
             self.product_client = httpx.AsyncClient(
@@ -227,16 +229,6 @@ class WorkerApiClient:
         response = await self.client.post(f"/api/v1/worker/tasks/{task_id}/precheck-delivered",
                                           json={"status": status, "payload_sha256": payload_sha256,
                                                 "error_code": safe_code})
-        self._raise_for_error(response)
-
-    async def report_provider_inventory(
-        self,
-        report: ProviderInventoryReport,
-    ) -> None:
-        response = await self.client.post(
-            "/api/v1/worker/provider-inventory",
-            json=report.model_dump(mode="json"),
-        )
         self._raise_for_error(response)
 
     async def report_skill_capabilities(

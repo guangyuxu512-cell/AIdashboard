@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.modules.access.contracts import ActorContext
 from app.modules.access.models import TeamDeviceAccess
 from app.modules.devices.models import Device
-from app.modules.workers.models import DeviceProviderInventory
 
 
 class DeviceRepository:
@@ -48,18 +47,10 @@ class DeviceRepository:
         if not search:
             return statement
         pattern = f"%{search}%"
-        matching_inventory = exists(
-            select(DeviceProviderInventory.device_id).where(
-                DeviceProviderInventory.device_id == Device.device_id,
-                DeviceProviderInventory.provider_code == "yingdao",
-                DeviceProviderInventory.account_display.ilike(pattern),
-            ),
-        )
         return statement.where(
             or_(
                 Device.display_name.ilike(pattern),
                 Device.location.ilike(pattern),
-                matching_inventory,
             ),
         )
 

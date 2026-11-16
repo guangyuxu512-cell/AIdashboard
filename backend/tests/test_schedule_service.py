@@ -48,8 +48,8 @@ class FakeScheduledTaskService:
         del team_id, actor
         self.prepared_data = data
         return PreparedTaskCreation(
-            input_json={"app_id": "safe-app", "params": {}},
-            execution_display_name="安全应用",
+            input_json={"message": "safe"},
+            execution_display_name="Worker 技能",
         )
 
     def create_for_schedule(
@@ -70,15 +70,14 @@ class FakeScheduledTaskService:
             team_id=team_id,
             created_by_user_id=created_by_user_id,
             target_device_id=uuid4(),
-            skill_id="yingdao.app.run",
-            execution_display_name="安全应用",
+            skill_id="system.echo",
+            execution_display_name="Worker 技能",
             status="pending",
-            input_json={"app_id": "safe-app", "params": {}},
+            input_json={"message": "safe"},
         )
 
 
 def due_schedule() -> Schedule:
-    shop_id = UUID("62000000-0000-4000-8000-000000000001")
     return Schedule(
         schedule_id=UUID("61000000-0000-4000-8000-000000000001"),
         team_id=UUID("60000000-0000-4000-8000-000000000001"),
@@ -86,13 +85,13 @@ def due_schedule() -> Schedule:
         name="每日安全任务",
         enabled=True,
         target_device_id=uuid4(),
-        shop_links=[ScheduleShop(shop_id=shop_id, position=0)],
-        skill_id="yingdao.app.run",
-        execution_display_name="安全应用",
+        shop_links=[],
+        skill_id="system.echo",
+        execution_display_name="Worker 技能",
         schedule_type="daily",
         local_time=time(9, 30),
         timezone="Asia/Shanghai",
-        task_input_json={"app_id": "safe-app", "params": {}},
+        task_input_json={"message": "safe"},
         next_run_at=datetime(2026, 8, 20, 1, 30, tzinfo=UTC),
     )
 
@@ -113,7 +112,8 @@ def test_due_scan_coalesces_missed_days_and_creates_one_pending_task() -> None:
     assert result.scheduled_for == datetime(2026, 8, 24, 1, 30, tzinfo=UTC)
     assert result.task_id is not None
     assert task_service.calls == 1
-    assert getattr(task_service.created_data, "shop_ids") == schedule.shop_ids
+    assert getattr(task_service.created_data, "shop_ids") == []
+    assert getattr(task_service.created_data, "input") == {"message": "safe"}
     assert schedule.next_run_at == datetime(2026, 8, 25, 1, 30, tzinfo=UTC)
     assert session.commits == 1
     assert len(repository.runs) == 1

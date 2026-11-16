@@ -176,7 +176,7 @@ class Schedule(TimestampMixin, Base):
 
 
 class ScheduleShop(Base):
-    __tablename__ = "schedule_shops"
+    __tablename__ = "historical_schedule_shop_refs"
     __table_args__ = (
         CheckConstraint("position >= 0", name="position_non_negative"),
         UniqueConstraint(
@@ -194,7 +194,7 @@ class ScheduleShop(Base):
     )
     shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"),
         primary_key=True,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)

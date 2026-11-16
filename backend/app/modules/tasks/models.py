@@ -166,7 +166,7 @@ class Task(TimestampMixin, Base):
 
 
 class TaskShop(Base):
-    __tablename__ = "task_shops"
+    __tablename__ = "historical_task_shop_refs"
     __table_args__ = (
         CheckConstraint("position >= 0", name="position_non_negative"),
         UniqueConstraint("task_id", "position", name="uq_task_shops_task_position"),
@@ -180,7 +180,7 @@ class TaskShop(Base):
     )
     shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"),
         primary_key=True,
     )
     position: Mapped[int] = mapped_column(Integer, nullable=False)

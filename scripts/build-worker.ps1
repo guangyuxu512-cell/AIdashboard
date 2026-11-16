@@ -9,7 +9,12 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workerRoot = Join-Path $projectRoot 'worker'
-$workerPython = Join-Path $workerRoot '.venv\Scripts\python.exe'
+$workerPython = if ($env:WORKER_BUILD_PYTHON) {
+    [System.IO.Path]::GetFullPath($env:WORKER_BUILD_PYTHON)
+}
+else {
+    Join-Path $workerRoot '.venv\Scripts\python.exe'
+}
 $distRoot = Join-Path $projectRoot 'dist'
 $buildRoot = Join-Path $distRoot '.worker-build'
 $pyInstallerDist = Join-Path $buildRoot 'pyinstaller-dist'
@@ -106,8 +111,8 @@ Copy-Item -Path (Join-Path $pyInstallerDist 'ecommerce-worker\*') -Destination $
 Copy-Item -LiteralPath (Join-Path $workerRoot 'distribution\worker-control.ps1') -Destination $packageRoot
 Copy-Item -LiteralPath (Join-Path $workerRoot 'distribution\README.txt') -Destination $packageRoot
 $commandFiles = @(Get-ChildItem -LiteralPath (Join-Path $workerRoot 'distribution') -Filter '*.cmd')
-if ($commandFiles.Count -ne 7) {
-    throw 'Worker distribution must contain exactly seven command wrappers.'
+if ($commandFiles.Count -ne 6) {
+    throw 'Worker distribution must contain exactly six command wrappers.'
 }
 foreach ($commandFile in $commandFiles) {
     Copy-Item -LiteralPath $commandFile.FullName -Destination $packageRoot

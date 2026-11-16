@@ -1,50 +1,24 @@
-Ecommerce AI Worker 0.5.5 for Windows
-======================================
+Ecommerce Worker 0.5.7 for Windows
+=================================
 
-普通首次接入
-1. 在中控台创建 Device，并在设备详情的“Worker 凭证”区域签发 Token。
-2. 解压本 ZIP，双击 ecommerce-worker.exe。
-3. 在“配置”页填写一次性显示的 Worker Token。发行包已内置生产 HTTPS 地址；普通界面不显示或编辑公网地址。
-4. Worker 自动取得 Device ID；用户不需要填写 UUID。
-5. Worker 自动检测 ShadowBot 6.3.6。自动检测失败时，可选择 ShadowBot.exe；其他版本会被拒绝。
-6. 点击“测试连接”，确认服务器可达且 Token 有效后，点击“保存并启动”。
-7. “本地输入”默认使用 %LOCALAPPDATA%\EcommerceAIWorker\data 下的 params.json、account.json 和 images；只有影刀应用要求其他固定路径时才需要修改。
+此程序连接中控并执行设备任务；中控网页与独立商品库是不同入口。
+Worker 从本机 RPA 保存的店铺资料读取 Session，不要求保持浏览器窗口打开。
+请使用与 RPA 相同的 Windows 用户运行 Worker。店铺信息保留在本机。
+
+首次接入
+1. 在中控设备中心为本机签发 Worker Token。
+2. 解压发行包并运行 ecommerce-worker.exe，在配置中输入 Token。
+3. 测试连接并启动；设备身份由中控返回，不需要手填设备编号。
 
 升级已有 Worker
-- 等待当前任务结束，在旧版本目录运行“停止Worker.cmd”停止后台 Core，并退出旧状态界面。
-- 解压新版到单独目录，双击新版 ecommerce-worker.exe；正常上线后再处理旧程序文件。
-- 自动复用 %LOCALAPPDATA%\EcommerceAIWorker\config.json 中原 Device ID、Server 和 DPAPI Token；升级不会覆盖已有 Server。
-- 不会创建新的 Device UUID，也不要求重新签发 Token。
-- 服务器可向当前 Worker 自动发布已签名能力包；Worker 底座本身不会因此自动升级，两项版本分别记录和验收。
+- 等当前任务结束，停止旧 Worker，再从新目录启动新版。
+- 新版沿用当前 Windows 用户的设备身份和受保护配置，不清空 RPA 店铺资料。
+- Worker 底座与已签名能力包分别更新；能力包可由 Worker 自动获取。
 
-窗口与后台进程
-- GUI 提供“状态 / 配置 / 诊断”三个页签。
-- 最小化或关闭 GUI 会转入 Windows 托盘，不会停止后台 Worker Core；托盘可打开状态、打开日志或退出状态界面。
-- 日常再次双击 ecommerce-worker.exe 可重新打开 GUI。
-- 高级运维 CMD 入口继续保留，但普通首次配置不依赖 PowerShell。
+商品库预检由中控调度，结果直接回传独立商品库。登录状态明确失效时跳过该店；
+网络、权限和平台风控错误不直接判定为登录失效。
 
-ShadowBot 策略
-- Worker 0.5.5 固定支持 ShadowBot 6.3.6。
-- Task 图片会先下载并校验到配置的 images 目录，全部成功后才启动执行器。
-- 当前会话、云端应用与执行均来自 6.3.6 本地会话接口。
-- 若其他版本正在运行，Worker 不结束它，也不启动第二个版本，只报告版本不支持。
-- tasklog 读取异常会按原因去重显示，恢复后从原读取位置继续；异常期间不释放影刀执行槽或重跑业务。
-
-安全说明
-- 每台设备必须使用独立 Worker Token。
-- Backend 只保存 Token Hash；Token 明文仅在签发或轮换当次显示。
-- Token 在本机使用 Windows DPAPI CurrentUser 加密，不写入明文 JSON、日志或 runtime-status.json。
-- 生产环境必须使用 HTTPS。公网 HTTP 仅允许明确接受风险的临时开发验证。
-- 本包不包含 SSH Key、数据库配置、店铺凭证或 Cookie。
-- account.json 允许作为内部 V1 本地桥接保存明文 Account Payload；请把自定义路径放在受当前 Windows 用户保护的目录，禁止把内容复制到日志或任务结果。
-- 0.4.7 引入、0.4.10 继续兼容的 Task Account Payload 会写入“店铺名称”；该字段仅来自当前 Task 关联店铺，不会授予全量店铺读取权限，也不写入日志。
-- 使用新 Token 重新接入时，Worker 先停止空闲的旧 Core，才保存 Provisioning 返回的新 Device 身份并启动新 Core；任务运行中或旧 Core 无法停止时不会切换身份。
-
-当前能力
-- system.echo
-- system.sleep
-- yingdao.discover
-- yingdao.app.run
-- yingdao.test（仅显式配置无副作用测试应用时使用）
-
-本版本不包含 Windows Service、Worker 底座自动更新、设备配对码或自动登录 ShadowBot。
+安全
+- 每台设备使用独立 Worker Token，Token 在本机使用 Windows DPAPI 保护。
+- 发行包不包含数据库凭据、店铺 Session 或 Cookie。
+- 保留旧版配置目录；不要在任务运行中替换 Worker。

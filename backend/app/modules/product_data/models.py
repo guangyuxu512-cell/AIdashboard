@@ -98,7 +98,7 @@ class ShopProductDataProduct(TimestampMixin, Base):
     )
 
     shop_product_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=generate_id)
-    shop_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
+    shop_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"), nullable=False)
     platform: Mapped[str] = mapped_column(String(16), nullable=False)
     platform_product_id: Mapped[str] = mapped_column(String(32), nullable=False)
 
@@ -126,7 +126,7 @@ class ShopProductDataSeries(TimestampMixin, Base):
     )
 
     series_id: Mapped[UUID] = mapped_column(Uuid, primary_key=True, default=generate_id)
-    shop_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("shops.shop_id", ondelete="RESTRICT"), nullable=False)
+    shop_id: Mapped[UUID] = mapped_column(Uuid, ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"), nullable=False)
     rolling_series_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     period: Mapped[str] = mapped_column(String(8), nullable=False)
     sale_type: Mapped[str] = mapped_column(String(8), nullable=False)

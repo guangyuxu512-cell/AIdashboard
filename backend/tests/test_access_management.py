@@ -251,14 +251,12 @@ def test_resource_grants_are_enforced_and_revocation_takes_effect_immediately(
         management = AccessManagementService(session, password_service)
         team = management.create_team(TeamCreate(name="资源授权团队"))
         device = Device(team_id=team.team_id, display_name="共享执行设备")
-        shop = Shop(display_name="共享店铺", platform="douyin")
-        session.add_all([device, shop])
+        session.add(device)
         session.flush()
         management.update_team_authorization(
             team.team_id,
             TeamAuthorizationUpdate(
                 device_ids=[device.device_id],
-                shop_ids=[shop.shop_id],
             ),
         )
         member = management.create_member(create_member_input(team.team_id))
@@ -269,7 +267,6 @@ def test_resource_grants_are_enforced_and_revocation_takes_effect_immediately(
         )
         authorization = TeamAuthorizationService(session)
         authorization.require_device_access(actor, device.device_id)
-        authorization.require_shop_access(actor, shop.shop_id)
 
         now = datetime.now(UTC)
         session.add(
@@ -288,8 +285,6 @@ def test_resource_grants_are_enforced_and_revocation_takes_effect_immediately(
         )
         with pytest.raises(TeamResourceAccessDeniedError):
             authorization.require_device_access(actor, device.device_id)
-        with pytest.raises(TeamResourceAccessDeniedError):
-            authorization.require_shop_access(actor, shop.shop_id)
         stored_session = session.scalar(select(HumanSession))
         assert stored_session is not None
         assert stored_session.revoked_at is not None

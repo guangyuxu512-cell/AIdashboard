@@ -6,9 +6,9 @@ import {
   toApiError,
   configureHumanRequestContext,
 } from '../../src/shared/api/http-client'
-import { mapYingdaoInventoryDto } from '../../src/entities/device/api/device-mapper'
-import type { DeviceProviderInventoryReadDto } from '../../src/entities/device/api/contracts'
-import { operatingDashboardApi } from '../../src/features/operating-dashboard/api/operating-dashboard-api'
+import { mapDeviceDto } from '../../src/entities/device/api/device-mapper'
+import { deviceApi } from '../../src/entities/device/api/device-api'
+import type { DeviceReadDto } from '../../src/entities/device/api/contracts'
 
 type Finding = {
   rule: string
@@ -95,73 +95,28 @@ it('records HTML 200 rejection with the real desktop interceptor and in-memory a
   check('pc:html-200', true, rejected)
 })
 
-it('records unknown versus false in the existing device mapper; zero is not an empty value', () => {
-  const dto = {
-    available: true,
-    provider_version: null,
-    account_display: null,
-    account_type: null,
-    enterprise_account: null,
-    last_discovered_at: '2026-01-01T00:00:00Z',
-    inventory: {
-      status: 'ready',
-      status_reason: null,
-      execution_available: false,
-      logged_in: false,
-      applications: [],
-    },
-  } as unknown as DeviceProviderInventoryReadDto
-  check(
-    'pc:enterprise_account:null',
-    null,
-    mapYingdaoInventoryDto(dto).enterpriseAccount,
-  )
-  expect(
-    mapYingdaoInventoryDto({ ...dto, enterprise_account: false })
-      .enterpriseAccount,
-  ).toBe(false)
-  expect(mapYingdaoInventoryDto(dto).applicationCount).toBe(0)
+it('keeps a missing Worker distinct from an enabled device and preserves false', () => {
+  const dto: DeviceReadDto = {
+    device_id: 'synthetic-device',
+    display_name: 'synthetic',
+    enabled: true,
+    location: null,
+    note: null,
+    deleted_at: null,
+    worker_runtime: null,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-01T00:00:00Z',
+  }
+  check('pc:worker-runtime:missing', 'unavailable', mapDeviceDto(dto).runtimeStatus)
+  expect(mapDeviceDto({ ...dto, enabled: false }).enabledStatus).toBe('disabled')
 })
 
-it('keeps the explicit operating Session recovery action bound to authoritative validation', async () => {
-  const post = vi.spyOn(httpClient, 'post').mockResolvedValueOnce({
-    data: {
-      collection_job_id: 'synthetic-recovery-job',
-      status: 'pending',
-      counts: {
-        pending: 1,
-        running: 0,
-        succeeded: 0,
-        failed: 0,
-        skipped: 0,
-        paused_reauthorization: 0,
-      },
-      items: [],
-    },
-  } as never)
-
-  await operatingDashboardApi.recoverCollectionItem({
-    collectionJobId: 'original-job',
-    collectionItemId: 'original-item',
-    sessionVersion: 3,
-    requiresValidation: true,
-  })
-
-  check(
-    'pc:operating-session-recovery:path',
-    '/api/v1/operating-dashboard/collections/original-job/retry',
-    post.mock.calls[0]?.[0],
-  )
-  check(
-    'pc:operating-session-recovery:body',
-    {
-      item_ids: ['original-item'],
-      session_recovery_version: 3,
-      revalidate_current_session: true,
-    },
-    post.mock.calls[0]?.[1],
-  )
-  post.mockRestore()
+it('reads the Worker-reported shop inventory through the device API', async () => {
+  const inventory = { device_id: 'synthetic-device', available: true, last_discovered_at: null, shops: [] }
+  const get = vi.spyOn(httpClient, 'get').mockResolvedValueOnce({ data: inventory } as never)
+  await expect(deviceApi.getLocalShops('synthetic-device')).resolves.toEqual(inventory)
+  check('pc:worker-local-shops:path', '/api/v1/devices/synthetic-device/local-shops', get.mock.calls[0]?.[0])
+  get.mockRestore()
 })
 
 afterAll(() => {

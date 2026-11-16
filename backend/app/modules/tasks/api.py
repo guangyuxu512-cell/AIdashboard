@@ -8,11 +8,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
-from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
-from app.modules.credentials.service import CredentialService
 from app.modules.tasks.enums import TaskStatus
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
@@ -47,12 +45,8 @@ get_task_authorized_actor = require_module_access(ModuleCode.TASK)
 
 def get_task_service(
     session: Annotated[Session, Depends(get_database_session)],
-    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> TaskService:
-    return TaskService(
-        session,
-        credential_service=CredentialService(session, cipher),
-    )
+    return TaskService(session)
 
 
 def get_task_created_range(

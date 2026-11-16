@@ -8,17 +8,6 @@ export type DeviceCapability = 'rpa' | 'python' | 'browser' | 'node'
 
 export type DeviceCapabilityAvailability = 'available' | 'unavailable'
 
-export type YingdaoAvailabilityStatus =
-  'available' | 'unavailable' | 'not_detected'
-
-export type YingdaoProviderStatus =
-  | 'not_installed'
-  | 'version_unsupported'
-  | 'starting'
-  | 'need_login'
-  | 'interface_unreachable'
-  | 'ready'
-
 export interface DeviceCapabilityViewModel {
   capability: DeviceCapability
   availability: DeviceCapabilityAvailability
@@ -62,30 +51,6 @@ export interface DeviceSaveInput {
   enabled: boolean
   location: string
   note: string
-}
-
-export interface ProviderApplicationViewModel {
-  appId: string
-  appName: string
-  versionId: string | null
-}
-
-export interface YingdaoInventoryViewModel {
-  available: boolean
-  availabilityStatus: Exclude<YingdaoAvailabilityStatus, 'not_detected'>
-  providerStatus: YingdaoProviderStatus
-  statusReason: string | null
-  providerVersion: string
-  executionAvailable: boolean
-  executionVersion: string
-  executionUnavailableReason: string | null
-  loggedIn: boolean
-  accountDisplay: string
-  accountType: string
-  enterpriseAccount: boolean | null
-  applicationCount: number
-  applications: ProviderApplicationViewModel[]
-  lastDiscoveredAtDisplay: string
 }
 
 export type SkillClassification = 'internal' | 'business'

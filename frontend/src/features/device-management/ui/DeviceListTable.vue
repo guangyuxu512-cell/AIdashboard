@@ -6,7 +6,6 @@ import {
   DeviceConnectionStatusTag,
   DeviceEnabledStatusTag,
   DeviceIdentity,
-  YingdaoAvailabilityStatusTag,
 } from '@/entities/device'
 import DataTable from '@/shared/components/DataTable.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
@@ -93,33 +92,6 @@ const columns: DataTableColumns<DeviceManagementRowViewModel> = [
             : null,
         ]),
       ),
-  },
-  {
-    title: '影刀',
-    key: 'yingdao',
-    width: 86,
-    align: 'center',
-    render: (device) =>
-      centered(
-        h(YingdaoAvailabilityStatusTag, {
-          status: device.yingdaoInventory?.availabilityStatus ?? 'not_detected',
-        }),
-      ),
-  },
-  {
-    title: '影刀账号',
-    key: 'yingdaoAccount',
-    width: 120,
-    align: 'center',
-    ellipsis: { tooltip: true },
-    render: (device) => device.yingdaoInventory?.accountDisplay ?? '—',
-  },
-  {
-    title: '云端应用',
-    key: 'applicationCount',
-    width: 130,
-    align: 'center',
-    render: (device) => device.yingdaoInventory?.applicationCount ?? '—',
   },
   {
     title: '本机店铺',

@@ -1,76 +1,26 @@
 from __future__ import annotations
 
 import asyncio
-from datetime import UTC, datetime
-from typing import Any
+from datetime import datetime
 from uuid import UUID, uuid4
 
 import pytest
 from fastapi.routing import APIRoute
-from httpx import ASGITransport, AsyncClient, Response
+from httpx import ASGITransport, AsyncClient
 
 from app.core.database import get_database_session
 from app.main import create_app
 from app.modules.access.contracts import ActorContext
-from app.modules.access.dependencies import (
-    get_actor_context,
-    get_module_access_service,
-    get_super_account,
-)
+from app.modules.access.dependencies import get_actor_context, get_module_access_service
 from app.modules.access.enums import DataScope
 from app.modules.access.exceptions import ModuleAccessDeniedError
 from app.modules.access.module_access import ModuleCode
-from app.modules.automation_apps.api import (
-    get_catalog_service as get_automation_catalog_service,
-    get_device_authorized_actor as get_automation_device_authorized_actor,
-    get_service as get_automation_service,
-    router as automation_router,
-)
-from app.modules.automation_apps.schemas import (
-    AutomationApplicationConfigRead,
-    YingdaoApplicationOptionRead,
-)
-from app.modules.credentials.api import (
-    get_credential_service,
-    get_shop_authorized_actor as get_credential_shop_authorized_actor,
-    router as credentials_router,
-)
-from app.modules.credentials.enums import VerificationChannel
-from app.modules.credentials.schemas import CredentialStatusRead
-from app.modules.notifications.api import (
-    get_notification_service,
-    get_settings_authorized_actor,
-    router as notifications_router,
-)
-from app.modules.shops.api import (
-    get_shop_authorized_actor,
-    get_shop_service,
-    router as shops_router,
-)
-from app.modules.shops.enums import ShopPlatform
+from app.modules.notifications.api import get_notification_service, get_settings_authorized_actor, router as notifications_router
 from tests.support import FakeSession
 
-
-SHOP_ID = uuid4()
-CREDENTIAL_ID = uuid4()
 CHANNEL_ID = uuid4()
-ACTOR = ActorContext(
-    user_id=uuid4(),
-    user_display_name="Release P0 operator",
-    team_id=uuid4(),
-    membership_id=uuid4(),
-    role_code="member",
-    data_scope=DataScope.TEAM,
-)
-SUPER_ACTOR = ActorContext(
-    user_id=ACTOR.user_id,
-    user_display_name="Release P0 super account",
-    team_id=ACTOR.team_id,
-    membership_id=None,
-    role_code="super_account",
-    data_scope=DataScope.ALL,
-    is_super_account=True,
-)
+ACTOR = ActorContext(user_id=uuid4(), user_display_name="test", team_id=uuid4(),
+                     membership_id=uuid4(), role_code="member", data_scope=DataScope.TEAM)
 
 
 class ModuleAccessProbe:
@@ -78,63 +28,11 @@ class ModuleAccessProbe:
         self.allowed = allowed
         self.checked: list[ModuleCode] = []
 
-    def require_module_access(
-        self,
-        actor: ActorContext,
-        module_code: ModuleCode,
-    ) -> None:
+    def require_module_access(self, actor: ActorContext, module_code: ModuleCode) -> None:
         assert actor == ACTOR
         self.checked.append(module_code)
         if not self.allowed:
             raise ModuleAccessDeniedError()
-
-
-class ShopServiceStub:
-    def remove(self, actor: ActorContext, shop_id: UUID) -> None:
-        assert actor == SUPER_ACTOR
-        assert shop_id == SHOP_ID
-
-
-class CredentialServiceStub:
-    def disable(self, credential_id: UUID) -> CredentialStatusRead:
-        assert credential_id == CREDENTIAL_ID
-        return credential_status()
-
-
-class AutomationApplicationConfigServiceStub:
-    def upsert(self, provider_code: str, app_id: str, data: object) -> AutomationApplicationConfigRead:
-        assert provider_code == "yingdao"
-        assert app_id == "release-p0-app"
-        del data
-        now = datetime.now(UTC)
-        return AutomationApplicationConfigRead(
-            config_id=uuid4(),
-            provider_code=provider_code,
-            app_id=app_id,
-            schema_source="manual",
-            input_schema={"fields": []},
-            default_values={},
-            version=1,
-            created_at=now,
-            updated_at=now,
-        )
-
-
-class AutomationApplicationCatalogServiceStub:
-    def list_yingdao_application_options(
-        self,
-        *,
-        actor: ActorContext,
-        device_id: UUID | None = None,
-    ) -> list[YingdaoApplicationOptionRead]:
-        assert actor == ACTOR
-        assert device_id is None
-        return [
-            YingdaoApplicationOptionRead(
-                app_id="release-p0-app",
-                app_name="Release P0 应用",
-            )
-        ]
 
 
 class NotificationServiceStub:
@@ -143,198 +41,44 @@ class NotificationServiceStub:
         assert now.tzinfo is not None
 
 
-def credential_status() -> CredentialStatusRead:
-    return CredentialStatusRead(
-        credential_id=CREDENTIAL_ID,
-        platform=ShopPlatform.DOUYIN,
-        masked_identifier="138****8888",
-        configured=True,
-        enabled=True,
-        preferred_verification_channel=VerificationChannel.MANUAL,
-        updated_at=datetime.now(UTC),
-    )
+def request(method: str, path: str, *, access: ModuleAccessProbe | None = None):
+    app = create_app()
+    app.dependency_overrides[get_database_session] = lambda: FakeSession()
+    app.dependency_overrides[get_notification_service] = NotificationServiceStub
+    if access is not None:
+        app.dependency_overrides[get_actor_context] = lambda: ACTOR
+        app.dependency_overrides[get_module_access_service] = lambda: access
 
-
-def configured_app() -> Any:
-    application = create_app()
-    application.dependency_overrides[get_database_session] = lambda: FakeSession()
-    application.dependency_overrides[get_shop_service] = ShopServiceStub
-    application.dependency_overrides[get_credential_service] = CredentialServiceStub
-    application.dependency_overrides[
-        get_automation_service
-    ] = AutomationApplicationConfigServiceStub
-    application.dependency_overrides[
-        get_automation_catalog_service
-    ] = AutomationApplicationCatalogServiceStub
-    application.dependency_overrides[get_notification_service] = NotificationServiceStub
-    return application
-
-
-def request(
-    method: str,
-    path: str,
-    *,
-    module_access: ModuleAccessProbe | None = None,
-    actor: ActorContext | None = None,
-    **kwargs: object,
-) -> Response:
-    application = configured_app()
-    if module_access is not None or actor is not None:
-        application.dependency_overrides[get_actor_context] = lambda: actor or ACTOR
-    if module_access is not None:
-        application.dependency_overrides[get_module_access_service] = (
-            lambda: module_access
-        )
-
-    async def send() -> Response:
-        transport = ASGITransport(app=application)
-        async with AsyncClient(transport=transport, base_url="http://testserver") as client:
-            return await client.request(method, path, **kwargs)
-
+    async def send():
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as client:
+            return await client.request(method, path)
     return asyncio.run(send())
 
 
-MANAGEMENT_OPERATIONS = [
-    ("DELETE", f"/api/v1/shops/{SHOP_ID}", {}, ModuleCode.SHOP),
-    ("POST", f"/api/v1/credentials/{CREDENTIAL_ID}/disable", {}, ModuleCode.SHOP),
-    (
-        "PUT",
-        "/api/v1/automation-app-configs/yingdao/release-p0-app",
-        {"json": {"input_schema": {"fields": []}}},
-        ModuleCode.DEVICE,
-    ),
-    ("POST", f"/api/v1/notification-channels/{CHANNEL_ID}/test", {}, ModuleCode.SETTINGS),
-]
+@pytest.mark.parametrize("method,path", [
+    ("GET", "/api/v1/shops"),
+    ("POST", "/api/v1/shops"),
+    ("GET", "/api/v1/credentials"),
+    ("GET", "/api/v1/automation-app-configs/yingdao/applications"),
+    ("GET", "/api/v1/automation-parameter-presets"),
+])
+def test_retired_management_routes_return_404(method: str, path: str) -> None:
+    assert request(method, path).status_code == 404
 
 
-@pytest.mark.parametrize(("method", "path", "kwargs", "_module_code"), MANAGEMENT_OPERATIONS)
-def test_management_operations_require_human_authentication(
-    method: str,
-    path: str,
-    kwargs: dict[str, object],
-    _module_code: ModuleCode,
-) -> None:
-    response = request(method, path, **kwargs)
-
-    assert response.status_code == 401
-
-
-PUBLIC_RESOURCE_MANAGEMENT_OPERATIONS = [
-    operation
-    for operation in MANAGEMENT_OPERATIONS
-    if operation[3] is not ModuleCode.SETTINGS
-]
-
-
-@pytest.mark.parametrize(("method", "path", "kwargs", "_module_code"), PUBLIC_RESOURCE_MANAGEMENT_OPERATIONS)
-def test_public_resource_management_rejects_non_super_accounts(
-    method: str,
-    path: str,
-    kwargs: dict[str, object],
-    _module_code: ModuleCode,
-) -> None:
-    response = request(method, path, actor=ACTOR, **kwargs)
-
-    assert response.status_code == 403
-
-
-@pytest.mark.parametrize(
-    ("method", "path", "kwargs", "_module_code", "status_code"),
-    [
-        (*MANAGEMENT_OPERATIONS[0], 204),
-        (*MANAGEMENT_OPERATIONS[1], 200),
-        (*MANAGEMENT_OPERATIONS[2], 200),
-    ],
-)
-def test_super_account_can_complete_public_resource_management_operations(
-    method: str,
-    path: str,
-    kwargs: dict[str, object],
-    _module_code: ModuleCode,
-    status_code: int,
-) -> None:
-    response = request(method, path, actor=SUPER_ACTOR, **kwargs)
-
-    assert response.status_code == status_code
-
-
-def test_notification_management_remains_a_team_module_permission() -> None:
-    method, path, kwargs, module_code = MANAGEMENT_OPERATIONS[3]
-
+def test_notification_management_retains_auth_and_module_guard() -> None:
+    path = f"/api/v1/notification-channels/{CHANNEL_ID}/test"
+    assert request("POST", path).status_code == 401
     denied = ModuleAccessProbe(False)
-    denied_response = request(method, path, module_access=denied, **kwargs)
-    assert denied_response.status_code == 403
-    assert denied.checked == [module_code]
-
+    assert request("POST", path, access=denied).status_code == 403
+    assert denied.checked == [ModuleCode.SETTINGS]
     allowed = ModuleAccessProbe(True)
-    allowed_response = request(method, path, module_access=allowed, **kwargs)
-    assert allowed_response.status_code == 200
-    assert allowed.checked == [module_code]
+    assert request("POST", path, access=allowed).status_code == 200
+    assert allowed.checked == [ModuleCode.SETTINGS]
 
 
-def test_yingdao_application_catalog_requires_existing_device_module_access() -> None:
-    path = "/api/v1/automation-app-configs/yingdao/applications"
-
-    assert request("GET", path).status_code == 401
-
-    denied = ModuleAccessProbe(False)
-    denied_response = request("GET", path, module_access=denied)
-    assert denied_response.status_code == 403
-    assert denied.checked == [ModuleCode.DEVICE]
-
-    allowed = ModuleAccessProbe(True)
-    allowed_response = request("GET", path, module_access=allowed)
-    assert allowed_response.status_code == 200
-    assert allowed.checked == [ModuleCode.DEVICE]
-    assert allowed_response.json() == [
-        {"app_id": "release-p0-app", "app_name": "Release P0 应用"},
-    ]
-
-
-@pytest.mark.parametrize(
-    ("router", "authorized_actor", "expected_count"),
-    [
-        (credentials_router, get_super_account, 4),
-        (notifications_router, get_settings_authorized_actor, 4),
-    ],
-)
-def test_management_router_declares_its_authoritative_guard(
-    router: Any, authorized_actor: Any, expected_count: int,
-) -> None:
-    routes = [route for route in router.routes if isinstance(route, APIRoute)]
-
-    assert len(routes) == expected_count
-    assert all(
-        any(dependency.call is authorized_actor for dependency in route.dependant.dependencies)
-        for route in routes
-    )
-
-
-def test_mixed_management_routers_keep_read_module_guards_and_mutation_super_guards() -> None:
-    shop_routes = [route for route in shops_router.routes if isinstance(route, APIRoute)]
-    automation_routes = [
-        route for route in automation_router.routes if isinstance(route, APIRoute)
-    ]
-
-    assert len(shop_routes) == 8
-    assert len(automation_routes) == 3
-    assert any(
-        dependency.call is get_shop_authorized_actor
-        for route in shop_routes
-        for dependency in route.dependant.dependencies
-    )
-    assert any(
-        dependency.call is get_super_account
-        for route in shop_routes
-        for dependency in route.dependant.dependencies
-    )
-    assert any(
-        dependency.call is get_automation_device_authorized_actor
-        for route in automation_routes
-        for dependency in route.dependant.dependencies
-    )
-    assert any(
-        dependency.call is get_super_account
-        for route in automation_routes
-        for dependency in route.dependant.dependencies
-    )
+def test_notification_router_uses_settings_guard() -> None:
+    routes = [route for route in notifications_router.routes if isinstance(route, APIRoute)]
+    assert len(routes) == 4
+    assert all(any(dep.call is get_settings_authorized_actor for dep in route.dependant.dependencies)
+               for route in routes)

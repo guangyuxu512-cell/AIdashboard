@@ -6,8 +6,6 @@ class WorkerConnectionStatus(StrEnum):
     OFFLINE = "offline"
 
 
-class ProviderCode(StrEnum):
-    YINGDAO = "yingdao"
 
 
 class SkillClassification(StrEnum):

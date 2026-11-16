@@ -1,5 +1,11 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-16 Worker 本机店铺与纯 Web（0056 active）
+
+- `20261116_0055` 已应用于生产；Integration 已在可读备份后升级为单一 `20261116_0056`。`feat/worker-only-shop-context-v1` 使用 `0056`，down revision 为 `20261116_0055`；Feature 使用独立的 `control_center_feat_worker_only_v1` / `control_center_feat_worker_only_v2`。
+- 0056 停止全部既有计划及旧影刀派发，移除中控店铺 Session、凭据和设备绑定表；历史店铺身份、权限引用及经营／选品事实保留，Worker 上报的本机店铺映射保留。仅在旧任务无租约且设备长期离线时将其记为失联；真实活动任务必须先结束。
+- 本迁移不可逆。正式升级前必须完成生产备份和可读性验证、核查未结束旧任务及现有 Worker／商品库兼容性；回滚须依据验证过的备份和兼容版本，不得以重建空表代替恢复。
+
 ## 2026-11-16 中控旧商品库移除（active）
 
 - `20261114_0052` 已在 Integration 应用，并随 Green dev `a20f7b23405808704c8c166f8a9cabaa161f7e65` 通过 GitHub CI `43824644327`，现释放 Slot。ca97 已登记唯一 active Slot，顺序包括 `20261116_0053_remove_central_product_library`（down 0052）、`20261116_0054_retire_product_data_collection_permissions`（down 0053）和 `20261116_0055_retire_central_shop_sessions`（down 0054）。已应用的迁移不得改写。Feature 使用 `control_center_feat_windows_execution_slim`，不得在 Integration 或生产开发 Migration。

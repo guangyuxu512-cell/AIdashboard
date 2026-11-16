@@ -11,8 +11,6 @@ const dtoRef = (domain, name) => [`${backend}${domain}/schemas.py`, name];
 const taskConsumers = ["frontend"].map(
   (client) => `${client}/src/entities/task/api/contracts.ts`,
 );
-const shopSessionContract = `${pc}shop-session/api/contracts.ts`;
-const shopSessionModel = `${pc}shop-session/model/types.ts`;
 
 // Deliberately explicit coverage, not a claim to scan/generate every API.
 export const manifest = {
@@ -29,30 +27,6 @@ export const manifest = {
       enumRef("audit", "AuditTargetType"),
       [`${pc}audit-log/model/types.ts`, "AuditTargetType"],
     ],
-    [
-      enumRef("operating_dashboard", "OperatingCollectionJobStatus"),
-      [
-        "frontend/src/features/operating-dashboard/api/operating-dashboard-api.ts",
-        "OperatingDashboardCollectionJobDto",
-        "status",
-      ],
-    ],
-    [
-      enumRef("operating_dashboard", "OperatingCollectionItemStatus"),
-      [
-        "frontend/src/features/operating-dashboard/api/operating-dashboard-api.ts",
-        "OperatingDashboardCollectionItemDto",
-        "status",
-      ],
-    ],
-    [
-      enumRef("sessions", "ShopSessionStatus"),
-      [shopSessionContract, "ShopSessionStatusDto"],
-    ],
-    [
-      enumRef("sessions", "ShopSessionStatus"),
-      [shopSessionModel, "ShopSessionStatus"],
-    ],
   ],
   maps: [
     [
@@ -67,10 +41,6 @@ export const manifest = {
       enumRef("tasks", "TaskStatus"),
       [`${client}/src/entities/task/model/status-meta.ts`, "TASK_STATUS_META"],
     ]),
-    [
-      enumRef("sessions", "ShopSessionStatus"),
-      [`${pc}shop-session/model/status-meta.ts`, "SHOP_SESSION_STATUS_META"],
-    ],
   ],
   dtos: [
     [
@@ -82,44 +52,10 @@ export const manifest = {
       [`${pc}audit-log/model/types.ts`, "AuditLogViewModel"],
       { team_id: "teamId" },
     ],
-    [
-      dtoRef("sessions", "ShopSessionMetadataRead"),
-      [shopSessionContract, "ShopSessionMetadataReadDto"],
-    ],
-    [
-      dtoRef("sessions", "ShopSessionMetadataRead"),
-      [shopSessionModel, "ShopSessionMetadataViewModel"],
-      {
-        session_id: "sessionId",
-        configured: "configured",
-        status: "status",
-        version: "version",
-        source_device_id: "sourceDeviceId",
-        captured_at: "capturedAtDisplay",
-        validated_at: "validatedAtDisplay",
-        expires_at: "expiresAtDisplay",
-        refresh_in_progress: "refreshInProgress",
-        refresh_lease_expires_at: "refreshLeaseExpiresAtDisplay",
-      },
-    ],
-    [
-      dtoRef("operating_dashboard", "OperatingSessionRecoveryRead"),
-      [
-        "frontend/src/features/operating-dashboard/api/operating-dashboard-api.ts",
-        "OperatingDashboardSessionRecoveryDto",
-      ],
-    ],
     ...["frontend"].flatMap((client) => [
       [
         dtoRef("devices", "DeviceRead"),
         [`${client}/src/entities/device/api/contracts.ts`, "DeviceReadDto"],
-      ],
-      [
-        dtoRef("workers", "YingdaoProviderInventory"),
-        [
-          `${client}/src/entities/device/api/contracts.ts`,
-          "YingdaoProviderInventoryDto",
-        ],
       ],
       [
         dtoRef("workers", "DeviceSkillCapabilityRead"),

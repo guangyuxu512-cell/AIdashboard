@@ -20,27 +20,9 @@ class SleepSkillInput(BaseModel):
     seconds: float = Field(gt=0, le=300)
 
 
-class YingdaoTestSkillInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class YingdaoDiscoverSkillInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-
-class YingdaoApplicationRunSkillInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    app_id: str = Field(min_length=1, max_length=200)
-    params: dict[str, Any] = Field(default_factory=dict)
-
-
 SKILL_INPUT_MODELS: dict[TaskSkillId, type[BaseModel]] = {
     TaskSkillId.SYSTEM_ECHO: EchoSkillInput,
     TaskSkillId.SYSTEM_SLEEP: SleepSkillInput,
-    TaskSkillId.YINGDAO_TEST: YingdaoTestSkillInput,
-    TaskSkillId.YINGDAO_DISCOVER: YingdaoDiscoverSkillInput,
-    TaskSkillId.YINGDAO_APP_RUN: YingdaoApplicationRunSkillInput,
 }
 
 
@@ -55,7 +37,7 @@ def validate_skill_input(
         known_skill_id = TaskSkillId(skill_id)
     except ValueError:
         known_skill_id = None
-    if known_skill_id is not None:
+    if known_skill_id in SKILL_INPUT_MODELS:
         return (
             SKILL_INPUT_MODELS[known_skill_id]
             .model_validate(value)

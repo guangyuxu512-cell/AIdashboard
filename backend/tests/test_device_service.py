@@ -185,16 +185,14 @@ def test_device_not_found() -> None:
         service.get(ACTOR, uuid4())
 
 
-def test_device_soft_remove_disables_bindings_and_revokes_worker_token() -> None:
+def test_device_soft_remove_revokes_worker_token() -> None:
     session = FakeSession()
     repository = FakeDeviceRepository()
-    bindings = FakeBindingRepository()
     tasks = FakeTaskRepository()
     workers = FakeWorkerRepository()
     service = DeviceService(  # type: ignore[arg-type]
         session,
         repository,
-        bindings,
         tasks,
         workers,
         FakeTeamResourceAccessRepository(),
@@ -208,20 +206,17 @@ def test_device_soft_remove_disables_bindings_and_revokes_worker_token() -> None
     assert stored.enabled is False
     assert stored.deleted_at is not None
     assert repository.get_for_actor(actor=ACTOR, device_id=device.device_id) is None
-    assert bindings.disabled == [device.device_id]
     assert workers.revoked == [device.device_id]
 
 
 def test_device_soft_remove_rejects_active_tasks_without_side_effects() -> None:
     session = FakeSession()
     repository = FakeDeviceRepository()
-    bindings = FakeBindingRepository()
     tasks = FakeTaskRepository(active=True)
     workers = FakeWorkerRepository()
     service = DeviceService(  # type: ignore[arg-type]
         session,
         repository,
-        bindings,
         tasks,
         workers,
         FakeTeamResourceAccessRepository(),
@@ -233,5 +228,4 @@ def test_device_soft_remove_rejects_active_tasks_without_side_effects() -> None:
 
     assert device.enabled is True
     assert device.deleted_at is None
-    assert bindings.disabled == []
     assert workers.revoked == []

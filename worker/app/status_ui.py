@@ -19,7 +19,6 @@ from app.local_config import (
     inspect_local_input_paths,
 )
 from app.process_control import WorkerProcessController, WorkerProcessInfo
-from app.providers.yingdao import WindowsYingdaoRuntimeLocator, YingdaoSessionError
 from app.provisioning import ConnectionTestResult, WorkerProvisioningClient
 from app.status_tray import WorkerStatusTray
 from app.version import WORKER_VERSION
@@ -44,11 +43,6 @@ def apply_provisioned_worker_configuration(
     device_id: UUID,
     device_token: str,
     device_display_name: str | None,
-    yingdao_install_root: Path | None,
-    yingdao_data_root: Path | None,
-    yingdao_test_app_id: str | None,
-    params_json_path: Path,
-    account_json_path: Path,
     images_dir: Path,
 ) -> WorkerConfigurationApplyResult:
     """Apply a provisioned identity without leaving an old Core authenticated.
@@ -75,11 +69,6 @@ def apply_provisioned_worker_configuration(
         device_id=device_id,
         device_token=device_token,
         device_display_name=device_display_name,
-        yingdao_install_root=yingdao_install_root,
-        yingdao_data_root=yingdao_data_root,
-        yingdao_test_app_id=yingdao_test_app_id,
-        params_json_path=params_json_path,
-        account_json_path=account_json_path,
         images_dir=images_dir,
     )
     running = process_controller.start()
@@ -187,10 +176,6 @@ def main() -> int:
         ("connection_status", "服务器"),
         ("last_heartbeat", "最后心跳"),
         ("worker_status", "Worker"),
-        ("provider_status", "ShadowBot 状态"),
-        ("provider_version", "ShadowBot 版本"),
-        ("provider_account", "账号"),
-        ("provider_application_count", "云端应用"),
         ("business_skill_count", "业务 Skill"),
         ("current_task", "当前任务"),
         ("duration", "运行时间"),
@@ -221,22 +206,7 @@ def main() -> int:
     device_name_var = tk.StringVar(
         value=(config.device_display_name or "") if config else "",
     )
-    shadowbot_var = tk.StringVar(value="")
     default_local_inputs = get_default_local_input_paths(config_service.data_root)
-    params_json_var = tk.StringVar(
-        value=str(
-            config.params_json_path
-            if config is not None
-            else default_local_inputs.params_json_path
-        ),
-    )
-    account_json_var = tk.StringVar(
-        value=str(
-            config.account_json_path
-            if config is not None
-            else default_local_inputs.account_json_path
-        ),
-    )
     images_dir_var = tk.StringVar(
         value=str(
             config.images_dir
@@ -248,7 +218,6 @@ def main() -> int:
         value="已读取现有配置" if config else "等待首次配置",
     )
     token_revealed = tk.BooleanVar(value=False)
-    selected_shadowbot: Path | None = None
 
     config_form = ttk.Frame(config_tab)
     config_form.pack(fill="x")
@@ -291,15 +260,6 @@ def main() -> int:
         "设备名称",
         ttk.Entry(config_form, textvariable=device_name_var, state="readonly"),
     )
-    shadowbot_frame = ttk.Frame(config_form)
-    shadowbot_frame.columnconfigure(0, weight=1)
-    ttk.Entry(
-        shadowbot_frame,
-        textvariable=shadowbot_var,
-        state="readonly",
-    ).grid(row=0, column=0, sticky="ew")
-    add_config_row(4, "ShadowBot 6.3.6", shadowbot_frame)
-
     local_input_frame = ttk.LabelFrame(config_tab, text="本地输入", padding=10)
     local_input_frame.pack(fill="x", pady=(12, 0))
     local_input_frame.columnconfigure(1, weight=1)
@@ -327,18 +287,6 @@ def main() -> int:
         button.grid(row=row, column=2, padx=(8, 0), pady=5)
         local_input_buttons.append(button)
 
-    def choose_json_path(variable: Any, title: str) -> None:
-        current = Path(variable.get().strip())
-        selected = filedialog.asksaveasfilename(
-            title=title,
-            initialdir=str(current.parent),
-            initialfile=current.name,
-            defaultextension=".json",
-            filetypes=[("JSON", "*.json"), ("所有文件", "*.*")],
-        )
-        if selected:
-            variable.set(selected)
-
     def choose_images_directory() -> None:
         selected = filedialog.askdirectory(
             title="选择图片工作目录",
@@ -347,18 +295,6 @@ def main() -> int:
         if selected:
             images_dir_var.set(selected)
 
-    add_local_input_row(
-        0,
-        "参数 JSON",
-        params_json_var,
-        lambda: choose_json_path(params_json_var, "选择参数 JSON 路径"),
-    )
-    add_local_input_row(
-        1,
-        "账号 JSON",
-        account_json_var,
-        lambda: choose_json_path(account_json_var, "选择账号 JSON 路径"),
-    )
     add_local_input_row(
         2,
         "图片工作目录",
@@ -377,10 +313,6 @@ def main() -> int:
     test_button.pack(side="left")
     save_button = ttk.Button(action_frame, text="保存并启动")
     save_button.pack(side="left", padx=8)
-    detect_button = ttk.Button(action_frame, text="重新检测")
-    detect_button.pack(side="left")
-    choose_button = ttk.Button(action_frame, text="选择路径")
-    choose_button.pack(side="left", padx=8)
 
     diagnostic_labels: dict[str, ttk.Label] = {}
     diagnostic_fields = (
@@ -388,13 +320,6 @@ def main() -> int:
         ("token", "Worker Token"),
         ("heartbeat", "Heartbeat"),
         ("skills", "Skill Capability"),
-        ("process", "ShadowBot 进程"),
-        ("version", "ShadowBot 版本"),
-        ("session", "ShadowBot Session"),
-        ("applications", "云端应用"),
-        ("provider_refresh", "最近 Provider 刷新"),
-        ("params_json", "参数 JSON"),
-        ("account_json", "账号 JSON"),
         ("images_dir", "图片工作目录"),
     )
     diagnostic_facts = ttk.Frame(diagnostic_tab)
@@ -421,11 +346,6 @@ def main() -> int:
 
     ttk.Button(
         diagnostic_actions,
-        text="重新检测",
-        command=lambda: detect_shadowbot(),
-    ).pack(side="left")
-    ttk.Button(
-        diagnostic_actions,
         text="打开日志目录",
         command=open_logs,
     ).pack(side="left", padx=8)
@@ -435,59 +355,9 @@ def main() -> int:
         for button in (
             test_button,
             save_button,
-            detect_button,
-            choose_button,
             *local_input_buttons,
         ):
             button.configure(state=state)
-
-    def configured_locator() -> WindowsYingdaoRuntimeLocator:
-        root_path = None
-        if selected_shadowbot is not None:
-            root_path = selected_shadowbot.parent
-        elif config is not None:
-            root_path = config.yingdao_install_root
-        return WindowsYingdaoRuntimeLocator(root_path)
-
-    def detect_shadowbot() -> None:
-        set_busy(True)
-        shadowbot_var.set("正在检测…")
-
-        def work() -> None:
-            executable = configured_locator().find_supported_executable()
-
-            def finish() -> None:
-                nonlocal selected_shadowbot
-                selected_shadowbot = executable
-                shadowbot_var.set(
-                    str(executable)
-                    if executable is not None
-                    else "未检测到 ShadowBot 6.3.6"
-                )
-                set_busy(False)
-
-            root.after(0, finish)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    def choose_shadowbot() -> None:
-        nonlocal selected_shadowbot
-        selected = filedialog.askopenfilename(
-            title="选择 ShadowBot 6.3.6",
-            filetypes=[("ShadowBot", "ShadowBot*.exe"), ("EXE", "*.exe")],
-        )
-        if not selected:
-            return
-        try:
-            selected_shadowbot = WindowsYingdaoRuntimeLocator(
-                Path(selected).parent,
-            ).validate_supported_executable(Path(selected))
-        except YingdaoSessionError as error:
-            selected_shadowbot = None
-            shadowbot_var.set("版本不支持")
-            messagebox.showerror("ShadowBot 路径无效", error.message)
-            return
-        shadowbot_var.set(str(selected_shadowbot))
 
     def test_connection(*, save_after: bool = False) -> None:
         set_busy(True)
@@ -523,7 +393,7 @@ def main() -> int:
                 and token_var.get() == config.device_token.get_secret_value()
                 and messagebox.askyesno(
                     "服务器暂时不可达",
-                    "现有设备身份和 Token 未变。是否仅保存本机 ShadowBot 路径？",
+                    "现有设备身份和 Token 未变。是否仅保存本机工作目录？",
                 )
             ):
                 identity_device_id = config.device_id
@@ -542,21 +412,6 @@ def main() -> int:
                 device_id=identity_device_id,
                 device_token=token_var.get(),
                 device_display_name=identity_name,
-                yingdao_install_root=(
-                    selected_shadowbot.parent
-                    if selected_shadowbot is not None
-                    else (config.yingdao_install_root if config else None)
-                ),
-                yingdao_data_root=config.yingdao_data_root if config else None,
-                yingdao_test_app_id=config.yingdao_test_app_id if config else None,
-                params_json_path=_required_path(
-                    params_json_var.get(),
-                    "参数 JSON 路径",
-                ),
-                account_json_path=_required_path(
-                    account_json_var.get(),
-                    "账号 JSON 路径",
-                ),
                 images_dir=_required_path(
                     images_dir_var.get(),
                     "图片工作目录",
@@ -577,8 +432,6 @@ def main() -> int:
 
     test_button.configure(command=test_connection)
     save_button.configure(command=save_configuration)
-    detect_button.configure(command=detect_shadowbot)
-    choose_button.configure(command=choose_shadowbot)
 
     def refresh() -> None:
         state = read_runtime_status(status_path)
@@ -601,8 +454,6 @@ def main() -> int:
         logs.configure(state="disabled")
         local_inputs = (
             LocalInputPaths(
-                params_json_path=config.params_json_path,
-                account_json_path=config.account_json_path,
                 images_dir=config.images_dir,
             )
             if config is not None
@@ -633,7 +484,6 @@ def main() -> int:
         refresh()
         root.after(1000, refresh_periodically)
 
-    detect_shadowbot()
     if should_open_configuration(config):
         notebook.select(config_tab)
     refresh_periodically()

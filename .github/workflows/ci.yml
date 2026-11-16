@@ -47,7 +47,7 @@ jobs:
           python -c "import psycopg; c=psycopg.connect('postgresql://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_ci', autocommit=True); c.execute('CREATE DATABASE control_center_feat_worker_capability_precheck'); c.close()"
           export BACKEND_DATABASE_URL='postgresql+psycopg://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_feat_worker_capability_precheck'
           export BACKEND_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-          python -m pytest -q -o addopts='' -m integration tests/integration/test_postgresql_worker_precheck.py tests/integration/test_postgresql_precheck_parallel_claim.py
+          python -m pytest -q -o addopts='' -m integration tests/integration/test_postgresql_worker_precheck.py tests/integration/test_postgresql_precheck_parallel_claim.py tests/integration/test_postgresql_worker_only_context.py tests/integration/test_postgresql_legacy_retirement.py
 
   frontend-real-build:
     runs-on: ubuntu-latest
@@ -91,8 +91,6 @@ jobs:
       - name: Install existing verification dependencies
         run: |
           pnpm install --frozen-lockfile
-          # Electron downloads lazily; finish it once before parallel tests import it.
-          pnpm --filter @control-center/electron exec node -e "require('electron')"
           python -m pip install -e './backend[dev]'
           python -m venv "${RUNNER_TEMP}/verify-worker"
           "${RUNNER_TEMP}/verify-worker/Scripts/python.exe" -m pip install -e './worker[dev]'
@@ -130,10 +128,6 @@ jobs:
         run: bash scripts/test-production-deploy-workflow.sh
       - name: Build production backend image
         run: bash scripts/test-backend-dependency-cache.sh control-center-backend-ci:${{ github.sha }}
-      - name: Verify PDD Node runtime and verified source
-        run: |
-          docker run --rm --entrypoint sh control-center-backend-ci:${{ github.sha }} -c \
-            'node --version && test -f /app/app/platforms/pdd/vendor/anti_content.js && python -c "from app.platforms.pdd.signer import PddAntiContentSigner; PddAntiContentSigner().generate()"'
       - name: Build production frontend image
         run: docker build --tag control-center-frontend-ci:${{ github.sha }} --file frontend/Dockerfile .
       - name: Verify asset upload transport through production Nginx proxies
@@ -184,7 +178,6 @@ jobs:
             -czf "${archive_path}" \
             .dockerignore \
             package.json pnpm-lock.yaml pnpm-workspace.yaml \
-            electron/package.json \
             backend frontend deploy/production \
             scripts/production-env.sh scripts/remote-deploy-production.sh
           mkdir -p "${release_dir}"
@@ -192,7 +185,6 @@ jobs:
           test -f "${release_dir}/package.json"
           test -f "${release_dir}/pnpm-lock.yaml"
           test -f "${release_dir}/pnpm-workspace.yaml"
-          test -f "${release_dir}/electron/package.json"
           test -f "${release_dir}/scripts/production-env.sh"
           test -f "${release_dir}/deploy/production/pc-static-assets.sh"
           bash -n "${release_dir}/deploy/production/pc-static-assets.sh"

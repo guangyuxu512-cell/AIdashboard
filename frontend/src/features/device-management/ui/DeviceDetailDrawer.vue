@@ -9,10 +9,7 @@ import {
   type DeviceLocalShopInventoryDto,
   type DeviceLocalShopDto,
   type DeviceListItemViewModel,
-  type YingdaoInventoryViewModel,
   type WorkerCredentialReadDto,
-  YingdaoAvailabilityStatusTag,
-  YingdaoProviderStatusTag,
 } from '@/entities/device'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
@@ -25,7 +22,6 @@ import type {
   DeviceCurrentExecutionViewModel,
   DeviceRecentExecutionViewModel,
 } from '../model/types'
-import DeviceCapabilityCard from './DeviceCapabilityCard.vue'
 import WorkerCredentialSection from './WorkerCredentialSection.vue'
 
 defineProps<{
@@ -33,10 +29,6 @@ defineProps<{
   device: DeviceListItemViewModel | null
   loading?: boolean
   error?: string | null
-  yingdaoInventory?: YingdaoInventoryViewModel | null
-  providerInventoryLoading?: boolean
-  providerInventoryError?: string | null
-  yingdaoRefreshing?: boolean
   currentExecution?: DeviceCurrentExecutionViewModel | null
   localShops?: DeviceLocalShopInventoryDto | null
   recentExecutions?: DeviceRecentExecutionViewModel[]
@@ -58,8 +50,6 @@ const sessionLabels: Record<DeviceLocalShopDto['session_status'], string> = {
 defineEmits<{
   'update:show': [value: boolean]
   retry: []
-  'retry-provider-inventory': []
-  'refresh-yingdao': []
   'view-capabilities': [device: DeviceListItemViewModel]
   edit: [device: DeviceListItemViewModel]
   'toggle-enabled': [device: DeviceListItemViewModel]
@@ -151,82 +141,7 @@ defineEmits<{
 
       <section class="device-detail__section">
         <h3>执行能力</h3>
-        <DeviceCapabilityCard
-          title="影刀 RPA"
-          description="ShadowBot 6.3.6 当前会话与云端应用"
-        >
-          <template #status>
-            <YingdaoProviderStatusTag
-              v-if="yingdaoInventory"
-              :status="yingdaoInventory.providerStatus"
-            />
-            <YingdaoAvailabilityStatusTag v-else status="not_detected" />
-          </template>
-
-          <LoadingState
-            v-if="providerInventoryLoading"
-            description="正在读取影刀环境…"
-          />
-          <ErrorState
-            v-else-if="providerInventoryError"
-            :description="providerInventoryError"
-            retryable
-            @retry="$emit('retry-provider-inventory')"
-          />
-          <dl v-else class="capability-facts">
-            <div>
-              <dt>账号</dt>
-              <dd>{{ yingdaoInventory?.accountDisplay ?? '—' }}</dd>
-            </div>
-            <div>
-              <dt>账号类型</dt>
-              <dd>{{ yingdaoInventory?.accountType ?? '—' }}</dd>
-            </div>
-            <div>
-              <dt>当前账号云端应用</dt>
-              <dd>{{ yingdaoInventory?.applicationCount ?? '—' }}</dd>
-            </div>
-            <div>
-              <dt>版本</dt>
-              <dd>{{ yingdaoInventory?.providerVersion ?? '—' }}</dd>
-            </div>
-            <div>
-              <dt>执行能力</dt>
-              <dd>
-                {{
-                  yingdaoInventory?.executionAvailable
-                    ? `可执行 · ${yingdaoInventory.executionVersion}`
-                    : '不可执行'
-                }}
-              </dd>
-            </div>
-            <div v-if="yingdaoInventory?.executionUnavailableReason">
-              <dt>不可执行原因</dt>
-              <dd>{{ yingdaoInventory.executionUnavailableReason }}</dd>
-            </div>
-            <div v-if="yingdaoInventory?.statusReason">
-              <dt>Provider 状态</dt>
-              <dd>{{ yingdaoInventory.statusReason }}</dd>
-            </div>
-          </dl>
-
-          <template #actions>
-            <AppButton
-              tone="text"
-              :disabled="!yingdaoInventory?.applicationCount"
-              @click="$emit('view-capabilities', device)"
-            >
-              查看能力
-            </AppButton>
-            <AppButton
-              :loading="yingdaoRefreshing"
-              :disabled="device.dataSource !== 'real'"
-              @click="$emit('refresh-yingdao')"
-            >
-              刷新影刀能力
-            </AppButton>
-          </template>
-        </DeviceCapabilityCard>
+        <AppButton @click="$emit('view-capabilities', device)">查看 Worker 技能</AppButton>
       </section>
 
       <section class="device-detail__section">

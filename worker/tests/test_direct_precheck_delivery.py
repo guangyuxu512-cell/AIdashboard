@@ -71,6 +71,25 @@ def test_product_result_never_defaults_to_production_from_integration():
                        product_precheck_origin="http://product.test")
 
 
+@pytest.mark.parametrize("central_origin", ["https://119.29.188.118", "https://center.mysiyuai.top"])
+def test_production_product_delivery_uses_separate_product_domain(central_origin):
+    settings = WorkerSettings(server_url=central_origin, device_id=uuid4(),
+                              device_token="synthetic")
+    api = WorkerApiClient(settings)
+    assert str(api.client.base_url).rstrip("/") == central_origin
+    assert str(api.product_client.base_url).rstrip("/") == "https://pdc.mysiyuai.top"
+    asyncio.run(api.close())
+
+
+def test_explicit_product_origin_takes_precedence():
+    settings = WorkerSettings(server_url="https://119.29.188.118", device_id=uuid4(),
+                              device_token="synthetic",
+                              product_precheck_origin="https://isolated-product.test")
+    api = WorkerApiClient(settings)
+    assert str(api.product_client.base_url).rstrip("/") == "https://isolated-product.test"
+    asyncio.run(api.close())
+
+
 def test_lost_central_ack_replays_identical_product_result(tmp_path):
     task_id, device_id = uuid4(), uuid4()
     settings = WorkerSettings(server_url="https://central.test", device_id=device_id, device_token="synthetic",

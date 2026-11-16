@@ -7,10 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
-from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.assets.api import asset_content_response, get_asset_service
 from app.modules.assets.service import AssetService
-from app.modules.credentials.service import CredentialService
 from app.modules.tasks.schemas import (
     TaskComplete,
     TaskEventBatchResult,
@@ -41,12 +39,8 @@ router = APIRouter(
 
 def get_worker_task_service(
     session: Annotated[Session, Depends(get_database_session)],
-    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> TaskService:
-    return TaskService(
-        session,
-        credential_service=CredentialService(session, cipher),
-    )
+    return TaskService(session)
 
 
 @router.post(
@@ -81,14 +75,16 @@ def _claim_worker_task(
     *,
     precheck_only: bool = False,
 ) -> WorkerTaskRead | Response:
-    claimed = (service.claim_with_account(principal, precheck_only=True)
-               if precheck_only else service.claim_with_account(principal))
+    claimed = (service.claim_with_context(principal, precheck_only=True)
+               if precheck_only else service.claim_with_context(principal))
     if claimed is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     task = claimed.task
     direct_product = task.skill_id == "douyin.category_schema" and task.input_json.get("_result_delivery") == "product"
+    from app.modules.workers.shop_context import LOCAL_SHOPS_KEY
     task_input = ({key: value for key, value in task.input_json.items() if not key.startswith("_")}
-                  if task.skill_id == "douyin.category_schema" else task.input_json)
+                  if task.skill_id == "douyin.category_schema" else
+                  {key: value for key, value in task.input_json.items() if key != LOCAL_SHOPS_KEY})
     if task.skill_id == "douyin.category_schema" and session_snapshot_expired(service.session, task):
         task_input["skip_expired_session"] = True
     return WorkerTaskRead(
@@ -97,7 +93,7 @@ def _claim_worker_task(
         input=task_input,
         result_delivery="product" if direct_product else "central",
         lease_until=task.lease_until,
-        accounts=claimed.accounts,
+        local_shops=claimed.local_shops,
         assets=[
             WorkerTaskAssetRead(
                 asset_id=asset.asset_id,

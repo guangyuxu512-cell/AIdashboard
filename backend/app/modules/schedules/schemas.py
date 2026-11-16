@@ -27,8 +27,9 @@ class ScheduleCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     target_device_id: UUID
     shop_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    local_shop_ids: list[str] = Field(default_factory=list, max_length=100)
     execution_type: ScheduleExecutionType = (
-        ScheduleExecutionType.YINGDAO_APPLICATION
+        ScheduleExecutionType.BUSINESS_SKILL
     )
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
     parameter_preset_id: UUID | None = None
@@ -49,9 +50,8 @@ class ScheduleCreate(BaseModel):
     @model_validator(mode="after")
     def validate_execution_target(self) -> "ScheduleCreate":
         if self.execution_type is ScheduleExecutionType.YINGDAO_APPLICATION:
-            if self.application_id is None or self.skill_id is not None:
-                raise ValueError("Yingdao schedules require only application_id")
-        elif (
+            raise ValueError("影刀任务已停用，请使用 Worker 技能包")
+        if (
             self.skill_id is None
             or self.application_id is not None
             or self.parameter_preset_id is not None
@@ -67,8 +67,15 @@ class ScheduleCreate(BaseModel):
     @field_validator("shop_ids")
     @classmethod
     def reject_duplicate_shops(cls, value: list[UUID]) -> list[UUID]:
-        if len(value) != len(set(value)):
-            raise ValueError("shop_ids must not contain duplicates")
+        if value:
+            raise ValueError("中控店铺绑定已停用，请选择设备上报的店铺")
+        return value
+
+    @field_validator("local_shop_ids")
+    @classmethod
+    def validate_local_shops(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)) or any(not item or len(item) > 160 or item != item.strip() for item in value):
+            raise ValueError("本机店铺标识无效或重复")
         return value
 
     @field_validator("local_time")
@@ -96,6 +103,7 @@ class ScheduleUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=200)
     target_device_id: UUID | None = None
     shop_ids: list[UUID] | None = Field(default=None, max_length=100)
+    local_shop_ids: list[str] | None = Field(default=None, max_length=100)
     execution_type: ScheduleExecutionType | None = None
     application_id: str | None = Field(default=None, min_length=1, max_length=200)
     parameter_preset_id: UUID | None = None
@@ -151,8 +159,17 @@ class ScheduleUpdate(BaseModel):
     @field_validator("shop_ids")
     @classmethod
     def reject_duplicate_shops(cls, value: list[UUID] | None) -> list[UUID] | None:
-        if value is not None and len(value) != len(set(value)):
-            raise ValueError("shop_ids must not contain duplicates")
+        if value:
+            raise ValueError("中控店铺绑定已停用，请选择设备上报的店铺")
+        return value
+
+    @field_validator("local_shop_ids")
+    @classmethod
+    def validate_local_shops(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and (len(value) != len(set(value)) or any(
+            not item or len(item) > 160 or item != item.strip() for item in value
+        )):
+            raise ValueError("本机店铺标识无效或重复")
         return value
 
     @field_validator("weekdays")
@@ -199,6 +216,7 @@ class ScheduleListItemRead(BaseModel):
     enabled: bool
     target_device_id: UUID
     shop_ids: list[UUID]
+    local_shop_ids: list[str] = Field(default_factory=list)
     device_display_name: str
     execution_type: ScheduleExecutionType
     skill_id: str

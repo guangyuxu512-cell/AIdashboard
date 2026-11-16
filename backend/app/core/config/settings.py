@@ -46,8 +46,7 @@ class Settings(BaseSettings):
     )
     worker_online_timeout_seconds: int = Field(default=45, ge=15, le=300)
     worker_task_lease_seconds: int = Field(default=60, ge=30, le=600)
-    # Independent service integrations; no Worker, task, or device is required.
-    application_shop_session_enabled: bool = False
+    # Legacy name for the independent application credential file; it contains no shop Session.
     application_shop_session_clients_file: Path | None = None
     application_worker_precheck_enabled: bool = False
     application_worker_precheck_clients_file: Path | None = None
@@ -60,6 +59,7 @@ class Settings(BaseSettings):
         le=604800,
     )
     task_event_retention_batch_size: int = Field(default=100, ge=1, le=1000)
+    worker_schedule_execution_enabled: bool = False
     schedule_scan_interval_seconds: int = Field(default=10, ge=1, le=300)
     schedule_trigger_batch_size: int = Field(default=50, ge=1, le=500)
     # Explicit manual Product Data execution only. The consumer scans only
@@ -215,8 +215,11 @@ def get_settings() -> Settings:
     settings = Settings()
     # Selection is deliberately paused until a Worker implementation exists.
     # A stale environment flag must not revive server-side execution.
+    settings.worker_schedule_execution_enabled = False
+    settings.product_data_collection_execution_enabled = False
     settings.product_selection_execution_enabled = False
     settings.product_selection_schedule_enabled = False
+    settings.product_selection_strategy_management_enabled = False
     settings.operating_dashboard_collection_execution_enabled = False
     settings.operating_dashboard_daily_collection_enabled = False
     return settings

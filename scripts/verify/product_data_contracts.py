@@ -8,6 +8,8 @@ from datetime import date, datetime
 from decimal import Decimal
 from inspect import signature
 import json
+from pathlib import Path
+import sys
 from typing import get_args
 from uuid import UUID
 
@@ -203,6 +205,9 @@ def _current(raw: dict, code: str) -> dict:
 def product_data_contract_observations() -> list[dict]:
     """Read actual declarations and behavior; expected values stay local."""
 
+    backend = str(Path(__file__).resolve().parents[2] / "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
     from app.modules.product_data.api import router
     from app.modules.product_data.schemas import (
         ProductDataCollectionBatchRead,

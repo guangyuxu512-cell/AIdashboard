@@ -9,9 +9,6 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
 from app.modules.access.models import Team, TeamDeviceAccess
 from app.core.config import Settings
-from app.modules.automation_apps.models import AutomationApplicationConfig
-from app.modules.automation_apps.schemas import AutomationApplicationConfigUpsert
-from app.modules.automation_apps.service import AutomationApplicationConfigService
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.exceptions import (
@@ -37,7 +34,6 @@ from app.modules.workers.models import (
 )
 from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.schemas import (
-    ProviderInventoryUpsert,
     SkillCapabilitySnapshotUpsert,
     WorkerHeartbeat,
 )
@@ -237,49 +233,6 @@ def test_worker_identity_runtime_claim_result_and_lost(
             assert token_b not in credential_hashes
             principal_a = worker_service.authenticate(device_a, token_a)
             principal_b = worker_service.authenticate(device_b, token_b)
-            inventory_input = ProviderInventoryUpsert.model_validate(
-                {
-                    "provider_code": "yingdao",
-                    "inventory": {
-                        "provider": "yingdao",
-                        "available": True,
-                        "status": "ready",
-                        "provider_version": "6.3.6",
-                        "execution_available": True,
-                        "execution_version": "6.3.6",
-                        "logged_in": True,
-                        "account_display": "GY00999",
-                        "account_type": "PersonalBasic",
-                        "enterprise_account": False,
-                        "user_id": "yingdao-user-integration",
-                        "applications": [
-                            {
-                                "app_id": "app-1",
-                                "app_name": "应用一",
-                                "version_id": "1",
-                                "updated_at": None,
-                                "app_type": None,
-                                "group_id": None,
-                            },
-                        ],
-                        "discovered_at": base_time.isoformat(),
-                    },
-                },
-            )
-            inventory_a = worker_service.save_provider_inventory(
-                principal_a,
-                inventory_input,
-                now=base_time,
-            )
-            assert inventory_a.device_id == device_a
-            assert inventory_a.inventory.account_display == "GY00999"
-            assert worker_service.get_provider_inventory_reads(device_b) == []
-            inventory_b = worker_service.save_provider_inventory(
-                principal_b,
-                inventory_input,
-                now=base_time,
-            )
-            assert inventory_b.device_id == device_b
             skill_snapshot = SkillCapabilitySnapshotUpsert.model_validate(
                 {
                     "skills": [
@@ -332,12 +285,6 @@ def test_worker_identity_runtime_claim_result_and_lost(
                 now=base_time,
             )
             assert worker_service.get_skill_capability_reads(device_b) == []
-            assert session.scalar(
-                select(DeviceProviderInventory).where(
-                    DeviceProviderInventory.device_id == device_a,
-                    DeviceProviderInventory.provider_code == "yingdao",
-                ),
-            ) is not None
             online = worker_service.heartbeat(
                 principal_a,
                 WorkerHeartbeat(worker_version="0.1.0", started_at=base_time),
@@ -354,7 +301,7 @@ def test_worker_identity_runtime_claim_result_and_lost(
             assert {
                 item.skill_id
                 for item in worker_service.get_skill_capability_reads(device_a)
-            } == {"system.echo", "system.sleep", "yingdao.test"}
+            } == {"system.echo", "system.sleep"}
             assert {
                 item.classification
                 for item in worker_service.get_skill_capability_reads(device_a)
@@ -457,277 +404,9 @@ def test_worker_identity_runtime_claim_result_and_lost(
             assert sleep.status == TaskStatus.LOST.value
             assert sleep.error_code == "WORKER_LEASE_EXPIRED"
 
-            rpa = task_service.create(
-                TaskCreate(
-                    target_device_id=device_a,
-                    skill_id=TaskSkillId.YINGDAO_TEST,
-                    input={},
-                ),
-                actor,
-            )
-            assert task_service.claim(principal_a) is not None
-            failed_rpa = task_service.fail(
-                principal_a,
-                rpa.task_id,
-                TaskFail(
-                    error_code="RPA_PROVIDER_UNAVAILABLE",
-                    error_message="No complete Yingdao trigger contract",
-                ),
-            )
-            assert failed_rpa.status == TaskStatus.FAILED.value
-    finally:
-        _cleanup(
-            postgresql_engine,
-            device_ids,
-            team_id=team_id,
-            user_id=user_id,
-        )
-
-
-def test_yingdao_app_config_and_device_isolated_task_creation(
-    postgresql_engine: Engine,
-) -> None:
-    device_a = uuid4()
-    device_b = uuid4()
-    device_ids = {device_a, device_b}
-    team_id, user_id, actor = _fixture_actor()
-    app_id = f"worker-config-{uuid4()}"
-    now = datetime.now(UTC)
-    try:
-        with Session(postgresql_engine) as session:
-            session.add_all(
-                [
-                    Team(team_id=team_id, name="Worker App Integration Team"),
-                    User(
-                        user_id=user_id,
-                        display_name="Worker App Integration User",
-                    ),
-                    Device(
-                        device_id=device_a,
-                        team_id=team_id,
-                        display_name="yingdao-ready",
-                    ),
-                    Device(
-                        device_id=device_b,
-                        team_id=team_id,
-                        display_name="yingdao-not-ready",
-                    ),
-                ],
-            )
-            session.flush()
-            session.add_all(
-                [
-                    TeamDeviceAccess(team_id=team_id, device_id=device_id)
-                    for device_id in device_ids
-                ],
-            )
-            session.commit()
-            worker_service = WorkerService(session)
-            for device_id in (device_a, device_b):
-                worker_service.heartbeat(
-                    WorkerPrincipal(device_id=device_id),
-                    WorkerHeartbeat(worker_version="0.3.1", started_at=now),
-                    now=now,
-                )
-            worker_service.save_provider_inventory(
-                WorkerPrincipal(device_id=device_a),
-                ProviderInventoryUpsert.model_validate(
-                    {
-                        "provider_code": "yingdao",
-                        "inventory": {
-                            "provider": "yingdao",
-                            "available": True,
-                            "status": "ready",
-                            "provider_version": "6.3.6",
-                            "execution_available": True,
-                            "execution_version": "6.3.6",
-                            "logged_in": True,
-                            "account_display": "GY00999",
-                            "account_type": "PersonalBasic",
-                            "enterprise_account": False,
-                            "user_id": "906515367141965826",
-                            "applications": [
-                                {
-                                    "app_id": app_id,
-                                    "app_name": "Worker闭环测试",
-                                    "version_id": None,
-                                    "updated_at": None,
-                                    "app_type": None,
-                                    "group_id": None,
-                                },
-                            ],
-                            "discovered_at": now.isoformat(),
-                        },
-                    },
-                ),
-                now=now,
-            )
-            worker_service.sync_skill_capabilities(
-                WorkerPrincipal(device_id=device_a),
-                SkillCapabilitySnapshotUpsert.model_validate(
-                    {
-                        "skills": [
-                            {
-                                "skill_id": "yingdao.app.run",
-                                "display_name": "运行影刀应用",
-                                "runtime": "rpa",
-                                "provider": "yingdao",
-                                "version": "1",
-                                "classification": "internal",
-                            },
-                        ],
-                    },
-                ),
-                now=now,
-            )
-            worker_service.sync_skill_capabilities(
-                WorkerPrincipal(device_id=device_b),
-                SkillCapabilitySnapshotUpsert.model_validate(
-                    {
-                        "skills": [
-                            {
-                                "skill_id": "yingdao.app.run",
-                                "display_name": "运行影刀应用",
-                                "runtime": "rpa",
-                                "provider": "yingdao",
-                                "version": "1",
-                                "classification": "internal",
-                            },
-                        ],
-                    },
-                ),
-                now=now,
-            )
-            config_service = AutomationApplicationConfigService(session)
-            saved = config_service.upsert(
-                "yingdao",
-                app_id,
-                AutomationApplicationConfigUpsert.model_validate(
-                    {
-                        "input_schema": {
-                            "fields": [
-                                {
-                                    "name": "商品列表",
-                                    "label": "",
-                                    "type": "text",
-                                    "required": True,
-                                    "default_value": '{"page":1}',
-                                    "options": [],
-                                },
-                            ],
-                        },
-                    },
-                ),
-            )
-            assert config_service.get("yingdao", app_id) == saved
-            assert saved.input_schema.fields[0].label == "商品列表"
-            assert saved.default_values == {"商品列表": '{"page":1}'}
-            updated = config_service.upsert(
-                "yingdao",
-                app_id,
-                AutomationApplicationConfigUpsert.model_validate(
-                    {
-                        "input_schema": {
-                            "fields": [
-                                {
-                                    "name": "商品列表",
-                                    "label": "商品列表说明",
-                                    "type": "text",
-                                    "required": True,
-                                    "default_value": '{"page":1}',
-                                    "options": [],
-                                },
-                            ],
-                        },
-                    },
-                ),
-            )
-            assert updated.version == saved.version + 1
-            assert config_service.get("yingdao", app_id) == updated
-            with pytest.raises(ValueError):
-                AutomationApplicationConfigUpsert.model_validate(
-                    {
-                        "input_schema": {
-                            "fields": [
-                                {
-                                    "name": "商品列表",
-                                    "label": "商品列表说明",
-                                    "type": "text",
-                                    "required": True,
-                                    "default_value": {"page": 1},
-                                    "options": [],
-                                },
-                            ],
-                        },
-                    },
-                )
-            assert config_service.get("yingdao", app_id) == updated
-
-            task_service = TaskService(session)
-            task = task_service.create(
-                TaskCreate(
-                    target_device_id=device_a,
-                    skill_id=TaskSkillId.YINGDAO_APP_RUN,
-                    input={"app_id": app_id, "params": {}},
-                ),
-                actor,
-            )
-            assert task.input_json == {
-                "app_id": app_id,
-                "params": {"商品列表": '{"page":1}'},
-            }
-            assert task.execution_display_name == "Worker闭环测试"
-            inventory_record = session.scalar(
-                select(DeviceProviderInventory).where(
-                    DeviceProviderInventory.device_id == device_a,
-                    DeviceProviderInventory.provider_code == "yingdao",
-                ),
-            )
-            assert inventory_record is not None
-            changed_inventory = dict(inventory_record.inventory_payload)
-            changed_applications = [
-                dict(application)
-                for application in changed_inventory["applications"]
-            ]
-            changed_applications[0]["app_name"] = "Worker闭环测试（已改名）"
-            changed_inventory["applications"] = changed_applications
-            inventory_record.inventory_payload = changed_inventory
-            session.commit()
-            session.refresh(task)
-            assert task.execution_display_name == "Worker闭环测试"
-            assert task_service.claim(WorkerPrincipal(device_id=device_b)) is None
-            claimed = task_service.claim_with_account(WorkerPrincipal(device_id=device_a))
-            assert claimed is not None
-            assert claimed.task.input_json == {
-                "app_id": app_id,
-                "params": {"商品列表": '{"page":1}'},
-            }
-
-            with pytest.raises(TaskProviderNotReadyError):
-                task_service.create(
-                    TaskCreate(
-                        target_device_id=device_b,
-                        skill_id=TaskSkillId.YINGDAO_APP_RUN,
-                        input={"app_id": app_id, "params": {}},
-                    ),
-                    actor,
-                )
-            with pytest.raises(TaskApplicationNotAvailableError):
-                task_service.create(
-                    TaskCreate(
-                        target_device_id=device_a,
-                        skill_id=TaskSkillId.YINGDAO_APP_RUN,
-                        input={"app_id": "not-visible", "params": {}},
-                    ),
-                    actor,
-                )
             with pytest.raises(TaskInputInvalidError):
                 task_service.create(
-                    TaskCreate(
-                        target_device_id=device_a,
-                        skill_id=TaskSkillId.YINGDAO_APP_RUN,
-                        input={"app_id": app_id, "params": {"商品列表": 1}},
-                    ),
+                    TaskCreate(target_device_id=device_a, skill_id=TaskSkillId.YINGDAO_TEST, input={}),
                     actor,
                 )
     finally:
@@ -737,10 +416,3 @@ def test_yingdao_app_config_and_device_isolated_task_creation(
             team_id=team_id,
             user_id=user_id,
         )
-        with Session(postgresql_engine) as session:
-            session.execute(
-                delete(AutomationApplicationConfig).where(
-                    AutomationApplicationConfig.app_id == app_id,
-                ),
-            )
-            session.commit()

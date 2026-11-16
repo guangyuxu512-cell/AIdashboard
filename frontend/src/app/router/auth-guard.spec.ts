@@ -11,6 +11,7 @@ import type {
 import { useAuthStore } from '@/stores/auth'
 
 import { installAuthGuard } from './auth-guard'
+import appRouter from './index'
 
 const user: CurrentHumanUser = {
   userId: 'parameter-preset-route-user',
@@ -57,12 +58,6 @@ function createGuardedRouter(pinia: ReturnType<typeof createPinia>) {
         component: { template: '<div />' },
       },
       {
-        path: '/parameter-presets',
-        name: 'parameter-presets',
-        component: { template: '<div />' },
-        meta: { moduleCode: 'parameter-preset' },
-      },
-      {
         path: '/assets',
         name: 'assets',
         component: { template: '<div />' },
@@ -80,7 +75,7 @@ function createGuardedRouter(pinia: ReturnType<typeof createPinia>) {
   return router
 }
 
-describe('parameter preset route authorization', () => {
+describe('route authorization', () => {
   beforeEach(() => {
     window.localStorage.clear()
     setActivePinia(createPinia())
@@ -119,27 +114,9 @@ describe('parameter preset route authorization', () => {
     },
   )
 
-  it('allows the distinct route when the existing Device permission is granted', async () => {
-    const pinia = createPinia()
-    const auth = useAuthStore(pinia)
-    auth.setDataSource(createSource(['device']))
-    const router = createGuardedRouter(pinia)
-
-    await router.push('/parameter-presets')
-    await router.isReady()
-
-    expect(router.currentRoute.value.name).toBe('parameter-presets')
-  })
-
-  it('does not expose the route without the existing Device permission', async () => {
-    const pinia = createPinia()
-    const auth = useAuthStore(pinia)
-    auth.setDataSource(createSource(['shop']))
-    const router = createGuardedRouter(pinia)
-
-    await router.push('/parameter-presets')
-    await router.isReady()
-
-    expect(router.currentRoute.value.name).toBe('permission-denied')
+  it('does not register retired central shop or Yingdao preset routes', () => {
+    const names = appRouter.getRoutes().map((route) => route.name)
+    expect(names).not.toContain('shops')
+    expect(names).not.toContain('parameter-presets')
   })
 })
