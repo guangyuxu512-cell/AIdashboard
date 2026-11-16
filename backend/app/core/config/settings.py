@@ -212,4 +212,11 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    settings = Settings()
+    # Selection is deliberately paused until a Worker implementation exists.
+    # A stale environment flag must not revive server-side execution.
+    settings.product_selection_execution_enabled = False
+    settings.product_selection_schedule_enabled = False
+    settings.operating_dashboard_collection_execution_enabled = False
+    settings.operating_dashboard_daily_collection_enabled = False
+    return settings

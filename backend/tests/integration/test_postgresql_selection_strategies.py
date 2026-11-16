@@ -96,7 +96,7 @@ def test_other_actual_industry_parent_saves_submits_and_persists_without_default
 def test_crud_refresh_edit_cas_toggle_do_not_submit_or_fetch(selection_context, monkeypatch):
     context = selection_context
     from app.modules.product_selection import platform_io
-    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Saving must not load Session or request the platform"))
+    monkeypatch.setattr(platform_io.SelectionUnavailableIO, "session_context", lambda *_: pytest.fail("Saving must not load Session or request the platform"))
     with _api_client(context) as client:
         headers = {"X-Team-ID": str(context[1][0])}
         created = client.post("/api/v1/product-selection/strategies", json=_config(context).model_dump(mode="json"), headers=headers)
@@ -213,7 +213,7 @@ def test_existing_strategy_post_and_progress_api_share_resource_context(selectio
     with Session(context[0]) as session:
         session.get(User, context[2][0]).is_super_account = True
         session.commit()
-    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Progress/replay must not load Session or request the platform"))
+    monkeypatch.setattr(platform_io.SelectionUnavailableIO, "session_context", lambda *_: pytest.fail("Progress/replay must not load Session or request the platform"))
     command = _input(context, rank_from=1, rank_to=10, strategy_id=saved.strategy_id, strategy_version=saved.version)
     headers = {"X-Team-ID": str(context[1][1])} if other_team else {}
 
@@ -387,7 +387,7 @@ def test_disabled_shop_can_be_closed_without_bypassing_authority_or_cas(selectio
     from app.modules.product_selection import platform_io
     context = selection_context
     saved = _save(context)
-    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Closing configuration must not read Session or request the platform"))
+    monkeypatch.setattr(platform_io.SelectionUnavailableIO, "session_context", lambda *_: pytest.fail("Closing configuration must not read Session or request the platform"))
     with Session(context[0]) as session:
         session.get(Shop, context[3][0]).enabled = False
         session.commit()
@@ -419,7 +419,7 @@ def test_edit_can_replace_disabled_shop_with_authorized_enabled_shop(selection_c
     from app.modules.product_selection import platform_io
     context = selection_context
     saved = _save(context)
-    monkeypatch.setattr(platform_io.SelectionStoredSessionIO, "session_context", lambda *_: pytest.fail("Editing configuration must not read Session or request the platform"))
+    monkeypatch.setattr(platform_io.SelectionUnavailableIO, "session_context", lambda *_: pytest.fail("Editing configuration must not read Session or request the platform"))
     with Session(context[0]) as session:
         session.get(Shop, context[3][0]).enabled = False
         session.commit()

@@ -170,7 +170,7 @@ def test_display_and_formal_submit_share_the_process_cache(selection_context, mo
     )),), "7", "行业", None)
     display, calls = _service(context, tree=tree)
     monkeypatch.setattr(category_service, "get_selection_category_cache", lambda: display.cache)
-    monkeypatch.setattr(category_service, "SelectionStoredSessionIO", lambda factory: display.platform)
+    monkeypatch.setattr(category_service, "SelectionUnavailableIO", lambda: display.platform)
     display.read(context[4][0], context[3][0])
     command = _input(context)
     with Session(context[0]) as session:

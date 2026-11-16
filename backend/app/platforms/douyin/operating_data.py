@@ -3,15 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from time import monotonic
 from typing import Any, Literal, Mapping
-from uuid import UUID
 from zoneinfo import ZoneInfo
 
-from app.modules.sessions.auth_context import ShopSessionAuthContext, StoredSessionCookie
-from app.modules.shops.enums import ShopPlatform
-from app.platforms.douyin.api_client import DouyinApiClient
-from app.platforms.douyin.endpoints import COMPASS_CORE_INDEX_V3_ENDPOINT
 from app.platforms.exceptions import PlatformRequestFailedError, PlatformResponseInvalidError
 
 
@@ -110,52 +104,6 @@ class CompassDailyMetrics:
     @property
     def income_amt_yuan(self) -> Decimal | None:
         return _cents_to_yuan(self.income_amt_cents)
-
-
-@dataclass(frozen=True)
-class CompassDailyRead:
-    shop_id: UUID
-    statistic_date: date
-    metrics: CompassDailyMetrics
-    cookie_updates: tuple[StoredSessionCookie, ...]
-    signature_duration_ms: int | None
-    platform_duration_ms: int
-    parse_duration_ms: int
-
-
-class DouyinOperatingDataConnector:
-    """Verified read-only Compass core-index request owned by Douyin."""
-
-    def __init__(self, *, api_client: DouyinApiClient | None = None) -> None:
-        self.api_client = api_client or DouyinApiClient()
-
-    def fetch_daily_metrics(
-        self,
-        shop_id: UUID,
-        auth_context: ShopSessionAuthContext,
-        statistic_date: date,
-        *,
-        request_lid: str | None = None,
-    ) -> CompassDailyRead:
-        if auth_context.platform is not ShopPlatform.DOUYIN:
-            raise PlatformRequestFailedError("Connector 与 Session 平台不匹配")
-
-        response = self.api_client.request_json(
-            COMPASS_CORE_INDEX_V3_ENDPOINT,
-            auth_context,
-            query=build_core_index_query(statistic_date, request_lid=request_lid),
-        )
-        parse_started_at = monotonic()
-        metrics = parse_core_index_metrics(response.payload)
-        return CompassDailyRead(
-            shop_id=shop_id,
-            statistic_date=statistic_date,
-            metrics=metrics,
-            cookie_updates=response.cookie_updates,
-            signature_duration_ms=response.signature_duration_ms,
-            platform_duration_ms=response.platform_duration_ms,
-            parse_duration_ms=round((monotonic() - parse_started_at) * 1000),
-        )
 
 
 def build_core_index_query(

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.modules.product_selection.api import get_selection_run_service
 from app.modules.product_selection.run_service import SelectionRunService
 from app.modules.product_selection.run_contract import SelectionRunReceipt
-from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+from app.modules.product_selection.platform_io import build_rank_query
 from app.platforms.douyin.product_selection import CompassRankPage, CompassSelectionBusinessError
 from tests.integration.test_postgresql_product_selection import selection_context, _product, _api_client
 from tests.integration.test_postgresql_selection_runs import _input, _get, _executor, SETTINGS
@@ -49,7 +49,7 @@ def test_formal_brand_save_read_post_pages_source_and_repeat(selection_context, 
             return CompassRankPage((_product(f"90000000000000000{page:02}", rank=1 if page == 1 else 11),), page, 10, 11)
     class Platform(WindowPlatform):
         def rank(self, auth_context, request, page_no):
-            return SelectionStoredSessionIO(lambda: None, connector=Connector()).rank(auth_context, request, page_no)
+            return Connector().rank(auth_context, build_rank_query(request, page_no))
     _executor(context, Platform(receipt.execution.request_conditions, {})).execute_available()
     run = _get(context, receipt)
     assert run.status == "succeeded" and run.request_conditions.version == 9 and run.saved_count == 2

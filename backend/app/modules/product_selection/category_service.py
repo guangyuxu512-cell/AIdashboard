@@ -11,7 +11,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.product_selection.category_cache import (
     SelectionCategoryCache, get_selection_category_cache,
 )
-from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+from app.modules.product_selection.platform_io import SelectionUnavailableIO
 from app.modules.product_selection.exceptions import SelectionExecutionDisabledError
 from app.modules.product_selection.schemas import SelectionCategoriesRead, SelectionCategoryRead
 from app.modules.product_selection.service import ProductSelectionFactService
@@ -29,12 +29,12 @@ def _node(node: CompassCategoryNode) -> SelectionCategoryRead:
 class SelectionCategoryService:
     def __init__(
         self, session_factory: Callable[[], AbstractContextManager[Session]], *,
-        platform: SelectionStoredSessionIO | None = None,
+        platform: SelectionUnavailableIO | None = None,
         cache: SelectionCategoryCache | None = None,
         settings: Settings | None = None,
     ):
         self.session_factory = session_factory
-        self.platform = platform or SelectionStoredSessionIO(session_factory)
+        self.platform = platform or SelectionUnavailableIO()
         self.cache = cache if cache is not None else get_selection_category_cache()
         self.settings = settings or get_settings()
 
