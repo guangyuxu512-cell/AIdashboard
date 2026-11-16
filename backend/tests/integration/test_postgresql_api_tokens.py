@@ -198,7 +198,7 @@ def test_existing_worker_migration_guard_still_rejects_data(token_environment, m
                 with pytest.raises(RuntimeError, match="retain schema and audit data"):
                     migration.downgrade()
             connection.rollback()
-            assert connection.scalar(text("select version_num from alembic_version")) == "20261114_0052"
+            assert connection.scalar(text("select version_num from alembic_version")) == "20261116_0055"
     finally:
         with Session(engine) as session:
             session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == device_id))
@@ -220,4 +220,4 @@ def test_token_migration_will_not_discard_existing_credentials(token_environment
             with pytest.raises(RuntimeError, match="retain schema and audit records"):
                 migration.downgrade()
         connection.rollback()
-        assert connection.scalar(text("select version_num from alembic_version")) == "20261114_0052"
+        assert connection.scalar(text("select version_num from alembic_version")) == "20261116_0055"

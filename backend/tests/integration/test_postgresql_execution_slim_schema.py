@@ -11,7 +11,7 @@ pytestmark = pytest.mark.integration
 
 def test_retired_workbench_tables_are_removed_without_removing_execution_assets(postgresql_engine):
     with postgresql_engine.connect() as connection:
-        assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '20261114_0052'
+        assert connection.scalar(text('SELECT version_num FROM alembic_version')) == '20261116_0055'
         tables = set(inspect(connection).get_table_names())
     assert not tables.intersection({
         'ai_models', 'template_groups', 'prompt_templates', 'product_material_groups',

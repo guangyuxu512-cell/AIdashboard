@@ -43,7 +43,6 @@ from app.modules.devices.exceptions import DeviceNotFoundError
 from app.modules.devices.models import Device
 from app.modules.shops.api import (
     get_shop_authorized_actor,
-    get_shop_platform_service,
     get_shop_service,
 )
 from app.modules.shops.enums import ShopPlatform
@@ -69,7 +68,6 @@ from app.modules.tasks.schemas import (
     TaskEventPurgeRead,
     TaskListItemRead,
 )
-from app.platforms.schemas import PlatformShopIdentityRead
 from app.shared.pagination import Page
 from app.modules.users.api import get_user_service
 from app.modules.users.models import User
@@ -196,19 +194,6 @@ class ApiShopService:
                 enabled=True,
             ),
         )  # type: ignore[return-value]
-
-
-class ApiShopPlatformService:
-    def fetch_identity(self, shop_id: UUID) -> PlatformShopIdentityRead:
-        if shop_id != SHOP_ID:
-            raise ShopNotFoundError()
-        return PlatformShopIdentityRead(
-            shop_id=shop_id,
-            platform=ShopPlatform.DOUYIN,
-            platform_shop_id="platform-shop-1",
-            shop_display_name="API 店铺",
-            session_status=ShopSessionStatus.VALID,
-        )
 
 
 class ApiDeviceService:
@@ -664,9 +649,6 @@ class ApiScheduleService:
 def request(method: str, path: str, **kwargs: object) -> Response:
     application = create_app()
     application.dependency_overrides[get_shop_service] = ApiShopService
-    application.dependency_overrides[get_shop_platform_service] = (
-        ApiShopPlatformService
-    )
     application.dependency_overrides[get_device_service] = ApiDeviceService
     application.dependency_overrides[get_worker_service] = ApiWorkerService
     application.dependency_overrides[get_user_service] = ApiUserService
@@ -733,9 +715,7 @@ def test_shop_device_and_binding_success_paths() -> None:
     assert binding_response.status_code == 201
     assert binding_response.json()["enabled"] is True
     assert "binding_role" not in binding_response.json()
-    assert identity_response.status_code == 200
-    assert identity_response.json()["shop_display_name"] == "API 店铺"
-    assert identity_response.json()["session_status"] == "valid"
+    assert identity_response.status_code == 404
 
     remove_response = request("DELETE", f"/api/v1/shops/{SHOP_ID}")
     assert remove_response.status_code == 204

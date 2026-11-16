@@ -14,7 +14,6 @@ from app.modules.access.management_api import router as access_management_router
 from app.modules.api_tokens.api import router as api_tokens_router
 from app.modules.api_tokens.catalog import install_openapi_security
 from app.modules.audit.api import router as audit_log_router
-from app.modules.authentication.api import router as authentication_router
 from app.modules.assets.api import router as assets_router
 from app.modules.automation_apps.api import router as automation_apps_router
 from app.modules.automation_apps.presets_api import (
@@ -26,20 +25,11 @@ from app.modules.devices.api import router as devices_router
 from app.modules.human_auth.api import router as human_auth_router
 from app.modules.notifications.api import router as notifications_router
 from app.modules.operating_dashboard.api import router as operating_dashboard_router
-from app.modules.operating_dashboard.executor import (
-    execute_operating_data_collections_forever,
-)
-from app.modules.operating_dashboard.scheduler import (
-    enqueue_due_daily_operating_collections_forever,
-    recover_operating_data_collections_on_startup,
-)
 from app.modules.product_data.api import router as product_data_router
-from app.modules.product_data.executor import execute_product_data_collections_forever
 from app.modules.product_selection.api import router as product_selection_router
 from app.modules.product_selection.run_executor import execute_selection_runs_forever
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
-from app.modules.sessions.api import router as sessions_router
 from app.modules.shops.api import router as shops_router
 from app.modules.tasks.api import router as tasks_router
 from app.modules.tasks.reconcile import reconcile_lost_tasks_forever
@@ -61,36 +51,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     offline_reconcile_task = asyncio.create_task(reconcile_offline_devices_forever())
     retention_task = asyncio.create_task(purge_expired_task_events_forever())
     schedule_task = asyncio.create_task(trigger_due_schedules_forever())
-    operating_collection_task = (
-        asyncio.create_task(execute_operating_data_collections_forever())
-        if settings.operating_dashboard_collection_execution_enabled
-        else None
-    )
-    operating_daily_planning_task = (
-        asyncio.create_task(enqueue_due_daily_operating_collections_forever())
-        if (
-            settings.operating_dashboard_collection_execution_enabled
-            and settings.operating_dashboard_daily_collection_enabled
-            and settings.operating_dashboard_daily_collection_local_time is not None
-        )
-        else None
-    )
-    operating_startup_recovery_task = (
-        asyncio.create_task(recover_operating_data_collections_on_startup())
-        if (
-            settings.operating_dashboard_collection_execution_enabled
-            and settings.operating_dashboard_daily_collection_enabled
-        )
-        else None
-    )
     selection_run_task = (
         asyncio.create_task(execute_selection_runs_forever())
         if settings.product_selection_execution_enabled
-        else None
-    )
-    product_data_collection_task = (
-        asyncio.create_task(execute_product_data_collections_forever())
-        if settings.product_data_collection_execution_enabled
         else None
     )
     try:
@@ -100,16 +63,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         offline_reconcile_task.cancel()
         retention_task.cancel()
         schedule_task.cancel()
-        if operating_collection_task is not None:
-            operating_collection_task.cancel()
-        if operating_daily_planning_task is not None:
-            operating_daily_planning_task.cancel()
-        if operating_startup_recovery_task is not None:
-            operating_startup_recovery_task.cancel()
         if selection_run_task is not None:
             selection_run_task.cancel()
-        if product_data_collection_task is not None:
-            product_data_collection_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -118,21 +73,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await retention_task
         with suppress(asyncio.CancelledError):
             await schedule_task
-        if operating_collection_task is not None:
-            with suppress(asyncio.CancelledError):
-                await operating_collection_task
-        if operating_daily_planning_task is not None:
-            with suppress(asyncio.CancelledError):
-                await operating_daily_planning_task
-        if operating_startup_recovery_task is not None:
-            with suppress(asyncio.CancelledError):
-                await operating_startup_recovery_task
         if selection_run_task is not None:
             with suppress(asyncio.CancelledError):
                 await selection_run_task
-        if product_data_collection_task is not None:
-            with suppress(asyncio.CancelledError):
-                await product_data_collection_task
 
 
 def create_app() -> FastAPI:
@@ -165,7 +108,6 @@ def create_app() -> FastAPI:
     application.include_router(access_management_router)
     application.include_router(api_tokens_router)
     application.include_router(audit_log_router)
-    application.include_router(authentication_router)
     application.include_router(assets_router)
     application.include_router(automation_apps_router)
     application.include_router(automation_parameter_preset_management_router)
@@ -178,7 +120,6 @@ def create_app() -> FastAPI:
     application.include_router(product_selection_router)
     application.include_router(product_data_router)
     application.include_router(credentials_router)
-    application.include_router(sessions_router)
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
