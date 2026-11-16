@@ -5,8 +5,6 @@ import type {
   DeviceCapabilityAvailability,
   DeviceEnabledStatus,
   DeviceRuntimeStatus,
-  YingdaoAvailabilityStatus,
-  YingdaoProviderStatus,
 } from './types'
 
 export interface DeviceStatusMeta {
@@ -38,18 +36,3 @@ export const DEVICE_CAPABILITY_AVAILABILITY_META = {
   available: { label: '可用', tone: 'success' },
   unavailable: { label: '不可用', tone: 'neutral' },
 } satisfies Record<DeviceCapabilityAvailability, DeviceStatusMeta>
-
-export const YINGDAO_AVAILABILITY_META = {
-  available: { label: '可用', tone: 'success' },
-  unavailable: { label: '不可用', tone: 'error' },
-  not_detected: { label: '未检测', tone: 'neutral' },
-} satisfies Record<YingdaoAvailabilityStatus, DeviceStatusMeta>
-
-export const YINGDAO_PROVIDER_STATUS_META = {
-  not_installed: { label: '未安装', tone: 'neutral' },
-  version_unsupported: { label: '版本不支持', tone: 'warning' },
-  starting: { label: '正在启动', tone: 'info' },
-  need_login: { label: '需要登录', tone: 'warning' },
-  interface_unreachable: { label: '接口不可达', tone: 'error' },
-  ready: { label: '已就绪', tone: 'success' },
-} satisfies Record<YingdaoProviderStatus, DeviceStatusMeta>

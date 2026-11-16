@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
 
 import {
   DeviceDetailDrawer,
@@ -8,30 +7,16 @@ import {
   DeviceFormDialog,
   DeviceListTable,
   DeviceRemoveDialog,
-  YingdaoApplicationRunDialog,
   WorkerCredentialConfirmDialog,
   WorkerTokenDialog,
   useDeviceManagement,
 } from '@/features/device-management'
-import type { ProviderApplicationViewModel } from '@/entities/device'
 import { TaskRuntimeDrawer } from '@/features/task-runtime'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 
 const management = useDeviceManagement()
-const router = useRouter()
-
-function openParameterPresets(application: ProviderApplicationViewModel): void {
-  management.capabilityVisible.value = false
-  void router.push({
-    path: '/parameter-presets',
-    query: {
-      device_id: management.capabilityDeviceId.value,
-      app_id: application.appId,
-    },
-  })
-}
 </script>
 
 <template>
@@ -77,10 +62,6 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
       :device="management.detailDevice.value"
       :loading="management.detailLoading.value"
       :error="management.detailError.value"
-      :yingdao-inventory="management.yingdaoInventory.value"
-      :provider-inventory-loading="management.providerInventoryLoading.value"
-      :provider-inventory-error="management.providerInventoryError.value"
-      :yingdao-refreshing="management.yingdaoRefreshing.value"
       :current-execution="management.detailCurrentExecution.value"
       :local-shops="management.detailLocalShops.value"
       :recent-executions="management.recentExecutions.value"
@@ -96,8 +77,6 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
         management.workerCredentialSubmitting.value
       "
       @retry="management.retryDetail"
-      @retry-provider-inventory="management.retryProviderInventory"
-      @refresh-yingdao="management.refreshYingdao"
       @view-capabilities="management.openCapabilities"
       @edit="management.openEdit"
       @toggle-enabled="management.toggleEnabled"
@@ -125,28 +104,7 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
       :skills="management.skillCapabilities.value"
       :skills-loading="management.skillCapabilitiesLoading.value"
       :skills-error="management.skillCapabilitiesError.value"
-      :yingdao-inventory="management.capabilityYingdaoInventory.value"
-      :provider-inventory-loading="
-        management.capabilityProviderInventoryLoading.value
-      "
-      :provider-inventory-error="
-        management.capabilityProviderInventoryError.value
-      "
-      :yingdao-refreshing="management.yingdaoRefreshing.value"
       @retry-skills="management.retrySkillCapabilities"
-      @retry-provider-inventory="
-        management.retryCapabilityProviderInventory
-      "
-      @refresh-yingdao="management.refreshYingdao"
-      @parameter-presets="openParameterPresets"
-      @run="management.runYingdaoApplication"
-    />
-
-    <YingdaoApplicationRunDialog
-      v-model:show="management.applicationRunVisible.value"
-      :application="management.selectedApplication.value"
-      :device-id="management.capabilityDeviceId.value"
-      @started="management.openTaskRuntime"
     />
 
     <DeviceFormDialog

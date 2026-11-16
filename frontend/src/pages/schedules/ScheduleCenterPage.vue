@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { NAlert } from 'naive-ui'
 import {
   ScheduleDetailDrawer,
   ScheduleFilterBar,
@@ -16,6 +17,7 @@ const management = useScheduleManagement()
 
 <template>
   <div class="page-container schedule-center-page">
+    <NAlert type="warning" :show-icon="false">定时执行已暂停，现有计划不会自动触发。</NAlert>
     <ScheduleFilterBar
       v-model="management.filterDraft.value"
       :device-options="management.deviceOptions.value"

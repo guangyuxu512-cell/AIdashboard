@@ -21,13 +21,13 @@ describe('execution-layer navigation', () => {
     expect(visible).toEqual(expect.arrayContaining(['device', 'task', 'schedule', 'product-selection']))
   })
 
-  it('retains device, task, schedule and parameter-preset navigation', () => {
+  it('retains device, task and schedule navigation without retired presets', () => {
     const automation = getNavigationEntries().find(
       (entry) => entry.type === 'group' && entry.groupCode === 'automation',
     )
     expect(automation?.type === 'group' && automation.children.map((item) => item.moduleCode))
-      .toEqual(['device', 'task', 'schedule', 'parameter-preset'])
-    expect(getModuleAccessCode(getModuleDefinition('parameter-preset')!)).toBe('device')
+      .toEqual(['device', 'task', 'schedule'])
+    expect(getModuleDefinition('parameter-preset')).toBeUndefined()
   })
 
   it('retains selection and the operating dashboard under their existing grants', () => {

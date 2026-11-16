@@ -12,7 +12,7 @@ from uuid import UUID
 from pydantic import SecretStr
 
 
-DEFAULT_PRODUCTION_SERVER_URL = "https://119.29.188.118"
+DEFAULT_PRODUCTION_SERVER_URL = "https://center.mysiyuai.top"
 
 
 class WorkerConfigurationError(RuntimeError):
@@ -116,19 +116,12 @@ class LocalWorkerConfig:
     device_id: UUID
     device_token: SecretStr
     device_display_name: str | None
-    yingdao_install_root: Path | None
-    yingdao_data_root: Path | None
-    yingdao_test_app_id: str | None
-    params_json_path: Path
-    account_json_path: Path
     images_dir: Path
     configured_at_utc: str | None
 
 
 @dataclass(frozen=True)
 class LocalInputPaths:
-    params_json_path: Path
-    account_json_path: Path
     images_dir: Path
 
 
@@ -147,49 +140,20 @@ def get_default_local_input_paths(
 ) -> LocalInputPaths:
     local_input_root = (data_root or get_worker_data_root()).resolve() / "data"
     return LocalInputPaths(
-        params_json_path=local_input_root / "params.json",
-        account_json_path=local_input_root / "account.json",
         images_dir=local_input_root / "images",
     )
 
 
 def validate_local_input_paths(paths: LocalInputPaths) -> LocalInputPaths:
-    resolved = LocalInputPaths(
-        params_json_path=paths.params_json_path.resolve(),
-        account_json_path=paths.account_json_path.resolve(),
-        images_dir=paths.images_dir.resolve(),
-    )
-    if resolved.params_json_path == resolved.account_json_path:
-        raise WorkerConfigurationError(
-            "Parameter JSON and account JSON paths must be different",
-        )
-    if _is_filesystem_root(resolved.images_dir):
-        raise WorkerConfigurationError(
-            "The images directory cannot be a filesystem root",
-        )
-    if any(
-        resolved.images_dir == json_path
-        or resolved.images_dir in json_path.parents
-        for json_path in (
-            resolved.params_json_path,
-            resolved.account_json_path,
-        )
-    ):
-        raise WorkerConfigurationError(
-            "JSON files cannot be stored inside the managed images directory",
-        )
-    _validate_json_target(resolved.params_json_path, "Parameter JSON")
-    _validate_json_target(resolved.account_json_path, "Account JSON")
-    _ensure_directory_writable(resolved.images_dir, "Images directory")
-    return resolved
+    images_dir = paths.images_dir.resolve()
+    if _is_filesystem_root(images_dir):
+        raise WorkerConfigurationError("The images directory cannot be a filesystem root")
+    _ensure_directory_writable(images_dir, "Images directory")
+    return LocalInputPaths(images_dir=images_dir)
 
 
 def inspect_local_input_paths(paths: LocalInputPaths) -> dict[str, str]:
-    return {
-        "params_json": _inspect_json_target(paths.params_json_path),
-        "account_json": _inspect_json_target(paths.account_json_path),
-        "images_dir": _inspect_directory(paths.images_dir, reject_root=True),
-    }
+    return {"images_dir": _inspect_directory(paths.images_dir, reject_root=True)}
 
 
 def write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
@@ -232,8 +196,6 @@ class WorkerConfigService:
         defaults = get_default_local_input_paths(self.data_root)
         upgraded = False
         for key, default_path in (
-            ("params_json_path", defaults.params_json_path),
-            ("account_json_path", defaults.account_json_path),
             ("images_dir", defaults.images_dir),
         ):
             if _optional_string(payload.get(key)) is None:
@@ -256,21 +218,6 @@ class WorkerConfigService:
                 device_display_name=_optional_string(
                     payload.get("device_display_name"),
                 ),
-                yingdao_install_root=_optional_path(
-                    payload.get("yingdao_install_root"),
-                ),
-                yingdao_data_root=_optional_path(payload.get("yingdao_data_root")),
-                yingdao_test_app_id=_optional_string(
-                    payload.get("yingdao_test_app_id"),
-                ),
-                params_json_path=_optional_path(
-                    payload.get("params_json_path"),
-                )
-                or defaults.params_json_path,
-                account_json_path=_optional_path(
-                    payload.get("account_json_path"),
-                )
-                or defaults.account_json_path,
                 images_dir=_optional_path(payload.get("images_dir"))
                 or defaults.images_dir,
                 configured_at_utc=_optional_string(
@@ -287,11 +234,6 @@ class WorkerConfigService:
         device_id: UUID,
         device_token: str,
         device_display_name: str | None,
-        yingdao_install_root: Path | None,
-        yingdao_data_root: Path | None = None,
-        yingdao_test_app_id: str | None = None,
-        params_json_path: Path | None = None,
-        account_json_path: Path | None = None,
         images_dir: Path | None = None,
     ) -> LocalWorkerConfig:
         if not device_token.strip():
@@ -299,8 +241,6 @@ class WorkerConfigService:
         defaults = get_default_local_input_paths(self.data_root)
         local_input_paths = validate_local_input_paths(
             LocalInputPaths(
-                params_json_path=params_json_path or defaults.params_json_path,
-                account_json_path=account_json_path or defaults.account_json_path,
                 images_dir=images_dir or defaults.images_dir,
             ),
         )
@@ -309,19 +249,6 @@ class WorkerConfigService:
             "device_id": str(device_id),
             "device_display_name": device_display_name,
             "device_token_protected": self.protector.protect(device_token),
-            "yingdao_install_root": (
-                str(yingdao_install_root.resolve())
-                if yingdao_install_root is not None
-                else None
-            ),
-            "yingdao_data_root": (
-                str(yingdao_data_root.resolve())
-                if yingdao_data_root is not None
-                else None
-            ),
-            "yingdao_test_app_id": yingdao_test_app_id,
-            "params_json_path": str(local_input_paths.params_json_path),
-            "account_json_path": str(local_input_paths.account_json_path),
             "images_dir": str(local_input_paths.images_dir),
             "configured_at_utc": datetime.now(UTC).isoformat(),
         }
@@ -336,14 +263,6 @@ def _optional_string(value: object) -> str | None:
 def _optional_path(value: object) -> Path | None:
     text = _optional_string(value)
     return Path(text).resolve() if text else None
-
-
-def _validate_json_target(path: Path, caption: str) -> None:
-    if path.exists() and not path.is_file():
-        raise WorkerConfigurationError(f"{caption} path must be a file")
-    _ensure_directory_writable(path.parent, f"{caption} parent directory")
-    if path.exists() and not os.access(path, os.W_OK):
-        raise WorkerConfigurationError(f"{caption} path is not writable")
 
 
 def _ensure_directory_writable(path: Path, caption: str) -> None:
@@ -363,13 +282,6 @@ def _ensure_directory_writable(path: Path, caption: str) -> None:
 
 def _is_filesystem_root(path: Path) -> bool:
     return path.parent == path
-
-
-def _inspect_json_target(path: Path) -> str:
-    resolved = path.resolve()
-    if resolved.exists() and not resolved.is_file():
-        return "不可写"
-    return _inspect_directory(resolved.parent)
 
 
 def _inspect_directory(path: Path, *, reject_root: bool = False) -> str:

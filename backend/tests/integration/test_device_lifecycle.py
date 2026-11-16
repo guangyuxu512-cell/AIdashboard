@@ -7,14 +7,12 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.enums import DataScope
-from app.modules.access.models import Team, TeamDeviceAccess, TeamShopAccess
+from app.modules.access.models import Team, TeamDeviceAccess
 from app.modules.devices.exceptions import DeviceHasActiveTasksError
 from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import DeviceCreate, DeviceUpdate
 from app.modules.devices.service import DeviceService
-from app.modules.shops.enums import ShopPlatform
-from app.modules.shops.models import Shop, ShopDeviceBinding
 from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.models import Task
 from app.modules.tasks.schemas import TaskCreate, TaskFail
@@ -44,7 +42,6 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
     team_id = uuid4()
     user_id = uuid4()
     replacement_device_id = None
-    shop_id = uuid4()
     task_id = None
     now = datetime.now(UTC)
     actor = ActorContext(
@@ -74,54 +71,13 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                         display_name="stage-device-lifecycle",
                         enabled=True,
                     ),
-                    Shop(
-                        shop_id=shop_id,
-                        display_name="stage-device-lifecycle-shop",
-                        platform=ShopPlatform.DOUYIN,
-                        enabled=True,
-                    ),
                 ],
             )
             session.flush()
             session.add_all(
                 [
                     TeamDeviceAccess(team_id=team_id, device_id=device_id),
-                    TeamShopAccess(team_id=team_id, shop_id=shop_id),
                 ],
-            )
-            session.add(
-                ShopDeviceBinding(
-                    shop_id=shop_id,
-                    device_id=device_id,
-                    enabled=True,
-                ),
-            )
-            session.add(
-                DeviceProviderInventory(
-                    device_id=device_id,
-                    provider_code="yingdao",
-                    available=True,
-                    provider_version="6.3.6",
-                    account_display="integration-account",
-                    account_type="PersonalBasic",
-                    enterprise_account=False,
-                    last_discovered_at=now,
-                    inventory_payload={
-                        "provider": "yingdao",
-                        "available": True,
-                        "status": "ready",
-                        "provider_version": "6.3.6",
-                        "execution_available": True,
-                        "execution_version": "6.3.6",
-                        "logged_in": True,
-                        "account_display": "integration-account",
-                        "account_type": "PersonalBasic",
-                        "enterprise_account": False,
-                        "user_id": "integration-user",
-                        "applications": [],
-                        "discovered_at": now.isoformat(),
-                    },
-                ),
             )
             session.commit()
 
@@ -209,14 +165,11 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
             assert stored.enabled is False
             assert stored.deleted_at is not None
             assert DeviceRepository(session).get(device_id) is None
-            binding = session.get(ShopDeviceBinding, (shop_id, device_id))
-            assert binding is not None and binding.enabled is False
             credential = session.query(WorkerDeviceCredential).filter_by(
                 device_id=device_id,
             ).one()
             assert credential.enabled is False
             assert session.get(Task, task_id) is not None
-            assert session.get(DeviceProviderInventory, (device_id, "yingdao")) is not None
             assert session.get(DeviceRuntime, device_id) is not None
 
             replacement = DeviceService(session).create(
@@ -247,18 +200,8 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                 ),
             )
             session.execute(
-                delete(ShopDeviceBinding).where(
-                    ShopDeviceBinding.device_id == device_id,
-                ),
-            )
-            session.execute(
                 delete(TeamDeviceAccess).where(
                     TeamDeviceAccess.team_id == team_id,
-                ),
-            )
-            session.execute(
-                delete(TeamShopAccess).where(
-                    TeamShopAccess.team_id == team_id,
                 ),
             )
             session.execute(delete(Device).where(Device.device_id == device_id))
@@ -266,7 +209,6 @@ def test_device_soft_remove_preserves_history_and_revokes_execution_identity(
                 session.execute(
                     delete(Device).where(Device.device_id == replacement_device_id),
                 )
-            session.execute(delete(Shop).where(Shop.shop_id == shop_id))
             session.execute(delete(Team).where(Team.team_id == team_id))
             session.execute(delete(User).where(User.user_id == user_id))
             session.commit()

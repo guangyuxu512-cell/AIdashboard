@@ -2,14 +2,12 @@ import {
   Blocks,
   CalendarClock,
   ChartLine,
-  SlidersHorizontal,
   Images,
   ListChecks,
   Monitor,
   Package,
   Library,
   Settings,
-  Store,
   Workflow,
 } from '@lucide/vue'
 import type { Component } from 'vue'
@@ -97,12 +95,12 @@ export const MODULE_REGISTRY = [
   {
     moduleCode: 'shop',
     accessModuleCode: null,
-    moduleName: '店铺中心',
+    moduleName: '历史经营数据',
     navigationGroup: 'management',
     navigationParent: null,
-    routeName: 'shops',
-    routePath: '/shops',
-    icon: Store,
+    routeName: 'operating-dashboard',
+    routePath: '/operating-dashboard',
+    icon: ChartLine,
     enabled: true,
     navigationVisible: false,
     permissionCode: null,
@@ -202,21 +200,6 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 33,
-  },
-  {
-    moduleCode: 'parameter-preset',
-    // The API uses the existing Device ActorContext guard.  This does not
-    // create a Backend `parameter-preset` permission or expose new data.
-    accessModuleCode: 'device',
-    moduleName: '参数配置',
-    navigationGroup: 'management',
-    navigationParent: 'automation',
-    routeName: 'parameter-presets',
-    routePath: '/parameter-presets',
-    icon: SlidersHorizontal,
-    enabled: true,
-    permissionCode: null,
-    order: 34,
   },
   {
     moduleCode: 'settings',

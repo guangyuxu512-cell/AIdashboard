@@ -12,7 +12,6 @@ import {
 import { createSelectionMockHandlers } from '../api/selection-mock-handlers'
 import type { SelectionService } from '../model/contracts'
 import CandidatePool from './CandidatePool.vue'
-import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
 import { ProductInfoCell } from '@/entities/product'
 
 const TableStub = defineComponent({
@@ -41,7 +40,6 @@ function render(service: SelectionService) {
         plugins: [[VueQueryPlugin, { queryClient }]],
         stubs: {
           DataTable: TableStub,
-          ShopSelector: true,
           CandidateDetailDrawer: true,
         },
       },
@@ -67,19 +65,14 @@ describe('candidate list', () => {
       '--list-compact-control-height',
     ),
   )
-  it('clearing shop removes the filter, resets pagination and only reads results', async () => {
+  it('reads candidate history without a central shop selector or platform retrieval', async () => {
     const service = createSelectionMockHandlers()
     const candidates = vi.spyOn(service, 'candidates')
     const retrieve = vi.spyOn(service, 'retrieve')
     const { wrapper, dispose } = render(service)
     await flushPromises()
     expect(candidates.mock.calls[0]?.[0].pageSize).toBe(20)
-    const selector = wrapper.findComponent(ShopSelector)
-    expect(selector.props('clearable')).toBe(true)
-    selector.vm.$emit('update:modelValue', 'shop-fixture-001')
-    await flushPromises()
-    selector.vm.$emit('update:modelValue', null)
-    await flushPromises()
+    expect(wrapper.text()).not.toContain('全部请求店铺')
     expect(candidates.mock.calls.at(-1)?.[0]).toMatchObject({
       shopId: null,
       page: 1,

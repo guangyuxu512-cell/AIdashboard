@@ -6,6 +6,17 @@ import pytest
 from app.modules.schedules import scheduler
 
 
+def test_paused_scheduler_does_not_access_database(monkeypatch) -> None:
+    monkeypatch.setattr(
+        scheduler, "get_settings",
+        lambda: SimpleNamespace(worker_schedule_execution_enabled=False),
+    )
+    def unexpected_database_access():
+        raise AssertionError("paused scheduler must not scan for tasks")
+    monkeypatch.setattr(scheduler, "get_session_factory", unexpected_database_access)
+    assert scheduler.trigger_due_schedules_once() == 0
+
+
 def test_scheduler_loop_recovers_after_a_scan_error(monkeypatch, caplog) -> None:
     calls = 0
 
@@ -58,3 +69,19 @@ def test_scheduler_loop_honors_normal_task_cancellation(monkeypatch) -> None:
 
     asyncio.run(run_and_cancel())
     assert scans_started == 1
+
+
+def test_retired_collection_and_scheduler_cannot_be_revived_by_stale_environment(monkeypatch):
+    from app.core.config import get_settings
+
+    monkeypatch.setenv("BACKEND_WORKER_SCHEDULE_EXECUTION_ENABLED", "true")
+    monkeypatch.setenv("BACKEND_PRODUCT_DATA_COLLECTION_EXECUTION_ENABLED", "true")
+    monkeypatch.setenv("BACKEND_PRODUCT_SELECTION_EXECUTION_ENABLED", "true")
+    get_settings.cache_clear()
+    try:
+        settings = get_settings()
+        assert settings.worker_schedule_execution_enabled is False
+        assert settings.product_data_collection_execution_enabled is False
+        assert settings.product_selection_execution_enabled is False
+    finally:
+        get_settings.cache_clear()

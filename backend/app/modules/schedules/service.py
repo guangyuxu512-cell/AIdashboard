@@ -15,7 +15,7 @@ from app.modules.schedules.exceptions import (
     ScheduleNotFoundError,
     ScheduleRuleInvalidError,
 )
-from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
+from app.modules.schedules.models import Schedule, ScheduleRun
 from app.modules.schedules.repository import (
     ScheduleListRecord,
     ScheduleRepository,
@@ -39,6 +39,7 @@ from app.modules.tasks.enums import TaskSkillId, TaskStatus
 from app.modules.tasks.exceptions import TaskInputInvalidError
 from app.modules.tasks.schemas import TaskCreate
 from app.modules.tasks.service import TaskService
+from app.modules.workers.shop_context import LOCAL_SHOPS_KEY, worker_shop_snapshot_matches
 from app.shared.pagination import Page
 
 
@@ -65,6 +66,7 @@ class ScheduleService:
         task_data = _task_create(
             target_device_id=data.target_device_id,
             shop_ids=data.shop_ids,
+            local_shop_ids=data.local_shop_ids,
             execution_type=data.execution_type,
             application_id=data.application_id,
             parameter_preset_id=data.parameter_preset_id,
@@ -91,10 +93,6 @@ class ScheduleService:
             local_date=data.local_date,
             weekdays=list(data.weekdays),
             task_input_json=prepared.input_json,
-            shop_links=[
-                ScheduleShop(shop_id=shop_id, position=position)
-                for position, shop_id in enumerate(data.shop_ids)
-            ],
             next_run_at=(
                 next_schedule_occurrence(
                     data.schedule_type,
@@ -139,7 +137,9 @@ class ScheduleService:
                 "target_device_id",
                 schedule.target_device_id,
             )
-            shop_ids = values.get("shop_ids", schedule.shop_ids)
+            shop_ids = values.get("shop_ids", [])
+            saved_shops = schedule.task_input_json.get(LOCAL_SHOPS_KEY, [])
+            local_shop_ids = values.get("local_shop_ids", [item["local_shop_id"] for item in saved_shops])
             current_execution_type = _execution_type_for_skill(schedule.skill_id)
             execution_type = values.get(
                 "execution_type",
@@ -187,7 +187,7 @@ class ScheduleService:
                 application_id = None
                 parameter_preset_id = None
                 existing_parameters = (
-                    schedule.task_input_json
+                    {key: value for key, value in schedule.task_input_json.items() if key != LOCAL_SHOPS_KEY}
                     if current_execution_type is execution_type
                     else {}
                 )
@@ -195,6 +195,7 @@ class ScheduleService:
             task_data = _task_create(
                 target_device_id=target_device_id,
                 shop_ids=shop_ids,
+                local_shop_ids=local_shop_ids,
                 execution_type=execution_type,
                 application_id=application_id,
                 parameter_preset_id=parameter_preset_id,
@@ -229,16 +230,6 @@ class ScheduleService:
             schedule.name = values.get("name", schedule.name)
             schedule.target_device_id = target_device_id
             schedule.parameter_preset_id = parameter_preset_id
-            if schedule.shop_ids != shop_ids:
-                # Remove the old ordered set before inserting the replacement.
-                # This also makes pure reordering safe with the unique position
-                # constraint instead of relying on row update order.
-                schedule.shop_links.clear()
-                self.session.flush()
-                schedule.shop_links = [
-                    ScheduleShop(shop_id=shop_id, position=position)
-                    for position, shop_id in enumerate(shop_ids)
-                ]
             schedule.skill_id = task_data.skill_id
             schedule.execution_display_name = prepared.execution_display_name
             schedule.schedule_type = schedule_type.value
@@ -390,12 +381,18 @@ class ScheduleService:
             trigger_result=ScheduleRunTriggerResult.BLOCKED.value,
         )
         try:
+            local_shops = schedule.task_input_json.get(LOCAL_SHOPS_KEY, [])
+            if not worker_shop_snapshot_matches(
+                self.session, schedule.target_device_id, local_shops, require_available=False,
+            ):
+                raise TaskInputInvalidError("设备店铺映射已变化，请重新选择店铺")
             task = self.task_service.create_for_schedule(
                 TaskCreate(
                     target_device_id=schedule.target_device_id,
-                    shop_ids=schedule.shop_ids,
+                    shop_ids=[],
+                    local_shop_ids=[item["local_shop_id"] for item in local_shops],
                     skill_id=schedule.skill_id,
-                    input=schedule.task_input_json,
+                    input={key: value for key, value in schedule.task_input_json.items() if key != LOCAL_SHOPS_KEY},
                     parameter_preset_id=schedule.parameter_preset_id,
                 ),
                 team_id=schedule.team_id,
@@ -424,6 +421,7 @@ def _task_create(
     *,
     target_device_id: UUID,
     shop_ids: list[UUID],
+    local_shop_ids: list[str],
     execution_type: ScheduleExecutionType,
     application_id: str | None,
     parameter_preset_id: UUID | None,
@@ -436,18 +434,11 @@ def _task_create(
         return TaskCreate(
             target_device_id=target_device_id,
             shop_ids=shop_ids,
+            local_shop_ids=local_shop_ids,
             skill_id=skill_id,
             input=parameters,
         )
-    if application_id is None:
-        raise TaskInputInvalidError("请选择影刀应用")
-    return TaskCreate(
-        target_device_id=target_device_id,
-        shop_ids=shop_ids,
-        skill_id=TaskSkillId.YINGDAO_APP_RUN,
-        input={"app_id": application_id, "params": parameters},
-        parameter_preset_id=parameter_preset_id,
-    )
+    raise TaskInputInvalidError("影刀任务已停用，请使用 Worker 技能包")
 
 
 def _schedule_to_read(record: ScheduleListRecord) -> ScheduleRead:
@@ -464,7 +455,7 @@ def _schedule_to_read(record: ScheduleListRecord) -> ScheduleRead:
         parameters=(
             dict(schedule.task_input_json.get("params", {}))
             if execution_type is ScheduleExecutionType.YINGDAO_APPLICATION
-            else dict(schedule.task_input_json)
+            else {key: value for key, value in schedule.task_input_json.items() if key != LOCAL_SHOPS_KEY}
         ),
     )
 
@@ -480,7 +471,8 @@ def _schedule_list_values(record: ScheduleListRecord) -> dict[str, Any]:
         "name": schedule.name,
         "enabled": schedule.enabled,
         "target_device_id": schedule.target_device_id,
-        "shop_ids": schedule.shop_ids,
+        "shop_ids": [],
+        "local_shop_ids": [item["local_shop_id"] for item in schedule.task_input_json.get(LOCAL_SHOPS_KEY, [])],
         "device_display_name": record.device_display_name,
         "execution_type": _execution_type_for_skill(schedule.skill_id),
         "skill_id": schedule.skill_id,

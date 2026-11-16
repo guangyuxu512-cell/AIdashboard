@@ -12,10 +12,8 @@ from app.modules.workers.auth import (
     get_worker_provisioning_principal,
 )
 from app.modules.workers.schemas import (
-    DeviceProviderInventoryRead,
     DeviceRuntimeRead,
     DeviceSkillCapabilityRead,
-    ProviderInventoryUpsert,
     SkillCapabilitySnapshotUpsert,
     WorkerHeartbeat,
     WorkerProvisioningRead,
@@ -67,14 +65,15 @@ def heartbeat(
 
 @router.post(
     "/provider-inventory",
-    response_model=DeviceProviderInventoryRead,
+    status_code=204,
+    include_in_schema=False,
 )
 def save_provider_inventory(
-    data: ProviderInventoryUpsert,
     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
-    service: Annotated[WorkerService, Depends(get_worker_service)],
-) -> DeviceProviderInventoryRead:
-    return service.save_provider_inventory(principal, data)
+) -> Response:
+    # Compatibility for already-installed Workers: discard old provider reports.
+    # No provider state, credentials or shop binding is persisted.
+    return Response(status_code=204)
 
 
 @router.put(

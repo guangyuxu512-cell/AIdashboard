@@ -4,11 +4,8 @@ from datetime import UTC, datetime
 
 from app.core.config import get_settings
 from app.core.database import get_session_factory
-from app.core.security import get_secret_cipher
-from app.modules.credentials.service import CredentialService
 from app.modules.schedules.service import ScheduleService
 from app.modules.schedules.selection_service import SelectionScheduleService
-from app.modules.tasks.service import TaskService
 
 
 logger = logging.getLogger(__name__)
@@ -16,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 def trigger_due_schedules_once(*, now: datetime | None = None) -> int:
     settings = get_settings()
+    if not settings.worker_schedule_execution_enabled:
+        return 0
     session_factory = get_session_factory()
     triggered = 0
     server_enabled = getattr(settings, "product_selection_schedule_enabled", False) and getattr(settings, "product_selection_execution_enabled", False)
@@ -29,9 +28,7 @@ def trigger_due_schedules_once(*, now: datetime | None = None) -> int:
                 if target == 'server_selection':
                     result = SelectionScheduleService(session, settings=settings).trigger_next_due(now=now)
                 else:
-                    result = ScheduleService(session, task_service=TaskService(session,
-                        credential_service=CredentialService(session, get_secret_cipher()),
-                    )).trigger_next_due(now=now)
+                    result = ScheduleService(session).trigger_next_due(now=now)
             if result is None: continue
             logger.info("Schedule trigger processed", extra={
                 "schedule_id":str(result.schedule_id),"scheduled_for":result.scheduled_for.isoformat(),

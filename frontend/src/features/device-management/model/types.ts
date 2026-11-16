@@ -2,7 +2,6 @@ import type {
   DeviceCapability,
   DeviceListItemViewModel,
   DeviceStatus,
-  YingdaoInventoryViewModel,
 } from '@/entities/device'
 import type { ActiveTaskSummaryReadDto } from '@/entities/task'
 import type { StatusTone } from '@/shared/components/StatusTag.vue'
@@ -40,7 +39,6 @@ export interface DeviceCurrentExecutionViewModel {
 
 export interface DeviceManagementRowViewModel extends DeviceListItemViewModel {
   currentExecution: DeviceCurrentExecutionViewModel
-  yingdaoInventory: YingdaoInventoryViewModel | null
   localShopCount: number | null
   activeTask: ActiveTaskSummaryReadDto | null
 }

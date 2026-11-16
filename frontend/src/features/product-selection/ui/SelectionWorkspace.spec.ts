@@ -70,6 +70,7 @@ function render(
     manual: {
       capabilities: vi.fn().mockResolvedValue({
         manual_execution_available: manualExecutionAvailable,
+        strategy_save_available: true,
       }),
       submit: vi.fn(),
     },
@@ -189,7 +190,7 @@ describe('submitted selection feedback survives panel changes', () => {
         .findAll('button')
         .find((button) => button.text() === '新建策略')!
         .trigger('click')
-      expect(wrapper.findComponent(DrawerStub).props('show')).toBe(true)
+      expect(wrapper.findComponent(DrawerStub).props('show')).toBe(failedQuery !== 'capabilities')
       expect(strategies).not.toHaveBeenCalled()
       expect(saveStrategy).not.toHaveBeenCalled()
       expect(service.manual!.submit).not.toHaveBeenCalled()

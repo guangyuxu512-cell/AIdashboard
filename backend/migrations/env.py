@@ -20,7 +20,6 @@ from app.modules.automation_apps.models import (
     AutomationApplicationConfig,
     AutomationParameterPreset,
 )
-from app.modules.credentials.models import PlatformCredential, ShopCredentialBinding
 from app.modules.devices.models import Device
 from app.modules.human_auth.models import HumanSession
 from app.modules.notifications.models import NotificationChannel
@@ -43,8 +42,7 @@ from app.modules.product_data.models import (
     ShopProductDataMetricSnapshot,
 )
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
-from app.modules.sessions.models import ShopSession
-from app.modules.shops.models import Shop, ShopDeviceBinding
+from app.modules.shops.models import Shop
 from app.modules.tasks.models import Task, TaskAsset, TaskEvent, TaskShop
 from app.modules.users.models import User
 from app.modules.workers.models import (
@@ -82,12 +80,8 @@ _MODELS = (
     Schedule,
     ScheduleRun,
     ScheduleShop,
-    PlatformCredential,
     Shop,
     ShopOperatingDailyMetric,
-    ShopCredentialBinding,
-    ShopDeviceBinding,
-    ShopSession,
     Task,
     TaskAsset,
     TaskEvent,

@@ -9,7 +9,7 @@ import pytest
 from pydantic import Field, ValidationError
 
 from app.contracts import (
-    AccountPayload,
+    LocalShopContext,
     ExecutionStatus,
     RuntimeEventType,
     SkillProcessInput,
@@ -100,27 +100,20 @@ def process_input(
     task_id: UUID,
     params: dict[str, object],
     *,
-    accounts: list[AccountPayload] | None = None,
+    local_shops: list[LocalShopContext] | None = None,
     images: Path = Path("fixture-images"),
 ) -> SkillProcessInput:
     return SkillProcessInput(
         task_id=task_id,
         skill_id="demo.progress",
         params=params,
-        accounts=accounts or [],
+        local_shops=local_shops or [],
         paths=SkillProcessPaths(images=images),
     )
 
 
-def account_payload(*, secret: str = "must-not-leak") -> AccountPayload:
-    return AccountPayload(
-        shop_id="7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
-        shop_name="中文店铺",
-        platform_code="DOUYIN",
-        login_identifier="fixture-account",
-        secret=secret,
-        preferred_verification_channel="SMS",
-    )
+def local_shop() -> LocalShopContext:
+    return LocalShopContext(local_shop_id="fixture", platform="douyin", platform_shop_id="123")
 
 
 def test_business_skill_registration_reuses_descriptor_and_registry() -> None:
@@ -215,7 +208,7 @@ def test_context_log_progress_and_result_use_existing_runtime_contract(
             process_input(
                 task_id,
                 {"steps": 3},
-                accounts=[account_payload()],
+                local_shops=[local_shop()],
                 images=tmp_path / "images",
             ),
         ),
@@ -233,16 +226,7 @@ def test_context_log_progress_and_result_use_existing_runtime_contract(
     assert skill.context.skill_id == "demo.progress"
     assert skill.context.deadline > datetime.now(UTC)
     assert skill.context.is_cancelled is False
-    assert skill.context.accounts == [
-        {
-            "shop_id": "7cb00c72-f6f9-4e89-9ac6-f1ce03c5544b",
-            "shop_name": "中文店铺",
-            "platform_code": "DOUYIN",
-            "login_identifier": "fixture-account",
-            "secret": "must-not-leak",
-            "preferred_verification_channel": "SMS",
-        },
-    ]
+    assert skill.context.local_shops == [local_shop().model_dump(mode="json")]
     assert skill.context.paths.images == tmp_path / "images"
     assert [event.event_type for event in events] == [
         RuntimeEventType.LOG,
@@ -426,7 +410,7 @@ def test_process_runner_routes_business_skill_through_sdk() -> None:
                 "task_id": str(task_id),
                 "skill_id": "demo.progress",
                 "params": {"steps": 2},
-                "accounts": [account_payload().model_dump(mode="json")],
+                "local_shops": [local_shop().model_dump(mode="json")],
                 "paths": {"images": "fixture-images"},
             },
             device_id=uuid4(),
@@ -442,7 +426,7 @@ def test_process_runner_routes_business_skill_through_sdk() -> None:
     }
     assert isinstance(skill.received_input, ProgressInput)
     assert skill.context is not None
-    assert skill.context.accounts == [account_payload().model_dump(mode="json")]
+    assert skill.context.local_shops == [local_shop().model_dump(mode="json")]
     assert skill.context.paths.images == Path("fixture-images")
 
 

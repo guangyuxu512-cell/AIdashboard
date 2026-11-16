@@ -174,9 +174,9 @@ class TeamDeviceAccess(Base):
 
 
 class TeamShopAccess(Base):
-    """A centrally maintained Shop made available to one business Team."""
+    """Historical visibility of legacy facts; not a live shop assignment."""
 
-    __tablename__ = "team_shop_accesses"
+    __tablename__ = "historical_team_shop_accesses"
     __table_args__ = (Index("ix_team_shop_accesses_shop", "shop_id"),)
 
     team_id: Mapped[UUID] = mapped_column(
@@ -186,7 +186,7 @@ class TeamShopAccess(Base):
     )
     shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"),
         primary_key=True,
     )
     created_at: Mapped[datetime] = mapped_column(

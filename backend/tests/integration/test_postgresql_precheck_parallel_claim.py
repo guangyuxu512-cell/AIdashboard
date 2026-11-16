@@ -49,7 +49,7 @@ def enqueue(session, team_id, user_id, device_id, shop, created, *, skill=PRECHE
 
 def claim(engine, device_id, *, precheck_only=True):
     with Session(engine, expire_on_commit=False) as session:
-        result = TaskService(session).claim_with_account(
+        result = TaskService(session).claim_with_context(
             WorkerPrincipal(device_id=device_id), precheck_only=precheck_only)
         return result.task if result else None
 

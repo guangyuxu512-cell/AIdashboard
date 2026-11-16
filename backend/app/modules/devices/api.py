@@ -16,7 +16,6 @@ from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
 from app.modules.workers.schemas import (
     BusinessSkillCatalogItemRead,
-    DeviceProviderInventoryRead,
     DeviceRuntimeRead,
     DeviceSkillCapabilityRead,
     WorkerCredentialRead,
@@ -107,20 +106,6 @@ def get_device_local_shops(
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> DeviceLocalShopInventoryRead:
     return service.get_local_shops(actor, device_id)
-
-
-@router.get(
-    "/{device_id}/provider-inventories",
-    response_model=list[DeviceProviderInventoryRead],
-)
-def get_device_provider_inventories(
-    device_id: UUID,
-    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
-    service: Annotated[DeviceService, Depends(get_device_service)],
-    worker_service: Annotated[WorkerService, Depends(get_worker_service)],
-) -> list[DeviceProviderInventoryRead]:
-    service.get(actor, device_id)
-    return worker_service.get_provider_inventory_reads(device_id)
 
 
 @router.get(

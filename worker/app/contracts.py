@@ -14,17 +14,6 @@ class ExecutionStatus(StrEnum):
     FAILED = "failed"
 
 
-class AccountPayload(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    shop_id: UUID
-    shop_name: str | None = None
-    platform_code: str
-    login_identifier: str
-    secret: str = Field(repr=False)
-    preferred_verification_channel: str | None = None
-
-
 class TaskAsset(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -37,6 +26,14 @@ class TaskAsset(BaseModel):
     download_path: str
 
 
+class LocalShopContext(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    local_shop_id: str = Field(min_length=1, max_length=160)
+    platform: str = Field(min_length=1, max_length=64)
+    platform_shop_id: str | None = Field(default=None, max_length=160)
+
+
 class WorkerTask(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -44,16 +41,9 @@ class WorkerTask(BaseModel):
     skill_id: str
     input: dict[str, Any]
     lease_until: datetime
-    accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
+    local_shops: list[LocalShopContext] = Field(default_factory=list)
     assets: list[TaskAsset] = Field(default_factory=list)
     result_delivery: Literal["central", "product"] = "central"
-
-
-class ProviderInventoryReport(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    provider_code: str
-    inventory: dict[str, Any]
 
 
 class SkillCapabilitySnapshot(BaseModel):
@@ -71,7 +61,6 @@ class ExecutionResult(BaseModel):
     result: dict[str, Any] | None = None
     error_code: str | None = None
     error_message: str | None = None
-    provider_inventory: ProviderInventoryReport | None = None
 
 
 class SkillProcessPaths(BaseModel):
@@ -87,7 +76,7 @@ class SkillProcessInput(BaseModel):
     skill_id: str
     params: dict[str, Any]
     paths: SkillProcessPaths
-    accounts: list[AccountPayload] = Field(default_factory=list, repr=False)
+    local_shops: list[LocalShopContext] = Field(default_factory=list)
 
 
 class RuntimeEventType(StrEnum):

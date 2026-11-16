@@ -9,11 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
-from app.core.security import SecretCipher, get_secret_cipher
 from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
-from app.modules.credentials.service import CredentialService
 from app.modules.schedules.schemas import (
     ScheduleCreate,
     ScheduleListOccurrenceQuery,
@@ -23,7 +21,6 @@ from app.modules.schedules.schemas import (
     ScheduleUpdate,
 )
 from app.modules.schedules.service import ScheduleService
-from app.modules.tasks.service import TaskService
 from app.shared.pagination import Page, PaginationParams
 
 
@@ -42,15 +39,8 @@ get_schedule_authorized_actor = require_module_access(ModuleCode.SCHEDULE)
 
 def get_schedule_service(
     session: Annotated[Session, Depends(get_database_session)],
-    cipher: Annotated[SecretCipher, Depends(get_secret_cipher)],
 ) -> ScheduleService:
-    return ScheduleService(
-        session,
-        task_service=TaskService(
-            session,
-            credential_service=CredentialService(session, cipher),
-        ),
-    )
+    return ScheduleService(session)
 
 
 def get_schedule_list_occurrence_query(

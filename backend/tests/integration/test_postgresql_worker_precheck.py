@@ -44,7 +44,8 @@ def ready_precheck(postgresql_engine):
             "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
             "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
             "control_center_feat_worker_parallel_precheck", "control_center_feat_windows_execution_slim",
-            "control_center_feat_worker_category_ops"}
+            "control_center_feat_worker_category_ops", "control_center_feat_worker_only_v1",
+            "control_center_feat_worker_only_v2"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -814,7 +815,7 @@ def test_application_precheck_does_not_expose_legacy_session_routes(ready_preche
     application.include_router(application_router)
     state = {"settings": Settings(application_worker_precheck_enabled=True,
                                    application_worker_precheck_clients_file=path,
-                                   application_shop_session_enabled=False)}
+                                   )}
     application.dependency_overrides[get_settings] = lambda: state["settings"]
     application.dependency_overrides[get_secret_cipher] = lambda: SecretCipher(Fernet.generate_key().decode())
 
@@ -827,7 +828,7 @@ def test_application_precheck_does_not_expose_legacy_session_routes(ready_preche
         assert client.post("/internal/applications/v1/worker-prechecks", json=submission().model_dump(), headers=headers).status_code == 202
         assert client.get("/internal/applications/v1/shops", headers=headers).status_code == 404
         state["settings"] = Settings(application_worker_precheck_enabled=False,
-            application_shop_session_enabled=True, application_shop_session_clients_file=path)
+            application_shop_session_clients_file=path)
         assert client.post("/internal/applications/v1/worker-prechecks", json=submission().model_dump(), headers=headers).status_code == 503
         assert client.get("/internal/applications/v1/shops", headers=headers).status_code == 404
         assert client.get(f"/internal/applications/v1/shops/{uuid4()}/session", headers=headers).status_code == 404

@@ -172,9 +172,9 @@ def test_worker_claim_asset_contract_remains_v1_compatible() -> None:
         lease_until=datetime.now(UTC),
     )
     service = SimpleNamespace(
-        claim_with_account=lambda _principal: SimpleNamespace(
+        claim_with_context=lambda _principal: SimpleNamespace(
             task=task,
-            accounts=[],
+            local_shops=[],
             assets=[asset],
         ),
     )

@@ -6,7 +6,6 @@ import AccessTeamAuthorizationDialog from './AccessTeamAuthorizationDialog.vue'
 
 const mocks = vi.hoisted(() => ({
   deviceParams: null as { value: unknown } | null,
-  shopParams: null as { value: unknown } | null,
 }))
 
 const emptyQuery = () => ({
@@ -32,16 +31,8 @@ vi.mock('@/entities/device', () => ({
   },
 }))
 
-vi.mock('@/entities/shop', () => ({
-  useShopListQuery: (params: { value: unknown }) => {
-    mocks.shopParams = params
-    return emptyQuery()
-  },
-}))
-
 beforeEach(() => {
   mocks.deviceParams = null
-  mocks.shopParams = null
 })
 
 describe('AccessTeamAuthorizationDialog', () => {
@@ -61,8 +52,6 @@ describe('AccessTeamAuthorizationDialog', () => {
     })
 
     expect(mocks.deviceParams).not.toBeNull()
-    expect(mocks.shopParams).not.toBeNull()
     expect(mocks.deviceParams?.value).toMatchObject({ page: 1, pageSize: 100 })
-    expect(mocks.shopParams?.value).toMatchObject({ page: 1, pageSize: 100 })
   })
 })

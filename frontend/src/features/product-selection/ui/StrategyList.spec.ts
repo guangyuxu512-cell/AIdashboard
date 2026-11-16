@@ -53,7 +53,7 @@ function render(
     manual: {
       capabilities: vi
         .fn()
-        .mockResolvedValue({ manual_execution_available: true }),
+        .mockResolvedValue({ manual_execution_available: true, strategy_save_available: true }),
       submit: vi.fn(),
     },
     latestRun: vi

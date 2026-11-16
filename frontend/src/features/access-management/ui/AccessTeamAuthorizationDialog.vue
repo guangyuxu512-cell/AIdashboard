@@ -9,7 +9,6 @@ import {
 } from '@/entities/access-management'
 import { getModuleAccessOptions } from '@/app/modules/registry'
 import { useDeviceListQuery, type DeviceListFilters } from '@/entities/device'
-import { useShopListQuery, type ShopListFilters } from '@/entities/shop'
 import FormDialog from '@/shared/components/FormDialog.vue'
 
 const props = defineProps<{
@@ -33,10 +32,6 @@ function emptyDeviceFilters(): DeviceListFilters {
   }
 }
 
-function emptyShopFilters(): ShopListFilters {
-  return { enabledStatus: null, ownerUserId: null, keyword: '' }
-}
-
 const teamId = computed(() => (props.show ? props.team?.teamId ?? null : null))
 const authorizationQuery = useAccessTeamAuthorizationQuery(teamId)
 const deviceQuery = useDeviceListQuery(
@@ -44,15 +39,6 @@ const deviceQuery = useDeviceListQuery(
     page: 1,
     pageSize: 100,
     filters: emptyDeviceFilters(),
-  })),
-  computed(() => props.show),
-)
-const shopQuery = useShopListQuery(
-  computed(() => ({
-    page: 1,
-    pageSize: 100,
-    filters: emptyShopFilters(),
-    referenceOptions: { includeDevices: false, includeOwners: false },
   })),
   computed(() => props.show),
 )
@@ -85,9 +71,6 @@ watch(
 const deviceRows = computed(() =>
   (deviceQuery.data.value?.items ?? []).filter((device) => device.enabled),
 )
-const shopRows = computed(() =>
-  (shopQuery.data.value?.items ?? []).filter((shop) => shop.enabled),
-)
 
 function submit(): void {
   emit('save', {
@@ -111,7 +94,7 @@ function submit(): void {
     @cancel="$emit('update:show', false)"
   >
     <NAlert type="info" :bordered="false">
-      团队成员继承以下授权。设备和店铺仍需通过现有店铺—设备绑定及应用能力校验，保存后后续请求立即按新授权执行。
+      团队成员继承以下授权。店铺由所选设备的 Worker 上报，保存后后续请求立即按设备授权执行。
     </NAlert>
     <NSpin :show="authorizationQuery.isPending.value" class="access-team-authorization">
       <section class="access-team-authorization__section">
@@ -149,25 +132,6 @@ function submit(): void {
         </NCheckboxGroup>
       </section>
 
-      <section class="access-team-authorization__section">
-        <h3>可访问店铺</h3>
-        <NEmpty
-          v-if="!shopQuery.isPending.value && !shopRows.length"
-          size="small"
-          description="暂无可授权店铺"
-        />
-        <NCheckboxGroup v-else v-model:value="shopIds">
-          <div class="access-team-authorization__resource-list">
-            <NCheckbox
-              v-for="shop in shopRows"
-              :key="shop.shopId"
-              :value="shop.shopId"
-            >
-              {{ shop.shopName }}
-            </NCheckbox>
-          </div>
-        </NCheckboxGroup>
-      </section>
     </NSpin>
   </FormDialog>
 </template>

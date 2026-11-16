@@ -50,7 +50,7 @@ const keyword = computed({
         v-model="keyword"
         width="md"
         clearable
-        placeholder="搜索设备名称或影刀账号"
+        placeholder="搜索设备名称"
         @update:model-value="autoSearch.onInput"
         @compositionstart="autoSearch.onCompositionStart"
         @compositionend="autoSearch.onCompositionEnd(keyword)"

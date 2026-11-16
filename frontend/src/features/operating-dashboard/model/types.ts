@@ -88,13 +88,6 @@ export type OperatingDashboardCoverageState =
   | 'failed'
   | 'unknown'
 
-export interface OperatingDashboardSessionRecovery {
-  collectionJobId: string
-  collectionItemId: string
-  sessionVersion: number
-  requiresValidation: boolean
-}
-
 export interface OperatingDashboardCoverageMissing {
   shopId: string
   shopName: string
@@ -102,8 +95,6 @@ export interface OperatingDashboardCoverageMissing {
   state: OperatingDashboardCoverageState
   /** Server-side safe reason only; never an upstream response or credential. */
   failureReason: string | null
-  sessionRecovery?: OperatingDashboardSessionRecovery | null
-  recoveryBlockReason?: string | null
 }
 
 /**

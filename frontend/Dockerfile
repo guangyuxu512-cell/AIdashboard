@@ -4,7 +4,6 @@ WORKDIR /workspace
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY frontend/package.json ./frontend/package.json
-COPY electron/package.json ./electron/package.json
 
 RUN corepack enable && pnpm install --frozen-lockfile \
     --filter @control-center/frontend...

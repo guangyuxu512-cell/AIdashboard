@@ -1,174 +1,29 @@
 import { shallowMount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
-
-import type {
-  DeviceListItemViewModel,
-  DeviceSkillCapabilityViewModel,
-  YingdaoInventoryViewModel,
-} from '@/entities/device'
+import type { DeviceListItemViewModel, DeviceSkillCapabilityViewModel } from '@/entities/device'
 import DataTable from '@/shared/components/DataTable.vue'
-
 import DeviceCapabilityDrawer from './DeviceCapabilityDrawer.vue'
-import YingdaoApplicationsTable from './YingdaoApplicationsTable.vue'
 
-const device = {
-  deviceId: 'device-11',
-  deviceName: '11',
-  enabled: true,
-  enabledStatus: 'enabled',
-  runtimeStatus: 'online',
-} as DeviceListItemViewModel
+const device = { deviceId: 'device-1', deviceName: 'Worker 1', enabled: true,
+  enabledStatus: 'enabled', runtimeStatus: 'online' } as DeviceListItemViewModel
+const skill = { deviceId: 'device-1', skillId: 'refund.sync', displayName: '退款同步',
+  runtime: 'python', provider: null, version: '1', classification: 'business',
+  inputSchema: null, updatedAtDisplay: '' } as DeviceSkillCapabilityViewModel
 
-const runSkill: DeviceSkillCapabilityViewModel = {
-  deviceId: 'device-11',
-  skillId: 'yingdao.app.run',
-  displayName: '运行影刀应用',
-  runtime: 'rpa',
-  provider: 'yingdao',
-  version: '1',
-  classification: 'internal',
-  inputSchema: null,
-  updatedAtDisplay: '2026-08-23 12:00',
-}
-
-const businessSkill: DeviceSkillCapabilityViewModel = {
-  ...runSkill,
-  skillId: 'refund.sync',
-  displayName: '退款同步',
-  runtime: 'python',
-  provider: null,
-  classification: 'business',
-  inputSchema: null,
-}
-
-const inventory = {
-  providerStatus: 'ready',
-  executionAvailable: true,
-  loggedIn: true,
-  providerVersion: '6.3.6',
-  accountDisplay: 'GY00999',
-  applicationCount: 1,
-  applications: [
-    { appId: 'safe-app', appName: 'Safe App', versionId: '1' },
-  ],
-} as YingdaoInventoryViewModel
-
-describe('DeviceCapabilityDrawer', () => {
-  it('shows only Business Skills and keeps Yingdao Applications separate', () => {
+describe('Worker capabilities', () => {
+  it('shows business skills and filters retired Yingdao capabilities', () => {
     const wrapper = shallowMount(DeviceCapabilityDrawer, {
-      props: {
-        show: true,
-        device,
-        skills: [runSkill, businessSkill],
-        yingdaoInventory: inventory,
-      },
+      props: { show: true, device, skills: [skill, { ...skill, skillId: 'yingdao.app.run' }] },
       global: { renderStubDefaultSlot: true },
     })
-
-    expect(wrapper.text()).toContain('业务 Skill')
-    expect(wrapper.text()).toContain('影刀应用')
-    expect(wrapper.text()).toContain('不等同于 Skill')
-    expect(wrapper.findComponent(DataTable).props('data')).toEqual([
-      businessSkill,
-    ])
-    expect(
-      wrapper.findComponent(YingdaoApplicationsTable).props('runDisabledReason'),
-    ).toBeNull()
+    expect(wrapper.findComponent(DataTable).props('data')).toEqual([skill])
+    expect(wrapper.text()).not.toContain('影刀')
   })
-
-  it('disables application execution when the Worker did not declare the Skill', () => {
+  it('exposes retry when capability loading fails', () => {
     const wrapper = shallowMount(DeviceCapabilityDrawer, {
-      props: {
-        show: true,
-        device,
-        skills: [],
-        yingdaoInventory: inventory,
-      },
+      props: { show: true, device, skills: [], skillsError: '读取失败' },
       global: { renderStubDefaultSlot: true },
     })
-
-    expect(wrapper.text()).toContain('未声明 yingdao.app.run Skill')
-    expect(
-      wrapper.findComponent(YingdaoApplicationsTable).props('runDisabledReason'),
-    ).toBe('当前 Worker 未声明 yingdao.app.run Skill')
-  })
-
-  it('does not expose applications when the Provider is not ready', () => {
-    const wrapper = shallowMount(DeviceCapabilityDrawer, {
-      props: {
-        show: true,
-        device,
-        skills: [runSkill],
-        yingdaoInventory: {
-          ...inventory,
-          providerStatus: 'need_login',
-          executionAvailable: false,
-        },
-      },
-      global: { renderStubDefaultSlot: true },
-    })
-
-    expect(wrapper.findComponent(YingdaoApplicationsTable).exists()).toBe(false)
-    expect(wrapper.text()).toContain('影刀 6.3.6 当前需要登录')
-  })
-
-  it('forwards the selected application to the single parameter library entry', async () => {
-    const wrapper = shallowMount(DeviceCapabilityDrawer, {
-      props: {
-        show: true,
-        device,
-        skills: [runSkill],
-        yingdaoInventory: inventory,
-      },
-      global: { renderStubDefaultSlot: true },
-    })
-
-    wrapper
-      .findComponent(YingdaoApplicationsTable)
-      .vm.$emit('parameterPresets', inventory.applications[0])
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.emitted('parameterPresets')).toEqual([
-      [inventory.applications[0]],
-    ])
-  })
-
-  it('renders a Business Skill Empty State when only Internal Skills exist', () => {
-    const wrapper = shallowMount(DeviceCapabilityDrawer, {
-      props: {
-        show: true,
-        device,
-        skills: [runSkill],
-        skillsLoading: false,
-        skillsError: null,
-        yingdaoInventory: inventory,
-      },
-      global: { renderStubDefaultSlot: true },
-    })
-
-    expect(
-      wrapper.findComponent({ name: 'EmptyState' }).props('description'),
-    ).toContain('暂无业务 Skill')
-    expect(
-      wrapper.findComponent({ name: 'EmptyState' }).props('description'),
-    ).toContain('Worker 内部能力不计入业务 Skill')
-    expect(wrapper.findComponent(DataTable).exists()).toBe(false)
-    expect(wrapper.text()).not.toContain('加载失败')
-  })
-
-  it('keeps cached Skills visible during a background refresh failure', () => {
-    const wrapper = shallowMount(DeviceCapabilityDrawer, {
-      props: {
-        show: true,
-        device,
-        skills: [runSkill, businessSkill],
-        skillsError: null,
-        yingdaoInventory: inventory,
-      },
-      global: { renderStubDefaultSlot: true },
-    })
-
-    expect(wrapper.findComponent(YingdaoApplicationsTable).exists()).toBe(true)
-    expect(wrapper.text()).not.toContain('加载失败')
+    expect(wrapper.findComponent({ name: 'ErrorState' }).exists()).toBe(true)
   })
 })

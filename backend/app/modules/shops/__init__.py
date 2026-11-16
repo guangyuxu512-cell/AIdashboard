@@ -1,4 +1,4 @@
 from app.modules.shops.enums import ShopPlatform
-from app.modules.shops.models import Shop, ShopDeviceBinding
+from app.modules.shops.models import Shop
 
-__all__ = ["Shop", "ShopDeviceBinding", "ShopPlatform"]
+__all__ = ["Shop", "ShopPlatform"]

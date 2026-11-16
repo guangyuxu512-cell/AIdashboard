@@ -82,27 +82,6 @@ try {
         Write-Host 'Frontend real mode already running; reusing it.'
     }
 
-    if (-not (Test-ElectronRunning)) {
-        Write-Host 'Starting Electron...'
-        $pnpm = (Get-Command 'pnpm.cmd').Source
-        Start-DevProcess `
-            'electron' `
-            $pnpm `
-            @('dev') `
-            $script:ElectronDirectory `
-            @{ CONTROL_CENTER_BACKEND_URL = $apiTarget } | Out-Null
-        $started.Add('electron')
-        Wait-DevCondition ${function:Test-ElectronRunning} 30 'Electron did not start.'
-        $electronMainProcess = Get-ElectronMainProcess
-        if ($null -eq $electronMainProcess) {
-            throw 'Electron main process identity could not be established.'
-        }
-        Save-ManagedProcess 'electron' $electronMainProcess
-    }
-    else {
-        Write-Host 'Electron already running; reusing it.'
-    }
-
     Save-DevMode $Mode $apiTarget
     Write-Host ''
     & (Join-Path $PSScriptRoot 'dev-status.ps1')

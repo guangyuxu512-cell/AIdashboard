@@ -14,7 +14,6 @@ import {
 import { useForm } from 'vee-validate'
 import { useQuery } from '@tanstack/vue-query'
 import dayjs from 'dayjs'
-import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
 import {
   AppDrawer,
   AppButton,
@@ -93,7 +92,7 @@ const categories = useQuery({
     values.shopId,
   ]),
   enabled: computed(
-    () => props.show && !!values.shopId && values.channels.shortVideo.selected,
+    () => props.show && !real.value && !!values.shopId && values.channels.shortVideo.selected,
   ),
   queryFn: ({ queryKey }) =>
     props.service.categories(String(queryKey[2]), {
@@ -184,10 +183,6 @@ function setCondition<K extends keyof ShortVideoConditions>(
 }
 function conditionError(key: keyof ShortVideoConditions) {
   return errors.value[`channels.shortVideo.conditions.${key}`]
-}
-function changeShop(value: string | null) {
-  setFieldValue('shopId', value)
-  setCondition('categoryId', null)
 }
 const dailyTime = computed({
   get: () =>
@@ -335,11 +330,7 @@ async function submit(saving: boolean) {
           :validation-status="errors.shopId ? 'error' : undefined"
           :feedback="errors.shopId"
         >
-          <ShopSelector
-            label-tooltip
-            :model-value="values.shopId"
-            @update:model-value="changeShop"
-          />
+          <AppInput :model-value="strategy?.shopName ?? '选品已暂停'" disabled />
         </NFormItem>
         <NFormItem
           label="达人账号"

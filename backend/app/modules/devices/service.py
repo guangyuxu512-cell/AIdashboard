@@ -16,7 +16,6 @@ from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import (
     DeviceCreate, DeviceLocalShopInventoryRead, DeviceLocalShopRead, DeviceUpdate,
 )
-from app.modules.shops.repository import ShopDeviceBindingRepository
 from app.modules.tasks.repository import TaskRepository
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.precheck_models import WorkerRpaShopInventory
@@ -29,16 +28,12 @@ class DeviceService:
         self,
         session: Session,
         repository: DeviceRepository | None = None,
-        binding_repository: ShopDeviceBindingRepository | None = None,
         task_repository: TaskRepository | None = None,
         worker_repository: WorkerRepository | None = None,
         resource_access_repository: TeamResourceAccessRepository | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or DeviceRepository(session)
-        self.binding_repository = binding_repository or ShopDeviceBindingRepository(
-            session,
-        )
         self.task_repository = task_repository or TaskRepository(session)
         self.worker_repository = worker_repository or WorkerRepository(session)
         self.resource_access_repository = (
@@ -187,7 +182,6 @@ class DeviceService:
 
         device.enabled = False
         device.deleted_at = datetime.now(UTC)
-        self.binding_repository.disable_enabled_by_device(device_id)
         self.worker_repository.disable_credentials_by_device(device_id)
         self.session.commit()
 

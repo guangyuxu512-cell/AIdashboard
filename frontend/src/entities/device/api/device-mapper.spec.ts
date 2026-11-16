@@ -5,7 +5,6 @@ import { createMockDeviceDataSource } from './device-data-source'
 import {
   mapDeviceDto,
   mapDeviceSkillCapabilityDto,
-  mapYingdaoInventoryDto,
 } from './device-mapper'
 import { deviceQueryKeys } from './device-queries'
 import { formatRelativeTime } from '../model/display'
@@ -117,10 +116,10 @@ describe('device mapper, query and mutation', () => {
   it('maps a Device Skill capability without inventing availability', () => {
     const capability = mapDeviceSkillCapabilityDto({
       device_id: '00000000-0000-0000-0000-000000000001',
-      skill_id: 'yingdao.app.run',
-      display_name: '运行影刀应用',
-      runtime: 'rpa',
-      provider: 'yingdao',
+      skill_id: 'system.echo',
+      display_name: '系统回显',
+      runtime: 'python',
+      provider: null,
       version: '1',
       classification: 'internal',
       input_schema: null,
@@ -128,94 +127,14 @@ describe('device mapper, query and mutation', () => {
     })
 
     expect(capability).toMatchObject({
-      skillId: 'yingdao.app.run',
-      displayName: '运行影刀应用',
-      runtime: 'rpa',
-      provider: 'yingdao',
+      skillId: 'system.echo',
+      displayName: '系统回显',
+      runtime: 'python',
+      provider: null,
       version: '1',
       classification: 'internal',
     })
     expect('available' in capability).toBe(false)
-  })
-
-  it('maps the latest Yingdao provider snapshot without exposing secrets', () => {
-    const inventory = mapYingdaoInventoryDto({
-      device_id: '00000000-0000-0000-0000-000000000001',
-      provider_code: 'yingdao',
-      available: true,
-      provider_version: '6.3.6',
-      account_display: 'GY00999',
-      account_type: 'PersonalBasic',
-      enterprise_account: false,
-      last_discovered_at: '2026-08-20T12:00:00+00:00',
-      updated_at: '2026-08-20T12:00:01+00:00',
-      inventory: {
-        provider: 'yingdao',
-        available: true,
-        status: 'ready',
-        status_reason_code: null,
-        status_reason: null,
-        provider_version: '6.3.6',
-        logged_in: true,
-        account_display: 'GY00999',
-        account_type: 'PersonalBasic',
-        enterprise_account: false,
-        user_id: 'yingdao-user-test',
-        applications: [
-          {
-            app_id: 'app-1',
-            app_name: '应用一',
-            version_id: '1',
-            updated_at: null,
-            app_type: null,
-            group_id: null,
-          },
-        ],
-        discovered_at: '2026-08-20T12:00:00+00:00',
-      },
-    })
-
-    expect(inventory.availabilityStatus).toBe('available')
-    expect(inventory.providerVersion).toBe('6.3.6')
-    expect(inventory.accountDisplay).toBe('GY00999')
-    expect(inventory.applicationCount).toBe(1)
-    expect(inventory.applications[0]).toEqual({
-      appId: 'app-1',
-      appName: '应用一',
-      versionId: '1',
-    })
-  })
-
-  it('preserves an unknown enterprise-account flag instead of claiming false', () => {
-    const inventory = mapYingdaoInventoryDto({
-      device_id: '00000000-0000-0000-0000-000000000001',
-      provider_code: 'yingdao',
-      available: true,
-      provider_version: null,
-      account_display: null,
-      account_type: null,
-      enterprise_account: null,
-      last_discovered_at: '2026-08-20T12:00:00+00:00',
-      updated_at: '2026-08-20T12:00:01+00:00',
-      inventory: {
-        provider: 'yingdao',
-        available: true,
-        status: 'ready',
-        status_reason_code: null,
-        status_reason: null,
-        provider_version: null,
-        logged_in: true,
-        account_display: null,
-        account_type: null,
-        enterprise_account: null,
-        user_id: null,
-        applications: [],
-        discovered_at: '2026-08-20T12:00:00+00:00',
-      },
-    })
-
-    expect(inventory.accountType).toBe('未知')
-    expect(inventory.enterpriseAccount).toBeNull()
   })
 
   it('creates and updates a mock device record without inventing runtime data', async () => {

@@ -7,7 +7,6 @@ from app.skills.registry import (
     registry,
 )
 from app.skills import system as _system
-from app.skills import yingdao as _yingdao
 
 
 __all__ = [

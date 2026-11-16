@@ -110,7 +110,7 @@ function toggleShop(shopId: string, checked: boolean): void {
         {{ option.label }}
       </AppCheckbox>
       <span v-if="!loading && !visibleOptions.length" class="shop-multi-selector__empty">
-        当前设备暂无可用的绑定店铺
+        当前设备暂无已上报的本机店铺
       </span>
     </div>
   </div>

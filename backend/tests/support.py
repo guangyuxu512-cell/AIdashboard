@@ -47,6 +47,5 @@ class AllowExecutionResources:
         *,
         team_id: UUID,
         device_id: UUID,
-        shop_ids: list[UUID],
     ) -> None:
-        del team_id, device_id, shop_ids
+        del team_id, device_id

@@ -231,8 +231,6 @@ function navigate(key: string): void {
   gap: var(--space-2);
   padding: 0 var(--space-4);
   border-bottom: 1px solid var(--sidebar-border);
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 .app-shell__brand-mark {
@@ -308,21 +306,9 @@ function navigate(key: string): void {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0
-    calc(
-      var(--layout-page-padding-x) +
-        max(
-          0px,
-          calc(
-            100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)
-          )
-        )
-    )
-    0 var(--layout-page-padding-x);
+  padding: 0 var(--layout-page-padding-x);
   border-bottom: 1px solid var(--border-subtle);
   background: var(--bg-topbar);
-  -webkit-app-region: drag;
-  app-region: drag;
 }
 
 .app-shell__topbar-leading,
@@ -330,11 +316,6 @@ function navigate(key: string): void {
   display: flex;
   align-items: center;
   gap: var(--space-3);
-}
-
-.app-shell__topbar-actions {
-  -webkit-app-region: no-drag;
-  app-region: no-drag;
 }
 
 .app-shell__breadcrumb {

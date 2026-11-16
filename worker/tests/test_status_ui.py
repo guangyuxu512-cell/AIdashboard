@@ -33,11 +33,6 @@ class _ConfigServiceStub:
             device_id=kwargs["device_id"],  # type: ignore[arg-type]
             device_token=SecretStr(str(kwargs["device_token"])),
             device_display_name=kwargs["device_display_name"],  # type: ignore[arg-type]
-            yingdao_install_root=kwargs["yingdao_install_root"],  # type: ignore[arg-type]
-            yingdao_data_root=kwargs["yingdao_data_root"],  # type: ignore[arg-type]
-            yingdao_test_app_id=kwargs["yingdao_test_app_id"],  # type: ignore[arg-type]
-            params_json_path=kwargs["params_json_path"],  # type: ignore[arg-type]
-            account_json_path=kwargs["account_json_path"],  # type: ignore[arg-type]
             images_dir=kwargs["images_dir"],  # type: ignore[arg-type]
             configured_at_utc=None,
         )
@@ -96,11 +91,6 @@ def _apply_provisioned_identity(
         device_id=UUID("0a4f2291-0000-4000-8000-000000000001"),
         device_token="test-worker-token",
         device_display_name="中控台设备",
-        yingdao_install_root=Path("C:/ShadowBot"),
-        yingdao_data_root=Path("C:/ShadowBot/data"),
-        yingdao_test_app_id="app-1",
-        params_json_path=Path("C:/worker/data/params.json"),
-        account_json_path=Path("C:/worker/data/account.json"),
         images_dir=Path("C:/worker/data/images"),
     )
 
@@ -120,7 +110,7 @@ def test_tkinter_is_available_and_status_ui_reads_snapshot_only(
     assert read_runtime_status(path)["device_id"] == "device-a"
     assert read_runtime_status(tmp_path / "missing.json") == {}
     assert should_open_configuration(None) is True
-    assert DEFAULT_PRODUCTION_SERVER_URL == "https://119.29.188.118"
+    assert DEFAULT_PRODUCTION_SERVER_URL == "https://center.mysiyuai.top"
 
 
 def test_existing_032_configuration_skips_first_setup() -> None:
@@ -129,11 +119,6 @@ def test_existing_032_configuration_skips_first_setup() -> None:
         device_id=uuid4(),
         device_token=SecretStr("ccw_existing"),
         device_display_name=None,
-        yingdao_install_root=None,
-        yingdao_data_root=None,
-        yingdao_test_app_id=None,
-        params_json_path=Path("C:/worker/data/params.json"),
-        account_json_path=Path("C:/worker/data/account.json"),
         images_dir=Path("C:/worker/data/images"),
         configured_at_utc=None,
     )
@@ -161,9 +146,6 @@ def test_reenrollment_stops_old_core_before_saving_new_provisioned_identity() ->
     assert applied.core_running is True
     assert applied.config.device_id == new_device_id
     assert config_service.saved is not None
-    assert config_service.saved["yingdao_data_root"] == Path("C:/ShadowBot/data")
-    assert config_service.saved["params_json_path"] == Path("C:/worker/data/params.json")
-    assert config_service.saved["account_json_path"] == Path("C:/worker/data/account.json")
     assert config_service.saved["images_dir"] == Path("C:/worker/data/images")
 
 

@@ -13,16 +13,7 @@ from app.release_trust import packaged_capability_public_key
 from app.config import WorkerSettings, get_settings
 from app.executors import (
     ExecutorRouter,
-    ProviderDiscoveryExecutor,
     PythonExecutor,
-    RPAExecutor,
-)
-from app.providers.yingdao import (
-    RuntimeYingdaoAdapter,
-    WindowsYingdaoRuntimeLocator,
-    YingdaoApplicationAdapter,
-    YingdaoDiscoveryService,
-    YingdaoSessionAdapter,
 )
 from app.runtime_events import (
     BackendEventReporter,
@@ -32,11 +23,10 @@ from app.runtime_events import (
 )
 from app.logging_config import configure_logging
 from app.single_instance import WorkerAlreadyRunningError, WorkerSingleInstance
-from app.local_config import LocalInputPaths, WorkerConfigurationError
-from app.local_input import LocalInputBridge
+from app.local_config import WorkerConfigurationError
 from app.process_control import WorkerProcessState
 from app.skills import registry
-from app.skills.registry import SkillProvider, SkillRuntime
+from app.skills.registry import SkillRuntime
 from app.worker import Worker
 from app.task_images import TaskImagePreparer
 from app.rpa_session_bridge import RpaAutoBridge, default_rpa_data_directory
@@ -84,30 +74,6 @@ async def run_worker(settings: WorkerSettings) -> None:
         batch_size=settings.event_batch_size,
         retry_count=settings.event_flush_retry_count,
     )
-    runtime_locator = WindowsYingdaoRuntimeLocator(
-        settings.yingdao_install_root,
-        startup_timeout_seconds=settings.yingdao_startup_timeout_seconds,
-    )
-    session_adapter = YingdaoSessionAdapter(runtime_locator)
-    application_adapter = YingdaoApplicationAdapter()
-    discovery_service = YingdaoDiscoveryService(
-        session_adapter=session_adapter,
-        application_adapter=application_adapter,
-    )
-    yingdao_adapter = RuntimeYingdaoAdapter(
-        discovery_service=discovery_service,
-        session_adapter=session_adapter,
-        application_adapter=application_adapter,
-        data_root=settings.yingdao_data_root or discovery_service.data_root,
-        event_bus=event_bus,
-    )
-    local_input_bridge = LocalInputBridge(
-        LocalInputPaths(
-            params_json_path=settings.params_json_path,
-            account_json_path=settings.account_json_path,
-            images_dir=settings.images_dir,
-        ),
-    )
     executor = ExecutorRouter(
         registry,
         {
@@ -118,26 +84,6 @@ async def run_worker(settings: WorkerSettings) -> None:
                 images_dir=settings.images_dir,
                 skill_registry=registry,
             ),
-            SkillRuntime.RPA: RPAExecutor(
-                settings.runtime_root,
-                registry,
-                {SkillProvider.YINGDAO: yingdao_adapter},
-                local_input_bridge,
-                event_bus,
-                (
-                    {"yingdao.test": settings.yingdao_test_app_id}
-                    if settings.yingdao_test_app_id is not None
-                    else {}
-                ),
-            ),
-            SkillRuntime.DISCOVERY: ProviderDiscoveryExecutor(
-                settings.runtime_root,
-                registry,
-                {
-                    SkillProvider.YINGDAO: discovery_service,
-                },
-                event_bus,
-            ),
         },
     )
     worker = Worker(
@@ -147,7 +93,6 @@ async def run_worker(settings: WorkerSettings) -> None:
         event_bus,
         event_reporter,
         local_runtime_state,
-        provider_discovery=discovery_service,
         skill_registry=registry,
         image_preparer=TaskImagePreparer(settings.images_dir, client),
         capability_runtime=capability_runtime,

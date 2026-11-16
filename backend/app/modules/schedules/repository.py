@@ -46,6 +46,7 @@ class ScheduleRepository:
             select(Schedule).where(
                 Schedule.schedule_id == schedule_id,
                 Schedule.target_kind == "pc",
+                ~Schedule.skill_id.like("yingdao.%"),
                 Schedule.deleted_at.is_(None),
             ),
             team_id_column=Schedule.team_id,

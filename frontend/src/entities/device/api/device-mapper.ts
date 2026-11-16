@@ -4,12 +4,10 @@ import type {
   DeviceListItemViewModel,
   DeviceSaveInput,
   DeviceSkillCapabilityViewModel,
-  YingdaoInventoryViewModel,
 } from '../model/types'
 import { formatRelativeTime } from '../model/display'
 import type {
   DeviceCreateDto,
-  DeviceProviderInventoryReadDto,
   DeviceReadDto,
   DeviceSkillCapabilityReadDto,
   DeviceUpdateDto,
@@ -55,33 +53,6 @@ export function mapDeviceCreateInput(input: DeviceSaveInput): DeviceCreateDto {
 
 export function mapDeviceUpdateInput(input: DeviceSaveInput): DeviceUpdateDto {
   return mapDeviceCreateInput(input)
-}
-
-export function mapYingdaoInventoryDto(
-  dto: DeviceProviderInventoryReadDto,
-): YingdaoInventoryViewModel {
-  return {
-    available: dto.available,
-    availabilityStatus: dto.available ? 'available' : 'unavailable',
-    providerStatus: dto.inventory.status,
-    statusReason: dto.inventory.status_reason,
-    providerVersion: dto.provider_version ?? '未知',
-    executionAvailable: dto.inventory.execution_available ?? false,
-    executionVersion: dto.inventory.execution_version ?? '—',
-    executionUnavailableReason:
-      dto.inventory.execution_unavailable_reason ?? null,
-    loggedIn: dto.inventory.logged_in,
-    accountDisplay: dto.account_display ?? '未知',
-    accountType: dto.account_type ?? '未知',
-    enterpriseAccount: dto.enterprise_account,
-    applicationCount: dto.inventory.applications.length,
-    applications: dto.inventory.applications.map((application) => ({
-      appId: application.app_id,
-      appName: application.app_name,
-      versionId: application.version_id,
-    })),
-    lastDiscoveredAtDisplay: formatDateTime(dto.last_discovered_at),
-  }
 }
 
 export function mapDeviceSkillCapabilityDto(

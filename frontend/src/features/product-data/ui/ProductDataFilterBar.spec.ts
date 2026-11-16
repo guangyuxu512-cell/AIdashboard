@@ -1,17 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { ref } from 'vue'
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import { AppButton, AppSelect } from '@/shared/ui'
 import { emptyProductFilters } from '../model/query'
 import ProductDataFilterBar from './ProductDataFilterBar.vue'
 import ProductMetricRangeField from './ProductMetricRangeField.vue'
-
-vi.mock('@/entities/shop/api/shop-queries', () => ({
-  useShopSelectionOptionsQuery: () => ({
-    data: ref([]),
-    isFetching: ref(false),
-  }),
-}))
 
 let previousHeight = ''
 beforeAll(() => {

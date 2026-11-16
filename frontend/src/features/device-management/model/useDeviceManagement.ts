@@ -1,31 +1,21 @@
 import { useMessage } from 'naive-ui'
-import { useQueryClient } from '@tanstack/vue-query'
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 
 import {
-  deviceDataSource,
   deviceApi,
-  formatRelativeTime,
   type DeviceListFilters,
   type DeviceListItemViewModel,
   type DeviceSaveInput,
-  type ProviderApplicationViewModel,
   useCreateDeviceMutation,
   useDeviceDetailQuery,
   useDeviceListQuery,
-  useDeviceProviderInventoriesQuery,
   useDeviceSkillCapabilitiesQuery,
   useDeviceWorkerCredentialQuery,
   useRemoveDeviceMutation,
   useSetDeviceEnabledMutation,
   useUpdateDeviceMutation,
-  deviceQueryKeys,
 } from '@/entities/device'
-import {
-  useActiveTasksQuery,
-  useCreateTaskMutation,
-  useTaskQuery,
-} from '@/entities/task'
+import { useActiveTasksQuery } from '@/entities/task'
 import { apiMode } from '@/shared/api'
 import { getErrorMessage } from '@/shared/api'
 
@@ -67,8 +57,6 @@ export function useDeviceManagement() {
   const editingDeviceId = ref<string | null>(null)
   const capabilityDeviceId = ref<string | null>(null)
   const capabilityVisible = ref(false)
-  const applicationRunVisible = ref(false)
-  const selectedApplication = ref<ProviderApplicationViewModel | null>(null)
   const selectedDeviceIds = ref<string[]>([])
   const statusChangingDeviceId = ref<string | null>(null)
   const removeDevice = ref<DeviceListItemViewModel | null>(null)
@@ -78,11 +66,8 @@ export function useDeviceManagement() {
   const workerTokenVisible = ref(false)
   const oneTimeWorkerToken = ref<string | null>(null)
   const workerCredentialSubmitting = ref(false)
-  const refreshTaskId = ref<string | null>(null)
   const runtimeTaskId = ref<string | null>(null)
   const runtimeVisible = ref(false)
-  const handledRefreshTaskId = ref<string | null>(null)
-  const queryClient = useQueryClient()
 
   const listParams = computed(() => ({
     page: page.value,
@@ -106,14 +91,8 @@ export function useDeviceManagement() {
     detailDeviceId,
     computed(() => apiMode === 'real'),
   )
-  const providerInventoryQuery =
-    useDeviceProviderInventoriesQuery(detailDeviceId)
-  const capabilityProviderInventoryQuery =
-    useDeviceProviderInventoriesQuery(capabilityDeviceId)
   const skillCapabilitiesQuery =
     useDeviceSkillCapabilitiesQuery(capabilityDeviceId)
-  const refreshTaskQuery = useTaskQuery(refreshTaskId)
-  const createTaskMutation = useCreateTaskMutation()
   const createMutation = useCreateDeviceMutation()
   const updateMutation = useUpdateDeviceMutation()
   const setEnabledMutation = useSetDeviceEnabledMutation()
@@ -127,9 +106,8 @@ export function useDeviceManagement() {
       currentExecution: resolveDeviceCurrentExecution(
         device,
         activeTasks[device.deviceId] ?? null,
-        refreshTaskQuery.data.value ?? null,
+        null,
       ),
-      yingdaoInventory: context?.inventories[device.deviceId] ?? null,
       localShopCount: context?.localShops[device.deviceId]?.available
         ? context.localShops[device.deviceId]!.shops.length
         : null,
@@ -155,20 +133,6 @@ export function useDeviceManagement() {
   const detailError = computed(() =>
     detailQuery.error.value ? getErrorMessage(detailQuery.error.value) : null,
   )
-  const providerInventoryError = computed(() =>
-    isInitialQueryError(
-      providerInventoryQuery.error.value,
-      providerInventoryQuery.data.value,
-    )
-      ? getErrorMessage(providerInventoryQuery.error.value)
-      : null,
-  )
-  const yingdaoRefreshing = computed(
-    () =>
-      createTaskMutation.isPending.value ||
-      refreshTaskQuery.data.value?.status === 'pending' ||
-      refreshTaskQuery.data.value?.status === 'running',
-  )
   const formSubmitting = computed(
     () => createMutation.isPending.value || updateMutation.isPending.value,
   )
@@ -183,7 +147,7 @@ export function useDeviceManagement() {
           detailQuery.data.value,
           activeTasksQuery.data.value?.[detailQuery.data.value.deviceId] ??
             null,
-          refreshTaskQuery.data.value ?? null,
+          null,
         )
       : (detailRow.value?.currentExecution ?? null),
   )
@@ -196,37 +160,7 @@ export function useDeviceManagement() {
   const detailLocalShops = computed(
     () => managementContextQuery.data.value?.localShops[detailDeviceId.value ?? ''] ?? null,
   )
-  const recentExecutions = computed<DeviceRecentExecutionViewModel[]>(() => {
-    const task = refreshTaskQuery.data.value
-    if (
-      !task ||
-      task.target_device_id !== detailDeviceId.value ||
-      !['success', 'failed', 'lost'].includes(task.status)
-    ) {
-      return []
-    }
-    const status = task.status as 'success' | 'failed' | 'lost'
-    return [
-      {
-        id: task.task_id,
-        name: task.skill_id,
-        status,
-        statusLabel:
-          status === 'success'
-            ? '成功'
-            : status === 'failed'
-              ? '失败'
-              : '丢失 / 中断',
-        tone:
-          status === 'success'
-            ? 'success'
-            : status === 'failed'
-              ? 'error'
-              : 'warning',
-        timeDisplay: formatRelativeTime(task.finished_at ?? task.updated_at),
-      },
-    ]
-  })
+  const recentExecutions = computed<DeviceRecentExecutionViewModel[]>(() => [])
 
   function query(): void {
     appliedFilters.value = { ...filterDraft.value }
@@ -253,77 +187,16 @@ export function useDeviceManagement() {
     detailVisible.value = true
   }
 
-  async function refreshYingdao(): Promise<void> {
-    const deviceId = capabilityVisible.value
-      ? capabilityDeviceId.value
-      : detailDeviceId.value
-    if (!deviceId || deviceDataSource.mode !== 'real') return
-    try {
-      const task = await createTaskMutation.mutateAsync({
-        target_device_id: deviceId,
-        skill_id: 'yingdao.discover',
-        input: {},
-      })
-      handledRefreshTaskId.value = null
-      refreshTaskId.value = task.task_id
-      message.info('已创建影刀能力刷新任务')
-    } catch (error) {
-      message.error(getErrorMessage(error))
-    }
-  }
-
   function openCapabilities(device: DeviceListItemViewModel): void {
     capabilityDeviceId.value = device.deviceId
     capabilityVisible.value = true
     detailVisible.value = false
   }
 
-  function runYingdaoApplication(
-    application: ProviderApplicationViewModel,
-  ): void {
-    selectedApplication.value = application
-    applicationRunVisible.value = true
-  }
-
   function openTaskRuntime(taskId: string): void {
     runtimeTaskId.value = taskId
     runtimeVisible.value = true
   }
-
-  watch(
-    () => refreshTaskQuery.data.value,
-    async (task) => {
-      if (
-        !task ||
-        task.task_id === handledRefreshTaskId.value ||
-        !['success', 'failed', 'lost'].includes(task.status)
-      ) {
-        return
-      }
-      handledRefreshTaskId.value = task.task_id
-      if (task.status === 'success') {
-        await queryClient.invalidateQueries({
-          queryKey: deviceQueryKeys.providerInventories(task.target_device_id),
-        })
-        await queryClient.invalidateQueries({
-          queryKey: ['devices', 'management-context'],
-        })
-        await queryClient.invalidateQueries({
-          queryKey: [
-            'automation-app-configs',
-            'yingdao',
-            'applications',
-          ],
-        })
-        message.success('影刀能力已刷新')
-        return
-      }
-      message.error(
-        task.error_message ??
-          (task.status === 'lost' ? '刷新任务已失联' : '影刀能力刷新失败'),
-      )
-    },
-  )
 
   function openCreate(): void {
     formMode.value = 'create'
@@ -470,8 +343,6 @@ export function useDeviceManagement() {
     runtimeDeviceName,
     capabilityVisible,
     capabilityDeviceId,
-    applicationRunVisible,
-    selectedApplication,
     detailDeviceId,
     formVisible,
     formMode,
@@ -518,14 +389,6 @@ export function useDeviceManagement() {
         : null,
     ),
     workerCredentialSubmitting,
-    yingdaoInventory: computed(() => providerInventoryQuery.data.value ?? null),
-    providerInventoryLoading: computed(() =>
-      isInitialQueryLoading(
-        providerInventoryQuery.isPending.value,
-        providerInventoryQuery.data.value,
-      ),
-    ),
-    providerInventoryError,
     capabilityDevice: computed(
       () =>
         rows.value.find(
@@ -549,24 +412,6 @@ export function useDeviceManagement() {
         ? getErrorMessage(skillCapabilitiesQuery.error.value)
         : null,
     ),
-    capabilityYingdaoInventory: computed(
-      () => capabilityProviderInventoryQuery.data.value ?? null,
-    ),
-    capabilityProviderInventoryLoading: computed(() =>
-      isInitialQueryLoading(
-        capabilityProviderInventoryQuery.isPending.value,
-        capabilityProviderInventoryQuery.data.value,
-      ),
-    ),
-    capabilityProviderInventoryError: computed(() =>
-      isInitialQueryError(
-        capabilityProviderInventoryQuery.error.value,
-        capabilityProviderInventoryQuery.data.value,
-      )
-        ? getErrorMessage(capabilityProviderInventoryQuery.error.value)
-        : null,
-    ),
-    yingdaoRefreshing,
     formSubmitting,
     removeSubmitting: computed(() => removeMutation.isPending.value),
     query,
@@ -576,17 +421,12 @@ export function useDeviceManagement() {
     refreshList,
     retryDetail: detailQuery.refetch,
     retryWorkerCredential: workerCredentialQuery.refetch,
-    retryProviderInventory: providerInventoryQuery.refetch,
     retrySkillCapabilities: skillCapabilitiesQuery.refetch,
-    retryCapabilityProviderInventory:
-      capabilityProviderInventoryQuery.refetch,
     openDetail,
     openCreate,
     openEdit,
     openCapabilities,
-    runYingdaoApplication,
     openTaskRuntime,
-    refreshYingdao,
     saveDevice,
     toggleEnabled,
     requestRemove,

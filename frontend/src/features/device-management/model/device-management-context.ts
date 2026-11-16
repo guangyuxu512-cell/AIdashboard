@@ -3,37 +3,12 @@ import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import {
   deviceApi,
-  getYingdaoInventory,
   type DeviceLocalShopInventoryDto,
-  type YingdaoInventoryViewModel,
 } from '@/entities/device'
 import { apiMode } from '@/shared/api'
 
 export interface DeviceManagementContext {
-  inventories: Record<string, YingdaoInventoryViewModel | null>
   localShops: Record<string, DeviceLocalShopInventoryDto | null>
-}
-
-type InventoryLoader = (
-  deviceId: string,
-) => Promise<YingdaoInventoryViewModel | null>
-
-export async function loadDeviceInventories(
-  deviceIds: string[],
-  loadInventory: InventoryLoader = getYingdaoInventory,
-  previous: Record<string, YingdaoInventoryViewModel | null> = {},
-): Promise<Record<string, YingdaoInventoryViewModel | null>> {
-  const results = await Promise.allSettled(
-    deviceIds.map((deviceId) => loadInventory(deviceId)),
-  )
-  return Object.fromEntries(
-    deviceIds.map((deviceId, index) => [
-      deviceId,
-      results[index]?.status === 'fulfilled'
-        ? results[index].value
-        : (previous[deviceId] ?? null),
-    ]),
-  )
 }
 
 export async function loadDeviceLocalShops(
@@ -72,14 +47,8 @@ export function useDeviceManagementContextQuery(
         'management-context',
         ...ids,
       ])
-      const [inventories, localShops] = await Promise.all([
-        loadDeviceInventories(ids, getYingdaoInventory, previous?.inventories),
-        loadDeviceLocalShops(ids, undefined, previous?.localShops),
-      ])
-      return {
-        inventories,
-        localShops,
-      }
+      const localShops = await loadDeviceLocalShops(ids, undefined, previous?.localShops)
+      return { localShops }
     },
     enabled: computed(() => toValue(deviceIds).length > 0),
     staleTime: 30_000,

@@ -35,7 +35,6 @@ function mockSystemTheme(initialMatches: boolean) {
 describe('theme store', () => {
   beforeEach(() => {
     window.localStorage.clear()
-    delete window.desktop
     delete document.documentElement.dataset.theme
     delete document.documentElement.dataset.themePreset
     document.documentElement.style.colorScheme = ''
@@ -75,19 +74,6 @@ describe('theme store', () => {
 
     expect(store.mode).toBe('midnight')
     expect(store.resolvedTheme).toBe('dark')
-  })
-
-  it('syncs the resolved theme to the Electron title bar when available', () => {
-    const setTitleBarTheme = vi.fn()
-    window.desktop = { appearance: { setTitleBarTheme } }
-    mockSystemTheme(false)
-
-    const store = useThemeStore()
-    store.initialize()
-    store.setMode('dark')
-
-    expect(setTitleBarTheme).toHaveBeenNthCalledWith(1, 'light')
-    expect(setTitleBarTheme).toHaveBeenLastCalledWith('dark')
   })
 
   it('defaults to graphite even when the system is dark', () => {
@@ -133,9 +119,7 @@ describe('theme store', () => {
     }
   })
 
-  it('updates the preset for light-to-light changes without redundant native mode calls', () => {
-    const setTitleBarTheme = vi.fn()
-    window.desktop = { appearance: { setTitleBarTheme } }
+  it('updates the preset for light-to-light changes in the browser', () => {
     mockSystemTheme(false)
     const store = useThemeStore()
     store.initialize()
@@ -144,6 +128,5 @@ describe('theme store', () => {
     store.setMode('coral')
     expect(document.documentElement.dataset.themePreset).toBe('coral')
     expect(store.resolvedTheme).toBe('light')
-    expect(setTitleBarTheme).toHaveBeenCalledTimes(1)
   })
 })

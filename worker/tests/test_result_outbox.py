@@ -1,6 +1,7 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -174,6 +175,29 @@ def test_explicit_conflict_is_preserved_without_automatic_retry(tmp_path):
     assert (tmp_path / "result-outbox" / "rejected" / f"{item.task_id}.json").exists()
 
 
+def test_retired_yingdao_result_does_not_block_other_results(tmp_path):
+    class Client:
+        completed = []
+
+        async def complete(self, task_id, result):
+            self.completed.append((task_id, result))
+
+    settings = WorkerSettings(server_url="https://example.test", device_id=uuid4(),
+                              device_token="test-token", runtime_root=tmp_path)
+    client = Client()
+    worker = Worker(settings, client, object())
+    old = TerminalDelivery(task_id=uuid4(), skill_id="yingdao.test", status="success",
+                           result={"ok": True}, provider_inventory={"provider_code": "yingdao"})
+    current = TerminalDelivery(task_id=uuid4(), skill_id="system.echo", status="success",
+                               result={"ok": True}, provider_inventory={"provider_code": "yingdao"})
+    worker.result_outbox.store(old)
+    worker.result_outbox.store(current)
+    assert asyncio.run(worker._deliver_pending_terminals()) is True
+    assert client.completed == [(current.task_id, {"ok": True})]
+    assert (tmp_path / "result-outbox" / "rejected" / f"{old.task_id}.json").exists()
+    assert worker.result_outbox.pending() == []
+
+
 def test_result_survives_real_process_termination_after_delivery_failure(tmp_path):
     """Kill an isolated Worker after a simulated connection loss, then restart it."""
     program = tmp_path / "isolated_worker.py"
@@ -218,8 +242,13 @@ asyncio.run(run())
 ''', encoding="utf-8")
     task_id = str(uuid4())
     worker_root = Path(__file__).resolve().parents[1]
+    child_env = os.environ.copy()
+    child_env["PYTHONPATH"] = os.pathsep.join(
+        filter(None, [str(worker_root), child_env.get("PYTHONPATH", "")]),
+    )
     command = [sys.executable, str(program), "first", str(tmp_path), task_id]
     process = subprocess.Popen(command, cwd=worker_root, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               env=child_env,
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     try:
         deadline = time.monotonic() + 15
@@ -234,6 +263,7 @@ asyncio.run(run())
 
     restarted = subprocess.run([sys.executable, str(program), "second", str(tmp_path), task_id],
                                cwd=worker_root, capture_output=True, timeout=15,
+                               env=child_env,
                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     assert restarted.returncode == 0
     assert json.loads((tmp_path / "receipt.json").read_text(encoding="utf-8")) == {"items": ["synthetic"]}

@@ -53,14 +53,8 @@ const trendTitle = computed(() => {
           :model-value="dashboard.filters.value"
           :shop-options="dashboard.shopOptions.value"
           :platform-options="dashboard.platformOptions.value"
-          :refreshing="dashboard.refreshing.value"
-          :refresh-available="dashboard.refreshAvailable.value"
           :coverage="dashboard.read.value.coverage"
-          :refresh-feedback="dashboard.refreshFeedback.value"
           @update:model-value="dashboard.updateFilters"
-          @refresh="dashboard.refresh"
-          @recollect="dashboard.recollect"
-          @recover="dashboard.recoverCollectionItem"
         />
 
         <OperatingDashboardTable

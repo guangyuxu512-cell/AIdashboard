@@ -15,12 +15,6 @@ from app.modules.api_tokens.api import router as api_tokens_router
 from app.modules.api_tokens.catalog import install_openapi_security
 from app.modules.audit.api import router as audit_log_router
 from app.modules.assets.api import router as assets_router
-from app.modules.automation_apps.api import router as automation_apps_router
-from app.modules.automation_apps.presets_api import (
-    management_router as automation_parameter_preset_management_router,
-    router as automation_parameter_presets_router,
-)
-from app.modules.credentials.api import router as credentials_router
 from app.modules.devices.api import router as devices_router
 from app.modules.human_auth.api import router as human_auth_router
 from app.modules.notifications.api import router as notifications_router
@@ -30,7 +24,6 @@ from app.modules.product_selection.api import router as product_selection_router
 from app.modules.product_selection.run_executor import execute_selection_runs_forever
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
-from app.modules.shops.api import router as shops_router
 from app.modules.tasks.api import router as tasks_router
 from app.modules.tasks.reconcile import reconcile_lost_tasks_forever
 from app.modules.tasks.retention import purge_expired_task_events_forever
@@ -50,7 +43,11 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     reconcile_task = asyncio.create_task(reconcile_lost_tasks_forever())
     offline_reconcile_task = asyncio.create_task(reconcile_offline_devices_forever())
     retention_task = asyncio.create_task(purge_expired_task_events_forever())
-    schedule_task = asyncio.create_task(trigger_due_schedules_forever())
+    schedule_task = (
+        asyncio.create_task(trigger_due_schedules_forever())
+        if settings.worker_schedule_execution_enabled
+        else None
+    )
     selection_run_task = (
         asyncio.create_task(execute_selection_runs_forever())
         if settings.product_selection_execution_enabled
@@ -62,7 +59,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         reconcile_task.cancel()
         offline_reconcile_task.cancel()
         retention_task.cancel()
-        schedule_task.cancel()
+        if schedule_task is not None:
+            schedule_task.cancel()
         if selection_run_task is not None:
             selection_run_task.cancel()
         with suppress(asyncio.CancelledError):
@@ -71,8 +69,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await offline_reconcile_task
         with suppress(asyncio.CancelledError):
             await retention_task
-        with suppress(asyncio.CancelledError):
-            await schedule_task
+        if schedule_task is not None:
+            with suppress(asyncio.CancelledError):
+                await schedule_task
         if selection_run_task is not None:
             with suppress(asyncio.CancelledError):
                 await selection_run_task
@@ -109,17 +108,12 @@ def create_app() -> FastAPI:
     application.include_router(api_tokens_router)
     application.include_router(audit_log_router)
     application.include_router(assets_router)
-    application.include_router(automation_apps_router)
-    application.include_router(automation_parameter_preset_management_router)
-    application.include_router(automation_parameter_presets_router)
     application.include_router(users_router)
-    application.include_router(shops_router)
     application.include_router(devices_router)
     application.include_router(notifications_router)
     application.include_router(operating_dashboard_router)
     application.include_router(product_selection_router)
     application.include_router(product_data_router)
-    application.include_router(credentials_router)
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
