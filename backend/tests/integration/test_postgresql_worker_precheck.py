@@ -692,6 +692,32 @@ def test_expired_only_shop_waits_until_rpa_saves_a_new_snapshot(ready_precheck):
         assert replacement.task_id != task.task_id and replacement.target_device_id == device_id
 
 
+def test_late_success_does_not_reenable_an_expired_session_snapshot(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        first = service.submit(principal, submission(product="first").model_copy(update={"delivery": "product"}))
+        late = service.submit(principal, submission(product="late").model_copy(update={"delivery": "product"}))
+        queued = service.submit(principal, submission(product="queued").model_copy(update={"delivery": "product"}))
+        first.status = late.status = "running"
+        session.commit()
+        acknowledge_product_delivery(session, device_id, first.task_id,
+            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="a" * 64, error_code="SHOP_SESSION_EXPIRED"))
+        acknowledge_product_delivery(session, device_id, late.task_id,
+            PrecheckDeliveryAcknowledgement(status="success", payload_sha256="b" * 64))
+        assert session_snapshot_expired(session, queued)
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, submission(product="new-after-expiry"))
+        session.rollback()
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{**inventory.shops[0], "sessionRevision": "b" * 64}]
+        session.commit()
+        assert service.submit(principal, submission(product="new-after-refresh")).target_device_id == device_id
+
+
 def test_application_precheck_and_legacy_session_switches_are_independent(ready_precheck, tmp_path):
     import hashlib
     import json

@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import httpx
 from pydantic import SecretStr
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -57,7 +57,7 @@ def session_snapshot_expired(session: Session, task: Task) -> bool:
         Task.input_json["local_shop_id"].astext == local_id,
         Task.input_json["platform_shop_id"].astext == platform_id,
         Task.input_json["_session_revision"].astext == revision,
-        or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")),
+        Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED",
         Task.task_id != task.task_id,
     ).order_by(Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc()).limit(1)).first()
     return bool(latest and latest.status == "failed" and latest.error_code == "SHOP_SESSION_EXPIRED")
@@ -128,7 +128,7 @@ class WorkerPrecheckService:
             select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
             .where(task_device_scope, Task.target_device_id.in_([row[0].device_id for row in rows]),
                    Task.skill_id == PRECHECK_KIND, revision_key.is_not(None),
-                   or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")))
+                   Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")
             .distinct(Task.target_device_id, local_key, platform_key, revision_key)
             .order_by(Task.target_device_id, local_key, platform_key, revision_key,
                       Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc())
@@ -251,7 +251,7 @@ class WorkerPrecheckService:
         latest = self.session.execute(
             select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
             .where(task_device_scope, Task.skill_id == PRECHECK_KIND,
-                   or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")),
+                   Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED",
                    revision_key.is_not(None))
             .distinct(Task.target_device_id, local_key, platform_key, revision_key)
             .order_by(Task.target_device_id, local_key, platform_key, revision_key,
