@@ -15,8 +15,30 @@ branch_labels = None
 depends_on = None
 
 
+RETIRE_STALE_UNLEASED_TASKS_SQL = """
+        UPDATE tasks t
+           SET status = 'lost', error_code = 'LEGACY_UNLEASED_TASK_RETIRED',
+               error_message = '旧任务已失联并停用', finished_at = now(),
+               updated_at = now()
+         WHERE t.status = 'running' AND t.lease_until IS NULL
+           AND COALESCE(t.started_at, t.created_at) < now() - interval '1 day'
+           AND (t.skill_id LIKE 'yingdao.%' OR
+             EXISTS (SELECT 1 FROM task_shops ts WHERE ts.task_id = t.task_id))
+           AND NOT EXISTS (
+             SELECT 1 FROM device_runtime r
+              WHERE r.device_id = t.target_device_id
+                AND (r.connection_status = 'online'
+                     OR r.last_seen_at >= now() - interval '1 day')
+           )
+    """
+
+
 def upgrade() -> None:
     op.execute("SET LOCAL lock_timeout = '5s'")
+    # Legacy fixtures can contain RUNNING records without a lease indefinitely.
+    # Retire them only after a full day without a fresh/online device heartbeat.
+    # Preserve the record and continue to block genuinely active legacy work.
+    op.execute(RETIRE_STALE_UNLEASED_TASKS_SQL)
     # Never declare a running legacy task stopped while an old worker could be
     # executing it.  The operator must quiesce it before running the upgrade.
     op.execute("""

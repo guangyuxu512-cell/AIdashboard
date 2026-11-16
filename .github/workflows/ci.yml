@@ -47,7 +47,7 @@ jobs:
           python -c "import psycopg; c=psycopg.connect('postgresql://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_ci', autocommit=True); c.execute('CREATE DATABASE control_center_feat_worker_capability_precheck'); c.close()"
           export BACKEND_DATABASE_URL='postgresql+psycopg://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_feat_worker_capability_precheck'
           export BACKEND_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
-          python -m pytest -q -o addopts='' -m integration tests/integration/test_postgresql_worker_precheck.py tests/integration/test_postgresql_precheck_parallel_claim.py tests/integration/test_postgresql_worker_only_context.py
+          python -m pytest -q -o addopts='' -m integration tests/integration/test_postgresql_worker_precheck.py tests/integration/test_postgresql_precheck_parallel_claim.py tests/integration/test_postgresql_worker_only_context.py tests/integration/test_postgresql_legacy_retirement.py
 
   frontend-real-build:
     runs-on: ubuntu-latest
