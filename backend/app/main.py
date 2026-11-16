@@ -14,6 +14,14 @@ from app.modules.access.management_api import router as access_management_router
 from app.modules.api_tokens.api import router as api_tokens_router
 from app.modules.api_tokens.catalog import install_openapi_security
 from app.modules.audit.api import router as audit_log_router
+from app.modules.ai_workbench.api import router as ai_workbench_router
+from app.modules.ai_workbench.generation_executor import (
+    execute_generation_items_forever,
+)
+from app.modules.ai_workbench.model_catalog_api import (
+    admin_router as ai_model_admin_router,
+    catalog_router as ai_model_catalog_router,
+)
 from app.modules.authentication.api import router as authentication_router
 from app.modules.assets.api import router as assets_router
 from app.modules.automation_apps.api import router as automation_apps_router
@@ -33,6 +41,16 @@ from app.modules.operating_dashboard.scheduler import (
     enqueue_due_daily_operating_collections_forever,
     recover_operating_data_collections_on_startup,
 )
+from app.modules.product_collection.api import router as product_collection_router
+from app.modules.product_collection.executor import (
+    build_product_collection_executor,
+    execute_product_collections_forever,
+    product_collection_consumers_enabled,
+)
+from app.modules.product_collection.internal_api import (
+    ingest_router as product_collection_ingest_router,
+    router as product_collection_internal_router,
+)
 from app.modules.product_data.api import router as product_data_router
 from app.modules.product_data.executor import execute_product_data_collections_forever
 from app.modules.product_selection.api import router as product_selection_router
@@ -40,6 +58,7 @@ from app.modules.product_selection.run_executor import execute_selection_runs_fo
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
 from app.modules.sessions.api import router as sessions_router
+from app.modules.sessions.application_api import router as application_sessions_router
 from app.modules.shops.api import router as shops_router
 from app.modules.tasks.api import router as tasks_router
 from app.modules.tasks.reconcile import reconcile_lost_tasks_forever
@@ -57,10 +76,23 @@ from app.modules.workers.reconcile import reconcile_offline_devices_forever
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     del application
     settings = get_settings()
+    # Validate protected Product Collection configuration before any
+    # background task is started.  A fail-closed startup must not leave the
+    # unrelated reconcilers running after the lifespan context aborts.
+    product_collection_executor = (
+        build_product_collection_executor(settings)
+        if product_collection_consumers_enabled(settings)
+        else None
+    )
     reconcile_task = asyncio.create_task(reconcile_lost_tasks_forever())
     offline_reconcile_task = asyncio.create_task(reconcile_offline_devices_forever())
     retention_task = asyncio.create_task(purge_expired_task_events_forever())
     schedule_task = asyncio.create_task(trigger_due_schedules_forever())
+    generation_task = (
+        asyncio.create_task(execute_generation_items_forever())
+        if settings.toapis_api_key is not None
+        else None
+    )
     operating_collection_task = (
         asyncio.create_task(execute_operating_data_collections_forever())
         if settings.operating_dashboard_collection_execution_enabled
@@ -93,6 +125,16 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if settings.product_data_collection_execution_enabled
         else None
     )
+    product_collection_task = (
+        asyncio.create_task(
+            execute_product_collections_forever(
+                settings=settings,
+                executor=product_collection_executor,
+            ),
+        )
+        if product_collection_executor is not None
+        else None
+    )
     try:
         yield
     finally:
@@ -100,6 +142,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         offline_reconcile_task.cancel()
         retention_task.cancel()
         schedule_task.cancel()
+        if generation_task is not None:
+            generation_task.cancel()
         if operating_collection_task is not None:
             operating_collection_task.cancel()
         if operating_daily_planning_task is not None:
@@ -110,6 +154,8 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             selection_run_task.cancel()
         if product_data_collection_task is not None:
             product_data_collection_task.cancel()
+        if product_collection_task is not None:
+            product_collection_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -118,6 +164,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
             await retention_task
         with suppress(asyncio.CancelledError):
             await schedule_task
+        if generation_task is not None:
+            with suppress(asyncio.CancelledError):
+                await generation_task
         if operating_collection_task is not None:
             with suppress(asyncio.CancelledError):
                 await operating_collection_task
@@ -133,6 +182,9 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if product_data_collection_task is not None:
             with suppress(asyncio.CancelledError):
                 await product_data_collection_task
+        if product_collection_task is not None:
+            with suppress(asyncio.CancelledError):
+                await product_collection_task
 
 
 def create_app() -> FastAPI:
@@ -165,6 +217,9 @@ def create_app() -> FastAPI:
     application.include_router(access_management_router)
     application.include_router(api_tokens_router)
     application.include_router(audit_log_router)
+    application.include_router(ai_workbench_router)
+    application.include_router(ai_model_admin_router)
+    application.include_router(ai_model_catalog_router)
     application.include_router(authentication_router)
     application.include_router(assets_router)
     application.include_router(automation_apps_router)
@@ -176,9 +231,13 @@ def create_app() -> FastAPI:
     application.include_router(notifications_router)
     application.include_router(operating_dashboard_router)
     application.include_router(product_selection_router)
+    application.include_router(product_collection_router)
+    application.include_router(product_collection_internal_router)
+    application.include_router(product_collection_ingest_router)
     application.include_router(product_data_router)
     application.include_router(credentials_router)
     application.include_router(sessions_router)
+    application.include_router(application_sessions_router)
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)

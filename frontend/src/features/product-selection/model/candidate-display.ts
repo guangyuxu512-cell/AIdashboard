@@ -1,6 +1,7 @@
 import dayjs from 'dayjs'
 import type {
   CandidateDiscovery,
+  MaterialCollectionStatus,
   SelectionCandidate,
 } from './contracts'
 
@@ -62,6 +63,13 @@ export function categoryLeaf(path: string): string {
       .at(-1) ?? '—'
   )
 }
+export const collectionLabels: Record<MaterialCollectionStatus, string> = {
+  'not-collected': '未采集',
+  'demo-collected': '已演示采集',
+  failed: '采集失败',
+  unknown: '—',
+}
+
 export function sourceProductUrl(value: string | null): string | null {
   if (!value) return null
   try {

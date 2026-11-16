@@ -223,7 +223,7 @@ describe('Human Auth Store', () => {
     auth.setDataSource(
       dataSource({
         moduleAccess: {
-          moduleCodes: ['device'],
+          moduleCodes: ['ai-workbench'],
           isAccessAdministrator: true,
           isSuperAccount: true,
         },
@@ -243,7 +243,7 @@ describe('Human Auth Store', () => {
     const source = dataSource({
       teams: [team('default', '默认团队'), team('shopee', 'shopee')],
       moduleAccess: {
-        moduleCodes: ['device'],
+        moduleCodes: ['ai-workbench'],
         isAccessAdministrator: true,
         isSuperAccount: true,
       },
@@ -284,7 +284,7 @@ describe('Human Auth Store', () => {
     const source = dataSource({
       teams: [team('team-a', 'Team A'), team('team-b', 'Team B')],
       moduleAccess: {
-        moduleCodes: ['task'],
+        moduleCodes: ['product-library'],
         isAccessAdministrator: true,
         isSuperAccount: true,
       },
@@ -292,7 +292,7 @@ describe('Human Auth Store', () => {
     vi.mocked(source.getCurrentModuleAccess)
       .mockReturnValueOnce(
         Promise.resolve({
-          moduleCodes: ['task'],
+          moduleCodes: ['product-library'],
           isAccessAdministrator: true,
           isSuperAccount: true,
         }),
@@ -306,7 +306,7 @@ describe('Human Auth Store', () => {
     const selectA = auth.selectTeam('team-a')
     const selectB = auth.selectTeam('team-b')
     teamBAccess.resolve({
-      moduleCodes: ['task'],
+      moduleCodes: ['product-library'],
       isAccessAdministrator: true,
       isSuperAccount: true,
     })
@@ -319,7 +319,7 @@ describe('Human Auth Store', () => {
     await selectA
 
     expect(auth.activeTeamId).toBe('team-b')
-    expect(auth.allowedModuleCodes).toEqual(new Set(['task']))
+    expect(auth.allowedModuleCodes).toEqual(new Set(['product-library']))
     expect(source.getCurrentModuleAccess).toHaveBeenCalledTimes(3)
   })
 })

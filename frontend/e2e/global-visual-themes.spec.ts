@@ -376,7 +376,7 @@ test('existing PC pages use the four palettes without horizontal overflow or run
   for (const path of [
     '/shops',
     '/assets',
-    '/product-selection',
+    '/ai-workbench/generate',
     '/operating-dashboard',
     '/parameter-presets',
     '/devices',

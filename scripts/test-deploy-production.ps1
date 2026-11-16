@@ -58,10 +58,10 @@ try {
     & $realCommand git @('clone', $origin, $repository) -CaptureOutput | Out-Null
     & $realCommand git @('-C', $repository, 'config', 'user.name', 'production entry test')
     & $realCommand git @('-C', $repository, 'config', 'user.email', 'production-entry@example.invalid')
-    foreach ($directory in @('electron', 'backend', 'frontend', 'deploy/production', 'scripts')) {
+    foreach ($directory in @('electron', 'backend', 'frontend', 'mobile', 'deploy/production', 'scripts')) {
         New-Item -ItemType Directory -Path (Join-Path $repository $directory) | Out-Null
     }
-    foreach ($file in @('.dockerignore', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'electron/package.json', 'backend/value.txt', 'frontend/value.txt', 'deploy/production/value.txt', 'scripts/production-env.sh')) {
+    foreach ($file in @('.dockerignore', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml', 'electron/package.json', 'backend/value.txt', 'frontend/value.txt', 'mobile/value.txt', 'deploy/production/value.txt', 'scripts/production-env.sh')) {
         'committed-byte-content' | Set-Content -LiteralPath (Join-Path $repository $file)
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot 'remote-deploy-production.sh') -Destination (Join-Path $repository 'scripts/remote-deploy-production.sh')

@@ -247,6 +247,9 @@ describe('selection draft and isolated mock handlers', () => {
     ).toBe(first.id)
     await source.demoAction(first.id, 'restore')
     expect((await source.candidates(query())).total).toBe(32)
+    expect((await source.demoAction(first.id, 'collect')).message).toContain(
+      '未写入正式商品库',
+    )
     expect((await source.candidate(first.id)).userPaidAmountUnit).toBeNull()
   })
   it('does not fake Baiying results, unsupported category data or real endpoints', async () => {
@@ -342,9 +345,46 @@ describe('selection draft and isolated mock handlers', () => {
       ),
     ).toBe(false)
   })
-  it('does not expose central product-collection actions', async () => {
-    expect(createSelectionMockHandlers()).not.toHaveProperty('collectBatch')
-    expect(await createSelectionService('real')).not.toHaveProperty('collectBatch')
+  it('batch demo deduplicates products and returns failures without losing other item results', async () => {
+    const first = await createSelectionMockHandlers().candidate('candidate-000')
+    const source = createSelectionMockHandlers([
+      first,
+      { ...first, id: 'alias-same-product' },
+      { ...first, id: 'other-product', productId: '9087654321098765999' },
+    ])
+    const result = await source.collectBatch([
+      first.id,
+      first.id,
+      'missing',
+      'alias-same-product',
+      'other-product',
+    ])
+    expect(result.mode).toBe('mock')
+    expect(result.results).toHaveLength(3)
+    expect(result.results[0]).toMatchObject({
+      state: 'demo',
+      productId: first.productId,
+      candidateIds: [first.id, 'alias-same-product'],
+    })
+    expect(result.results[1]).toMatchObject({
+      state: 'failed',
+      candidateId: 'missing',
+    })
+    expect(result.results[2]).toMatchObject({
+      state: 'demo',
+      productId: '9087654321098765999',
+    })
+    expect(result.results[0]!.message).toBe(
+      (await source.demoAction(first.id, 'collect')).message,
+    )
+    expect(await source.collectBatch([])).toEqual({ mode: 'mock', results: [] })
+    expect(await source.candidate(first.id)).toEqual({
+      ...first,
+      collectionStatus: 'demo-collected',
+    })
+    expect(
+      (await createSelectionService('real')).materialCollectionAvailable,
+    ).toBe(true)
   })
   it('only requires a creator for Baiying, never for Compass-only retrieval/save', async () => {
     const mock = createSelectionMockHandlers()

@@ -127,7 +127,7 @@ class SelectionRunService:
                 if self.category_reader is None:
                     from app.core.database import get_session_factory
                     from app.modules.product_selection.category_service import SelectionCategoryService
-                    tree = SelectionCategoryService(get_session_factory(), settings=self.settings).read(current, command.shop_id)
+                    tree = SelectionCategoryService(get_session_factory()).read(current, command.shop_id)
                 else:
                     tree = self.category_reader(current, command.shop_id)
                 validate_shop_category(original, tree)

@@ -28,6 +28,7 @@ describe('SettingsSideNav', () => {
     expect(buttons.map((button) => button.text())).toEqual([
       '用户与权限',
       '操作日志',
+      'AI 模型管理',
       '通知配置',
     ])
     expect(wrapper.get('button[aria-current="page"]').text()).toBe('操作日志')

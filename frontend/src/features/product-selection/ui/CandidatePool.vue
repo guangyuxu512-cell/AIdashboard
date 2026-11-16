@@ -5,6 +5,7 @@ import { keepPreviousData, useQuery } from '@tanstack/vue-query'
 import { useElementSize } from '@vueuse/core'
 import {
   type DataTableColumns,
+  type DataTableRowKey,
   type DataTableSortState,
   NText,
   NEllipsis,
@@ -21,6 +22,7 @@ import {
   ManagementListSection,
   PaginationBar,
   TableToolbar,
+  StatusTag,
 } from '@/shared/components'
 import { AppButton, AppInput, AppSelect } from '@/shared/ui'
 import { useAutoSearch } from '@/shared/composables/useAutoSearch'
@@ -28,11 +30,13 @@ import type {
   CandidateQuery,
   SelectionCandidate,
   SelectionService,
+  BatchCollectReceipt,
 } from '../model/contracts'
 import {
   formatCandidateDate,
   formatReviewRate,
   formatFirstListed,
+  collectionLabels,
   discoveryLabels,
   discoveryDescriptions,
   rankChange,
@@ -51,9 +55,32 @@ const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
 const filters = ref<CandidateQuery>(candidateFilters(route?.query ?? {}))
 const keyword = ref(filters.value.keyword),
+  checked = ref<DataTableRowKey[]>([]),
   detailId = ref<string | null>(null),
   busy = ref(false)
+const selectionHint = ref<{ x: number; y: number } | null>(null)
 const detailRunId = ref<string | null>(null)
+function showSelectionHint(event: Event) {
+  const checkbox =
+    event.target instanceof Element
+      ? event.target.closest('th.selection-current-page [role="checkbox"]')
+      : null
+  if (!checkbox) {
+    selectionHint.value = null
+    return
+  }
+  const bounds = checkbox.getBoundingClientRect()
+  selectionHint.value = {
+    x: bounds.left + bounds.width / 2,
+    y: bounds.bottom,
+  }
+}
+const batchReceipt = ref<BatchCollectReceipt | null>(null)
+const batchFailures = computed(
+  () =>
+    batchReceipt.value?.results.filter((result) => result.state === 'failed') ??
+    [],
+)
 const strategySearch = ref('')
 const strategies = useQuery({
   queryKey: computed(() => [
@@ -204,10 +231,12 @@ async function refreshList() {
 }
 const search = useAutoSearch(() => {
   filters.value = { ...filters.value, keyword: keyword.value.trim(), page: 1 }
+  checked.value = []
 })
 function filterChanged() {
   search.cancel()
   filters.value.page = 1
+  checked.value = []
 }
 watch(
   () => route?.query,
@@ -218,6 +247,7 @@ watch(
     search.cancel()
     filters.value = restored
     keyword.value = restored.keyword
+    checked.value = []
   },
 )
 watch(
@@ -258,6 +288,7 @@ function reset() {
 }
 function setPage(value: number) {
   filters.value.page = value
+  checked.value = []
 }
 function setPageSize(value: number) {
   filters.value.pageSize = value
@@ -272,22 +303,74 @@ watch(
 )
 async function act(
   row: SelectionCandidate,
-  action: 'block' | 'restore',
+  action: 'collect' | 'block' | 'restore',
 ) {
   if (busy.value) return
   busy.value = true
   try {
-    if (props.service.blockCandidate) {
+    if (action !== 'collect' && props.service.blockCandidate) {
       await props.service.blockCandidate(row.id, action === 'block')
       message.success(action === 'block' ? '已屏蔽候选商品' : '已恢复候选商品')
+      checked.value = []
       await query.refetch()
       return
     }
-    const receipt = await props.service.demoAction(row.id, action)
-    message.info(receipt.message)
+    if (action === 'collect') {
+      const receipt = await props.service.collectBatch([row.candidateId])
+      const result = receipt.results[0]
+      if (!result || result.state === 'failed')
+        throw new Error(result?.message ?? '资料采集提交失败')
+      message.success(result.message)
+    } else {
+      const receipt = await props.service.demoAction(row.id, action)
+      message.info(receipt.message)
+    }
+    checked.value = []
     await query.refetch()
   } catch (error) {
     message.error(error instanceof Error ? error.message : '演示操作失败')
+  } finally {
+    busy.value = false
+  }
+}
+async function collectSelected() {
+  if (busy.value || !checked.value.length) return
+  const selectedIds = new Set(checked.value.map(String))
+  const selectedRows = (query.data.value?.items ?? []).filter((row) =>
+    selectedIds.has(row.id),
+  )
+  const ids = selectedRows.map((row) => row.candidateId)
+  if (!ids.length) return
+  busy.value = true
+  batchReceipt.value = null
+  try {
+    const receipt = await props.service.collectBatch(ids)
+    batchReceipt.value = receipt
+    const succeeded = receipt.results.filter(
+      (result) => result.state !== 'failed',
+    )
+    const successfulCandidateIds = new Set(
+      succeeded.flatMap((result) => result.candidateIds),
+    )
+    const successfulObservationIds = new Set(
+      selectedRows
+        .filter((row) => successfulCandidateIds.has(row.candidateId))
+        .map((row) => row.id),
+    )
+    checked.value = checked.value.filter(
+      (key) => !successfulObservationIds.has(String(key)),
+    )
+    const feedback =
+      receipt.mode === 'mock'
+        ? `资料采集演示完成 ${succeeded.length} 项，失败 ${batchFailures.value.length} 项；未发起真实采集`
+        : `${receipt.results.some((result) => result.state === 'reused') ? '已复用' : '已提交'} ${succeeded.length} 个候选商品的资料采集任务${batchFailures.value.length ? `，失败 ${batchFailures.value.length} 项` : ''}`
+    if (batchFailures.value.length) message.warning(feedback)
+    else message.info(feedback)
+    await query.refetch()
+  } catch (error) {
+    message.error(
+      error instanceof Error ? error.message : '批量资料采集提交失败，请重试',
+    )
   } finally {
     busy.value = false
   }
@@ -305,6 +388,7 @@ function sort(state: DataTableSortState | DataTableSortState[] | null) {
     sortOrder: order || false,
     page: 1,
   }
+  checked.value = []
 }
 const missing = () => h(NText, { depth: 3 }, () => '—')
 const basicCell = (
@@ -329,10 +413,10 @@ const { width: tableWidth } = useElementSize(() => {
   return element instanceof HTMLElement ? element : null
 })
 const readingWidths = computed(() => {
-  // Preserve the image and actions; distribute the actual remaining
+  // Preserve the image and three actions; distribute the actual remaining
   // width, instead of forcing a captured 1496px table into every window.
   const width = Math.floor(tableWidth.value || 1496) - 2
-  const space = Math.max(0, width - 220)
+  const space = Math.max(0, width - 44 - 220)
   const expand = Math.max(0, Math.min(1, (width - 1100) / 400))
   const fit = (compact: number, wide: number) =>
     Math.floor(compact + (wide - compact) * expand)
@@ -342,9 +426,10 @@ const readingWidths = computed(() => {
   const price = fit(80, 112)
   const review = fit(84, 96)
   const listed = fit(106, 140)
+  const status = fit(82, 100)
   const text = Math.max(
     0,
-    space - rank - firstListed - discovery - price - review - listed,
+    space - rank - firstListed - discovery - price - review - listed - status,
   )
   // 48px image + 8px gap + ~260–280px text + 24px cell padding.
   // Cap the actual column as well as its text budget: the merchant column then
@@ -363,9 +448,17 @@ const readingWidths = computed(() => {
     price,
     review,
     listed,
+    status,
   }
 })
 const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
+  {
+    type: 'selection',
+    width: 44,
+    fixed: 'left',
+    align: 'center',
+    className: 'selection-current-page',
+  },
   {
     key: 'productInfo',
     title: wrappedHeader('商品信息'),
@@ -514,6 +607,19 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
       ),
   },
   {
+    key: 'collectionStatus',
+    title: '采集状态',
+    width: readingWidths.value.status,
+    align: 'center',
+    render: (row) =>
+      row.collectionStatus === 'unknown'
+        ? missing()
+        : h(StatusTag, {
+            label: collectionLabels[row.collectionStatus],
+            tone: row.collectionStatus === 'failed' ? 'error' : 'neutral',
+          }),
+  },
+  {
     key: 'actions',
     title: '操作',
     width: 220,
@@ -533,6 +639,21 @@ const columns = computed<DataTableColumns<SelectionCandidate>>(() => [
             },
           },
           () => '详情',
+        ),
+        h(
+          AppButton,
+          {
+            tone: 'secondary',
+            size: 'small',
+            disabled:
+              busy.value ||
+              !(
+                props.service.materialCollectionAvailable ??
+                props.service.available
+              ),
+            onClick: () => act(row, 'collect'),
+          },
+          () => '采集资料',
         ),
         h(
           AppButton,
@@ -565,7 +686,13 @@ const scrollWidth = computed(() => {
 </script>
 
 <template>
-  <div class="selection-panel candidate-pool">
+  <div
+    class="selection-panel candidate-pool"
+    @mouseover="showSelectionHint"
+    @focusin="showSelectionHint"
+    @mouseleave="selectionHint = null"
+    @focusout="selectionHint = null"
+  >
     <FilterBar density="compact">
       <FilterField width="md"
         ><ShopSelector
@@ -656,7 +783,10 @@ const scrollWidth = computed(() => {
       <NAlert v-if="latestRun.isError.value" type="warning">{{
         latestRun.error.value?.message
       }}</NAlert>
-      <TableToolbar v-if="query.data.value?.context?.unknown_discovery_count" density="compact" aria-label="候选商品状态">
+      <TableToolbar density="compact" aria-label="候选商品批量操作">
+        <NText v-if="checked.length" :depth="3"
+          >已选 {{ checked.length }} 项</NText
+        >
         <NText
           v-if="query.data.value?.context?.unknown_discovery_count"
           depth="3"
@@ -665,7 +795,32 @@ const scrollWidth = computed(() => {
           }}
           项发现状态未知</NText
         >
+        <template #actions>
+          <AppButton
+            tone="primary"
+            :disabled="
+              !checked.length ||
+              busy ||
+              !(service.materialCollectionAvailable ?? service.available)
+            "
+            :loading="busy"
+            @click="collectSelected"
+          >
+            批量采集资料
+          </AppButton>
+        </template>
       </TableToolbar>
+      <NAlert
+        v-if="batchFailures.length"
+        type="warning"
+        :title="batchReceipt?.mode === 'mock' ? '演示采集失败' : '采集提交失败'"
+        closable
+        @close="batchReceipt = null"
+      >
+        <div v-for="result in batchFailures" :key="result.candidateId">
+          {{ result.productId ?? result.candidateId }}：{{ result.message }}
+        </div>
+      </NAlert>
       <DataTable
         ref="tableRef"
         :columns="columns"
@@ -676,7 +831,9 @@ const scrollWidth = computed(() => {
         :scroll-x="scrollWidth"
         viewport="fill"
         appearance="list"
+        :checked-row-keys="checked"
         :empty-description="emptyDescription"
+        @update:checked-row-keys="checked = $event"
         @retry="query.refetch()"
         @update:sorter="sort"
       />
@@ -689,6 +846,15 @@ const scrollWidth = computed(() => {
         @update:page-size="setPageSize"
       />
     </ManagementListSection>
+    <NTooltip
+      v-if="selectionHint"
+      trigger="manual"
+      placement="bottom"
+      :show="true"
+      :x="selectionHint.x"
+      :y="selectionHint.y"
+      >全选仅当前页</NTooltip
+    >
     <CandidateDetailDrawer
       :id="detailId"
       :receipt-id="detailRunId"
@@ -701,6 +867,9 @@ const scrollWidth = computed(() => {
 </template>
 
 <style scoped>
+.candidate-pool :deep(.n-data-table .selection-current-page) {
+  padding: var(--n-td-padding);
+}
 .candidate-pool :deep(.selection-sort-column .n-data-table-th__title-wrapper) {
   justify-content: center;
 }

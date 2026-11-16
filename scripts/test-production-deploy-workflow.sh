@@ -56,6 +56,10 @@ grep -Fq "'ServerAliveInterval=30'" "$repository_root/scripts/deploy-production.
 grep -Fq "'ServerAliveCountMax=3'" "$repository_root/scripts/deploy-production.ps1"
 grep -Fq 'flock -n 9' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'verify-active-release.sh' "$repository_root/scripts/deploy-production.ps1"
+grep -Fq 'mobile/public/manifest.webmanifest' "$repository_root/scripts/remote-deploy-production.sh"
+grep -Fq 'verify_mobile_frontend' "$repository_root/scripts/remote-deploy-production.sh"
 grep -Fq 'absolute_redirect off;' "$repository_root/frontend/deploy/default.conf.template"
+grep -Fq '308 with the proxy-safe relative Location /mobile/' "$repository_root/scripts/remote-deploy-production.sh"
+grep -Fq "^Location: /mobile/\$" "$repository_root/.github/workflows/ci.yml"
 
 echo 'Local production CD, explicit emergency entry and SSH keepalive regressions passed'

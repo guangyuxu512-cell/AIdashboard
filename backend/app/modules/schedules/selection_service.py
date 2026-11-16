@@ -112,7 +112,7 @@ class SelectionScheduleService:
             elif category_reader is None:
                 from app.core.database import get_session_factory
                 from app.modules.product_selection.category_service import SelectionCategoryService
-                tree = SelectionCategoryService(get_session_factory(), settings=self.settings).read(current, snapshot.shop_id)
+                tree = SelectionCategoryService(get_session_factory()).read(current, snapshot.shop_id)
             else:
                 tree = category_reader(current, snapshot.shop_id)
         except AppError as failure:

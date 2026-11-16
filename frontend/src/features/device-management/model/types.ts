@@ -41,7 +41,7 @@ export interface DeviceCurrentExecutionViewModel {
 export interface DeviceManagementRowViewModel extends DeviceListItemViewModel {
   currentExecution: DeviceCurrentExecutionViewModel
   yingdaoInventory: YingdaoInventoryViewModel | null
-  localShopCount: number | null
+  boundShopCount: number | null
   activeTask: ActiveTaskSummaryReadDto | null
 }
 

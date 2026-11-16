@@ -82,7 +82,7 @@ function openParameterPresets(application: ProviderApplicationViewModel): void {
       :provider-inventory-error="management.providerInventoryError.value"
       :yingdao-refreshing="management.yingdaoRefreshing.value"
       :current-execution="management.detailCurrentExecution.value"
-      :local-shops="management.detailLocalShops.value"
+      :bound-shop-count="management.detailBoundShopCount.value"
       :recent-executions="management.recentExecutions.value"
       :status-changing="
         management.statusChangingDeviceId.value ===

@@ -149,7 +149,7 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       expect(dto.bad_comment_rate_raw).toBe(raw)
     },
   )
-  it('reads candidate data without exposing the removed collection action', async () => {
+  it('queries database and submits the canonical candidate identity to collection', async () => {
     const dto = observation()
     vi.mocked(httpClient.get)
       .mockResolvedValueOnce({
@@ -165,8 +165,30 @@ describe('Real selection reads actual registered APIs, not mock execution', () =
       '/api/v1/product-selection/observations/observation-id',
       { params: { receipt_id: undefined } },
     )
-    expect(real).not.toHaveProperty('collectBatch')
-    expect(httpClient.post).not.toHaveBeenCalled()
+    vi.mocked(httpClient.post).mockResolvedValueOnce({
+      data: {
+        request_id: 'request-id',
+        status: 'pending',
+        item_count: 1,
+        reused: false,
+      },
+    })
+    const receipt = await real.collectBatch(['candidate-id'])
+    expect(receipt).toMatchObject({
+      mode: 'real',
+      requestId: 'request-id',
+      results: [{ candidateId: 'candidate-id', state: 'submitted' }],
+    })
+    expect(httpClient.post).toHaveBeenCalledWith(
+      '/api/v1/product-collection/requests',
+      {
+        submission_key: expect.any(String),
+        source: {
+          kind: 'selection_candidates',
+          candidate_ids: ['candidate-id'],
+        },
+      },
+    )
     expect(httpClient.get).toHaveBeenCalledTimes(2)
   })
   it('loads shop-bound real category paths and excludes unconfirmed all nodes', async () => {

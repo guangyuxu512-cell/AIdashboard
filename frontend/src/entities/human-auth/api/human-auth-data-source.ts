@@ -188,11 +188,12 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
         moduleCodes: [
           'shop',
           'asset',
+          'ai-workbench',
           'device',
           'task',
           'schedule',
           'settings',
-          ...(isSuperAccount ? ['product-selection'] : []),
+          ...(isSuperAccount ? ['product-selection', 'product-library'] : []),
         ],
         isSuperAccount,
         isAccessAdministrator: isSuperAccount,

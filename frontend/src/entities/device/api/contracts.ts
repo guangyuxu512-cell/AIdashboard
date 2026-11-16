@@ -19,22 +19,6 @@ export interface DeviceReadDto {
   updated_at: string
 }
 
-export interface DeviceLocalShopDto {
-  local_shop_id: string
-  platform_shop_id: string | null
-  shop_name: string
-  platform: string
-  session_status: 'valid' | 'invalid' | 'reauthorization_required' | 'unknown'
-  status_observed_at: string | null
-}
-
-export interface DeviceLocalShopInventoryDto {
-  device_id: string
-  available: boolean
-  last_discovered_at: string | null
-  shops: DeviceLocalShopDto[]
-}
-
 export interface DeviceCreateDto {
   display_name: string
   enabled?: boolean

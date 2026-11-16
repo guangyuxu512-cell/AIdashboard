@@ -26,9 +26,7 @@ pytestmark = pytest.mark.integration
 @pytest.fixture
 def token_environment(postgresql_engine):
     with postgresql_engine.connect() as connection:
-        assert connection.scalar(text("select current_database()")) in {
-            "control_center_feat_ai_token_management", "control_center_feat_windows_execution_slim",
-        }
+        assert connection.scalar(text("select current_database()")) == "control_center_feat_ai_token_management"
     user_id, team_a, team_b, device_a, device_b, task_a, task_b = [uuid4() for _ in range(7)]
     password = "integration-only-test-password"
     with Session(postgresql_engine) as session:
@@ -192,20 +190,20 @@ def test_existing_worker_migration_guard_still_rejects_data(token_environment, m
     try:
         migration = importlib.import_module("migrations.versions.20261110_0050_worker_rpa_precheck_v1")
         # The test uses this Feature's disposable DB, never the old Feature DB.
-        monkeypatch.setattr(migration, "FEATURE_DATABASE", engine.url.database)
+        monkeypatch.setattr(migration, "FEATURE_DATABASE", "control_center_feat_ai_token_management")
         with engine.connect() as connection:
             with Operations.context(MigrationContext.configure(connection)):
                 with pytest.raises(RuntimeError, match="retain schema and audit data"):
                     migration.downgrade()
             connection.rollback()
-            assert connection.scalar(text("select version_num from alembic_version")) == "20261114_0052"
+            assert connection.scalar(text("select version_num from alembic_version")) == "20261113_0051"
     finally:
         with Session(engine) as session:
             session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == device_id))
             session.commit()
 
 
-def test_token_migration_will_not_discard_existing_credentials(token_environment, monkeypatch):
+def test_token_migration_will_not_discard_existing_credentials(token_environment):
     import importlib
     from alembic.migration import MigrationContext
     from alembic.operations import Operations
@@ -214,10 +212,9 @@ def test_token_migration_will_not_discard_existing_credentials(token_environment
     created = client.post("/api/v1/api-tokens", json={"name": "preserved", "permissions": ["GET /api/v1/tasks"]})
     assert created.status_code == 201
     migration = importlib.import_module("migrations.versions.20261113_0051_api_tokens")
-    monkeypatch.setattr(migration, "FEATURE_DATABASE", engine.url.database)
     with engine.connect() as connection:
         with Operations.context(MigrationContext.configure(connection)):
             with pytest.raises(RuntimeError, match="retain schema and audit records"):
                 migration.downgrade()
         connection.rollback()
-        assert connection.scalar(text("select version_num from alembic_version")) == "20261114_0052"
+        assert connection.scalar(text("select version_num from alembic_version")) == "20261113_0051"

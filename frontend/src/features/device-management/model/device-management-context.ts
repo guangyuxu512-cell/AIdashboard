@@ -2,16 +2,15 @@ import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
 import {
-  deviceApi,
   getYingdaoInventory,
-  type DeviceLocalShopInventoryDto,
   type YingdaoInventoryViewModel,
 } from '@/entities/device'
+import { SHOP_LIST_FIXTURE, shopApi } from '@/entities/shop'
 import { apiMode } from '@/shared/api'
 
 export interface DeviceManagementContext {
   inventories: Record<string, YingdaoInventoryViewModel | null>
-  localShops: Record<string, DeviceLocalShopInventoryDto | null>
+  bindingCounts: Record<string, number | null>
 }
 
 type InventoryLoader = (
@@ -36,23 +35,55 @@ export async function loadDeviceInventories(
   )
 }
 
-export async function loadDeviceLocalShops(
+export async function loadDeviceBindingCounts(
   deviceIds: string[],
-  loader: (deviceId: string) => Promise<DeviceLocalShopInventoryDto | null> =
-    (deviceId) => apiMode === 'mock'
-      ? Promise.resolve(null)
-      : deviceApi.getLocalShops(deviceId),
-  previous: Record<string, DeviceLocalShopInventoryDto | null> = {},
-): Promise<Record<string, DeviceLocalShopInventoryDto | null>> {
-  const results = await Promise.allSettled(
-    deviceIds.map((deviceId) => loader(deviceId)),
+  loader: (ids: string[]) => Promise<Record<string, number>> =
+    loadBindingCounts,
+  previous: Record<string, number | null> = {},
+): Promise<Record<string, number | null>> {
+  try {
+    return await loader(deviceIds)
+  } catch {
+    return Object.fromEntries(
+      deviceIds.map((deviceId) => [deviceId, previous[deviceId] ?? null]),
+    )
+  }
+}
+
+async function loadBindingCounts(
+  deviceIds: string[],
+): Promise<Record<string, number>> {
+  const counts = Object.fromEntries(deviceIds.map((id) => [id, 0]))
+  if (apiMode === 'mock') {
+    for (const shop of SHOP_LIST_FIXTURE) {
+      for (const deviceId of shop.executionDeviceIds) {
+        if (deviceId in counts) counts[deviceId]! += 1
+      }
+    }
+    return counts
+  }
+
+  const firstPage = await shopApi.list({ page: 1, pageSize: 100 })
+  const shops = [...firstPage.items]
+  const pageCount = Math.ceil(firstPage.total / firstPage.page_size)
+  if (pageCount > 1) {
+    const remainingPages = await Promise.all(
+      Array.from({ length: pageCount - 1 }, (_, index) =>
+        shopApi.list({ page: index + 2, pageSize: 100 }),
+      ),
+    )
+    shops.push(...remainingPages.flatMap((page) => page.items))
+  }
+
+  const bindingGroups = await Promise.all(
+    shops.map((shop) => shopApi.listBindings(shop.shop_id)),
   )
-  return Object.fromEntries(deviceIds.map((deviceId, index) => [
-    deviceId,
-    results[index]?.status === 'fulfilled'
-      ? results[index].value
-      : (previous[deviceId] ?? null),
-  ]))
+  for (const binding of bindingGroups.flat()) {
+    if (binding.enabled && binding.device_id in counts) {
+      counts[binding.device_id]! += 1
+    }
+  }
+  return counts
 }
 
 export function useDeviceManagementContextQuery(
@@ -72,13 +103,13 @@ export function useDeviceManagementContextQuery(
         'management-context',
         ...ids,
       ])
-      const [inventories, localShops] = await Promise.all([
+      const [inventories, bindingCounts] = await Promise.all([
         loadDeviceInventories(ids, getYingdaoInventory, previous?.inventories),
-        loadDeviceLocalShops(ids, undefined, previous?.localShops),
+        loadDeviceBindingCounts(ids, loadBindingCounts, previous?.bindingCounts),
       ])
       return {
         inventories,
-        localShops,
+        bindingCounts,
       }
     },
     enabled: computed(() => toValue(deviceIds).length > 0),
