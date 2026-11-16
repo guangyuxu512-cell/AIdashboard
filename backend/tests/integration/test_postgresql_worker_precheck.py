@@ -760,8 +760,11 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck):
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 
 
-@pytest.mark.parametrize("delivery_mode", ["central", "product"])
-def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode):
+@pytest.mark.parametrize(("delivery_mode", "operation"), [
+    ("central", "schema"), ("product", "schema"), ("product", "tree"),
+    ("product", "search"), ("product", "predict"),
+])
+def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode, operation):
     import asyncio
     import base64
     import hashlib
@@ -811,7 +814,7 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
     blob = buffer.getvalue()
     digest = hashlib.sha256(blob).hexdigest()
     manifest = json.dumps({"schema_version": 1, "sequence": 1, "packages": [{
-        "skill_id": "douyin.category_schema", "version": "1.0", "entrypoint": "capability.py",
+        "skill_id": "douyin.category_schema", "version": "2.0.0", "entrypoint": "capability.py",
         "host_api_version": 1, "sha256": digest, "size": len(blob)}]}, separators=(",", ":")).encode()
     artifacts = tmp_path / "server-artifacts"
     (artifacts / "packages").mkdir(parents=True)
@@ -852,18 +855,30 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
     def platform(request):
         platform_calls.append(request.url.path)
         assert request.headers["cookie"] == "session=synthetic-cookie"
-        return httpx.Response(200, json={"code": "0", "data": {"model": {"category_properties": {
-            "items": [{"id": "large", "options": [{"id": index, "name": "选项" * 8} for index in range(2500)]}]
-        }}}})
+        if operation == "schema":
+            data = {"model": {"category_properties": {"items": [
+                {"id": "large", "options": [{"id": index, "name": "选项" * 8} for index in range(2500)]}]}}}
+        elif operation == "tree":
+            data = [{"id": 1, "name": "家居", "parent_cid": 0, "is_leaf": False}]
+        elif operation == "search":
+            data = [{"id": 1, "name": "家居"}]
+        else:
+            data = {"predict_cid": 1, "candidate_category_details": [{"first_cid": 1, "first_cname": "家居"}]}
+        return httpx.Response(200, json={"code": "0", "data": data})
 
     async def product(request):
         product_calls.append(request.url.path)
         payload = json.loads(request.content)
-        assert payload["result"]["items"][0]["options"][-1]["id"] == 2499
+        if operation == "schema":
+            assert payload["result"]["items"][0]["options"][-1]["id"] == 2499
+        else:
+            assert payload["result"]["operation"] == operation and "data" in payload["result"]
         task_id = request.url.path.rsplit("/", 1)[-1]
-        context = await central_clients[0].get(f"/api/v1/worker/tasks/{task_id}/precheck-delivery-context")
+        context = await central_clients[0].get(f"/api/v1/worker/tasks/{task_id}/precheck-delivery-context",
+                                               headers={"X-Precheck-Protocol": "3"})
         assert context.status_code == 200 and context.json()["client_id"] == principal.grant.client_id
         assert context.json()["product_id"] == "product-a" and "result" not in context.json()
+        assert context.json()["operation"] == operation
         return httpx.Response(200, json={"task_id": task_id, "accepted": True})
 
     class FakeRpa:
@@ -894,6 +909,12 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
             assert runtime.descriptors()[0].skill_id == "douyin.category_schema"
             await worker._heartbeat_once()
             request = submission().model_copy(update={"delivery": delivery_mode})
+            if operation != "schema":
+                inputs = {"category_id": "0", "title": "fixture", "operation": operation}
+                if operation == "predict":
+                    inputs["image_url"] = "https://image.test/a.jpg"
+                request = PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": delivery_mode,
+                    "context": {"product_id": "product-a", "revision": 1, "attempt": 1}, "input": inputs})
             created = await http.post("/internal/applications/v1/worker-prechecks", json=request.model_dump())
             assert created.status_code == 202
             task = await client.claim()
@@ -913,7 +934,8 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
                 assert product_calls == [f"/api/v1/worker-precheck-results/{task.task_id}"]
             assert "synthetic-cookie" not in status.text and "synthetic-signature" not in status.text
             assert worker.result_outbox.pending() == []
-            assert platform_calls == ["/product/tproduct/getSchema"]
+            assert platform_calls == [{"schema": "/product/tproduct/getSchema", "tree": "/product/tproduct/categoryOptionsN",
+                                       "search": "/product/tproduct/searchCategoryN", "predict": "/product/tproduct/predictCategoryN"}[operation]]
             assert (await client.claim()) is None
     try:
         asyncio.run(exercise())
