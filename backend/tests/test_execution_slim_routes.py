@@ -20,6 +20,8 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
             "/api/v1/product-data/collection-shops",
             f"/api/v1/product-data/collections/{identifier}",
             f"/api/v1/product-data/collection-batches/{identifier}",
+            f"/api/v1/shops/{identifier}/session",
+            f"/api/v1/shops/{identifier}/platform-identity",
         ):
             assert client.get(path).status_code == 404
         for path in (
@@ -28,6 +30,11 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
             f"/api/v1/mobile-collection/ingest/{identifier}",
             "/api/v1/product-data/collections",
             "/api/v1/product-data/collection-batches",
+            "/api/v1/shop-onboarding/complete",
+            "/api/v1/shop-onboarding/pdd/identity",
+            f"/api/v1/shops/{identifier}/session/refresh",
+            f"/api/v1/shops/{identifier}/session/health-check",
+            f"/api/v1/shops/{identifier}/session/refresh-lease",
         ):
             assert client.post(path, json={}).status_code == 404
         paths = app.openapi()["paths"]
@@ -48,3 +55,6 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
         permissions = {entry["id"] for entry in permissions_catalog(app)}
         assert "GET /api/v1/product-data" in permissions
         assert not any(" /api/v1/product-data/collection" in entry for entry in permissions)
+        assert not any(" /api/v1/shop-onboarding" in entry for entry in permissions)
+        assert not any("/session" in entry and " /api/v1/shops/" in entry for entry in permissions)
+        assert not any("/platform-identity" in entry for entry in permissions)

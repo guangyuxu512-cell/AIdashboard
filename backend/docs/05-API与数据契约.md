@@ -138,7 +138,7 @@ Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Bind
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
 Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
 
-Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_status`：没有 ShopSession 时为 `null`，其余值直接来自正式 ShopSession Status，不由 Frontend 猜测。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；对已移除 Shop 的 GET、PATCH、Binding 与 Session 业务访问返回 `SHOP_NOT_FOUND`。`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
+Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上保留可空 `session_status` 兼容字段。0055 后中控不保存店铺 Session，该旧字段不代表 Worker 的本机登录状态；本机状态以设备的 `rpa-shop-inventory` 为准。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
 
 `GET /api/v1/shops` 的 `enabled / device_id / owner_user_id / platform / q` 与 `GET /api/v1/devices`
 的 `status / search` 都在服务端授权范围内先过滤，再执行稳定排序、分页和 `count`。Device `search`
@@ -156,7 +156,9 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_
 
 ## Credential / Session Metadata Contract
 
-阶段 3A 增加：
+0055 起中控不再接收或保存店铺 Session；下列 Session 和入驻接口仅作历史契约记录，已不挂载。Credential 接口暂为旧定时兼容保留；当前设备店铺及会话状态由 Worker 上报，不以旧中控 Session 状态代替。
+
+阶段 3A 的历史接口：
 
 - `GET /api/v1/shops/{shop_id}/credential`：仅返回脱敏账号、配置/启用状态、验证码渠道和更新时间。
 - `POST /api/v1/credentials`、`PATCH /api/v1/credentials/{credential_id}`、`POST /api/v1/credentials/{credential_id}/disable`：写入与停用凭证。
@@ -439,6 +441,8 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 
 ## AI Workbench Backend Foundation V1 API
 
+此节为历史记录：AI Workbench 与 AI 模型接口已移除，不再提供以下路径；资产底座的上传、下载、删除和列表仍保留。
+
 统一前缀为 `/api/v1/ai-workbench`，全部为 Human API，并同时要求有效 `ActorContext` 与
 `ai-workbench` Module Access：
 
@@ -482,6 +486,8 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 这两个接口只读数据库，不证明手动执行、成功空榜单或失败运行状态已实现；执行、类目API及Real适配仍为PARTIAL。
 
 ## Operating Dashboard Data V1 API
+
+当前状态：经营历史只读，`collection_available` 固定为 false；旧服务器执行器和日计划不启动，采集、重采与重试 POST 返回 `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`。下面对采集和重试流程的描述仅用于追溯旧版本，不代表当前能够执行；未来采集须由 Worker 完成。
 
 经营看板正式 Human API 前缀为 `/api/v1/operating-dashboard`，全部要求 Human Session、当前
 ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进入看板；每个 Repository 查询和

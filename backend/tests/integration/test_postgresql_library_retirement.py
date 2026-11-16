@@ -14,7 +14,7 @@ def test_retired_library_tables_and_permissions_are_gone(postgresql_engine):
         "product_library_products", "product_library_groups",
     }
     with postgresql_engine.connect() as connection:
-        assert connection.scalar(text("select version_num from alembic_version")) == "20261116_0054"
+        assert connection.scalar(text("select version_num from alembic_version")) == "20261116_0055"
         tables = set(inspect(connection).get_table_names())
         assert not retired.intersection(tables)
         assert {"product_selection_candidates", "product_selection_runs", "product_selection_strategies",
@@ -29,4 +29,10 @@ def test_retired_library_tables_and_permissions_are_gone(postgresql_engine):
                OR item.value LIKE '% /api/v1/product-collection%'
                OR item.value LIKE '% /api/v1/mobile-collection%'
                OR item.value LIKE '% /api/v1/product-data/collection%'
+               OR item.value LIKE '% /api/v1/shop-onboarding%'
+               OR item.value LIKE '% /api/v1/shops/%/session%'
+               OR item.value LIKE '% /api/v1/shops/%/platform-identity'
         """)) == 0
+        assert connection.scalar(text("select count(*) from shop_sessions")) == 0
+        checks = {item["name"] for item in inspect(connection).get_check_constraints("shop_sessions")}
+        assert "ck_shop_sessions_no_server_session_payload" in checks
