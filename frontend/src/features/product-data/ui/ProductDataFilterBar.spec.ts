@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { AppButton, AppSelect } from '@/shared/ui'
 import { emptyProductFilters } from '../model/query'
 import ProductDataFilterBar from './ProductDataFilterBar.vue'
