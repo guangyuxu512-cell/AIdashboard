@@ -75,7 +75,8 @@ def test_stale_inventory_is_not_reported_as_current():
     assert not result.available
 
 
-def test_stale_success_does_not_resurrect_an_older_expiry():
+@pytest.mark.parametrize("success_age", [timedelta(minutes=1), timedelta(minutes=31)])
+def test_late_success_does_not_resurrect_an_older_expiry(success_age):
     now = datetime.now(UTC)
     repository = Mock()
     repository.get_for_actor.return_value = object()
@@ -87,11 +88,11 @@ def test_stale_success_does_not_resurrect_an_older_expiry():
     )
     params = {"local_shop_id": "a", "platform_shop_id": "1", "_session_revision": "same"}
     session.execute.return_value.all.return_value = [
-        (params, "success", None, now - timedelta(minutes=31)),
+        (params, "success", None, now - success_age),
         (params, "failed", "SHOP_SESSION_EXPIRED", now - timedelta(minutes=45)),
     ]
     result = DeviceService(session, repository=repository).get_local_shops(Mock(), uuid4())
-    assert result.shops[0].session_status == "unknown"
+    assert result.shops[0].session_status == "invalid"
 
 
 def test_current_worker_observation_is_used_and_stale_valid_is_unknown():
