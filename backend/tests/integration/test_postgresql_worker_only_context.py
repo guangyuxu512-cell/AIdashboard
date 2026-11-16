@@ -24,7 +24,7 @@ from app.modules.tasks.service import TaskService
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
 from app.modules.workers.precheck_models import WorkerRpaShopInventory
-from app.modules.workers.service import WorkerPrincipal
+from app.modules.workers.service import WorkerPrincipal, WorkerService
 
 
 pytestmark = pytest.mark.integration
@@ -49,6 +49,10 @@ def worker_context(postgresql_engine):
                           last_seen_at=now, connection_status='online'),
             DeviceSkillCapability(device_id=device_id, skill_id='system.echo', display_name='echo',
                                   runtime='python', skill_version='1', classification='internal'),
+            DeviceSkillCapability(device_id=device_id, skill_id='catalog.fixture.run', display_name='业务技能',
+                runtime='python', skill_version='1', classification='business', input_schema={
+                    'type': 'object', 'properties': {'message': {'type': 'string'}},
+                    'required': ['message'], 'additionalProperties': False}),
             WorkerRpaShopInventory(device_id=device_id, installation_id=install_id, available=True,
                 last_discovered_at=now, shops=[{'localShopId':'local-1', 'platformShopId':'123',
                                                 'shopName':'fixture', 'platform':'douyin'}]),
@@ -137,9 +141,12 @@ def test_enabled_worker_scheduler_dispatches_once_without_old_plans(worker_conte
     due = now + timedelta(minutes=2)
     local_due = due.astimezone(ZoneInfo('Asia/Shanghai'))
     with Session(engine) as session:
+        catalog = WorkerService(session).get_business_skill_catalog(device_id)
+        assert [(item.skill_id, item.availability) for item in catalog] == [
+            ('catalog.fixture.run', 'available')]
         plan = ScheduleService(session).create(ScheduleCreate(
             name='new worker fixture', target_device_id=device_id, local_shop_ids=['local-1'],
-            skill_id='system.echo', parameters={'message': 'safe'}, schedule_type='once',
+            skill_id='catalog.fixture.run', parameters={'message': 'safe'}, schedule_type='once',
             local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
             timezone='Asia/Shanghai', enabled=True), actor, now=now)
         legacy = Schedule(team_id=actor.team_id, created_by_user_id=actor.user_id,
@@ -149,7 +156,7 @@ def test_enabled_worker_scheduler_dispatches_once_without_old_plans(worker_conte
             timezone='Asia/Shanghai', task_input_json={}, next_run_at=now)
         disabled = Schedule(team_id=actor.team_id, created_by_user_id=actor.user_id,
             name='disabled old worker fixture', enabled=False, target_device_id=device_id,
-            skill_id='system.echo', execution_display_name='old', schedule_type='once',
+            skill_id='catalog.fixture.run', execution_display_name='old', schedule_type='once',
             local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
             timezone='Asia/Shanghai', task_input_json={'message': 'old'}, next_run_at=now)
         session.add_all([legacy, disabled])
@@ -173,7 +180,7 @@ def test_enabled_worker_scheduler_dispatches_once_without_old_plans(worker_conte
                 ScheduleRun.schedule_id.in_([plan.schedule_id, legacy_id, disabled_id]))))
             assert len(runs) == 1 and runs[0].schedule_id == plan.schedule_id
             task = session.get(Task, runs[0].task_id)
-            assert task is not None and task.status == 'pending' and task.skill_id == 'system.echo'
+            assert task is not None and task.status == 'pending' and task.skill_id == 'catalog.fixture.run'
             claimed = TaskService(session).claim_with_context(WorkerPrincipal(device_id=device_id), now=due)
             assert claimed is not None and claimed.task.task_id == task.task_id
             assert claimed.local_shops == [{'local_shop_id': 'local-1', 'platform': 'douyin',
@@ -192,7 +199,7 @@ def test_worker_scheduler_loop_dispatches_at_actual_due_time(worker_context, mon
     with Session(engine) as session:
         plan = ScheduleService(session).create(ScheduleCreate(
             name='wall clock worker fixture', target_device_id=device_id, local_shop_ids=['local-1'],
-            skill_id='system.echo', parameters={'message': 'safe'}, schedule_type='once',
+            skill_id='catalog.fixture.run', parameters={'message': 'safe'}, schedule_type='once',
             local_date=local_due.date(), local_time=local_due.time().replace(tzinfo=None),
             timezone='Asia/Shanghai', enabled=True), actor, now=now)
 
