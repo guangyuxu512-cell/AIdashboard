@@ -11,7 +11,6 @@ from pydantic import (
     model_validator,
 )
 
-from app.modules.credentials.schemas import TaskAccountPayload
 from app.modules.tasks.enums import (
     TASK_SKILL_ID_MAX_LENGTH,
     TASK_SKILL_ID_PATTERN,
@@ -30,6 +29,7 @@ class TaskCreate(BaseModel):
 
     target_device_id: UUID
     shop_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    local_shop_ids: list[str] = Field(default_factory=list, max_length=100)
     asset_ids: list[UUID] = Field(default_factory=list, max_length=100)
     parameter_preset_id: UUID | None = None
     skill_id: str = Field(
@@ -42,8 +42,17 @@ class TaskCreate(BaseModel):
     @field_validator("shop_ids")
     @classmethod
     def reject_duplicate_shops(cls, value: list[UUID]) -> list[UUID]:
-        if len(value) != len(set(value)):
-            raise ValueError("shop_ids must not contain duplicates")
+        if value:
+            raise ValueError("中控店铺绑定已停用，请选择设备上报的店铺")
+        return value
+
+    @field_validator("local_shop_ids")
+    @classmethod
+    def validate_local_shop_ids(cls, value: list[str]) -> list[str]:
+        if (len(value) != len(set(value)) or any(
+            not item or len(item) > 160 or item != item.strip() for item in value
+        )):
+            raise ValueError("本机店铺标识无效或重复")
         return value
 
     @field_validator("asset_ids")
@@ -75,6 +84,7 @@ class TaskRead(BaseModel):
     task_id: UUID
     target_device_id: UUID
     shop_ids: list[UUID]
+    local_shop_ids: list[str] = Field(default_factory=list)
     asset_ids: list[UUID]
     parameter_preset_id: UUID | None
     parameter_preset_version: int | None
@@ -103,12 +113,18 @@ class WorkerTaskAssetRead(BaseModel):
     download_path: str
 
 
+class WorkerLocalShopRead(BaseModel):
+    local_shop_id: str
+    platform: str
+    platform_shop_id: str | None = None
+
+
 class WorkerTaskRead(BaseModel):
     task_id: UUID
     skill_id: str
     input: dict[str, Any]
     lease_until: datetime
-    accounts: list[TaskAccountPayload] = Field(default_factory=list, repr=False)
+    local_shops: list[WorkerLocalShopRead] = Field(default_factory=list)
     assets: list[WorkerTaskAssetRead] = Field(default_factory=list)
     result_delivery: Literal["central", "product"] = "central"
 
@@ -227,10 +243,13 @@ class TaskListItemRead(BaseModel):
 
 
 def task_to_read(task: Task) -> TaskRead:
+    from app.modules.workers.shop_context import LOCAL_SHOPS_KEY
+    local_shops = task.input_json.get(LOCAL_SHOPS_KEY, [])
     return TaskRead(
         task_id=task.task_id,
         target_device_id=task.target_device_id,
-        shop_ids=task.shop_ids,
+        shop_ids=[],
+        local_shop_ids=[item["local_shop_id"] for item in local_shops],
         asset_ids=task.asset_ids,
         parameter_preset_id=task.parameter_preset_id,
         parameter_preset_version=task.parameter_preset_version,

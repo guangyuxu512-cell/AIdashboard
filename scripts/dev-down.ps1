@@ -1,6 +1,6 @@
 . (Join-Path $PSScriptRoot 'dev-common.ps1')
 
-foreach ($name in @('electron', 'frontend', 'backend', 'ssh')) {
+foreach ($name in @('frontend', 'backend', 'ssh')) {
     if (Stop-ManagedProcess $name) {
         Write-Host "Stopped managed $name process tree."
     }

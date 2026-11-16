@@ -11,42 +11,26 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.modules.access.contracts import ActorContext
 from app.modules.access.service import TeamAuthorizationService
-from app.modules.automation_apps.repository import AutomationApplicationConfigRepository
-from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
-from app.modules.automation_apps.service import AutomationParameterPresetService
 from app.modules.assets.enums import AssetMediaType
 from app.modules.assets.models import Asset
 from app.modules.assets.repository import AssetRepository
-from app.modules.credentials.schemas import TaskAccountPayload
-from app.modules.credentials.service import CredentialService
-from app.modules.shops.repository import (
-    ShopDeviceBindingRepository,
-    ShopRepository,
-)
 from app.modules.tasks.enums import (
     TERMINAL_TASK_STATUS_VALUES,
-    TaskSkillId,
     TaskStatus,
 )
 from app.modules.tasks.exceptions import (
-    TaskApplicationNotAvailableError,
     TaskAssetInvalidError,
     TaskDeviceDisabledError,
     TaskEventForbiddenError,
     TaskInputInvalidError,
     TaskNotFoundError,
-    TaskProviderLoginRequiredError,
-    TaskProviderNotReadyError,
-    TaskProviderVersionUnsupportedError,
     TaskSkillNotAvailableError,
     TaskSkillSchemaUnavailableError,
-    TaskShopDeviceBindingInvalidError,
-    TaskShopInvalidError,
     TaskStateConflictError,
     TaskTargetDeviceInvalidError,
     TaskWorkerOfflineError,
 )
-from app.modules.tasks.models import Task, TaskAsset, TaskShop
+from app.modules.tasks.models import Task, TaskAsset
 from app.modules.tasks.repository import TaskRepository
 from app.modules.tasks.schemas import (
     ActiveTaskSummaryRead,
@@ -62,14 +46,13 @@ from app.modules.tasks.schemas import (
     task_event_to_read,
 )
 from app.modules.tasks.skill_contracts import validate_skill_input
-from app.modules.workers.models import DeviceSkillCapability
 from app.modules.workers.business_skill_schema import (
     BusinessSkillInputValidationError,
     BusinessSkillSchemaUnavailableError,
     BusinessSkillSchemaUnsupportedError,
 )
-from app.modules.workers.schemas import YingdaoProviderInventory
 from app.modules.workers.service import WorkerPrincipal
+from app.modules.workers.shop_context import LOCAL_SHOPS_KEY, resolve_worker_shops, worker_shop_snapshot_matches
 from app.shared.pagination import Page
 
 
@@ -84,21 +67,18 @@ class PreparedTaskCreation:
 @dataclass(frozen=True)
 class ClaimedWorkerTask:
     task: Task
-    accounts: list[TaskAccountPayload]
     assets: list[Asset]
+    local_shops: list[dict[str, Any]]
 
 
-_SHOP_NAME_MINIMUM_WORKER_VERSION = (0, 4, 7)
-
-
-def _supports_task_account_shop_name(worker_version: str | None) -> bool:
-    """Only send the additive account field to Workers that can parse it."""
-    if not worker_version:
+def _supports_local_shop_context(worker_version: str | None) -> bool:
+    """Older Workers reject additive task fields; do not assign them mapped tasks."""
+    if not isinstance(worker_version, str) or not worker_version:
         return False
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", worker_version)
     if match is None:
         return False
-    return tuple(int(part) for part in match.groups()) >= _SHOP_NAME_MINIMUM_WORKER_VERSION
+    return tuple(int(part) for part in match.groups()) >= (0, 5, 7)
 
 
 class TaskService:
@@ -107,32 +87,12 @@ class TaskService:
         session: Session,
         repository: TaskRepository | None = None,
         settings: Settings | None = None,
-        application_config_repository: (
-            AutomationApplicationConfigRepository | None
-        ) = None,
-        parameter_preset_service: AutomationParameterPresetService | None = None,
-        credential_service: CredentialService | None = None,
-        shop_repository: ShopRepository | None = None,
-        shop_device_binding_repository: ShopDeviceBindingRepository | None = None,
         asset_repository: AssetRepository | None = None,
         team_authorization_service: TeamAuthorizationService | None = None,
     ) -> None:
         self.session = session
         self.repository = repository or TaskRepository(session)
         self.settings = settings or get_settings()
-        self.application_config_repository = (
-            application_config_repository
-            or AutomationApplicationConfigRepository(session)
-        )
-        self.parameter_preset_service = parameter_preset_service or AutomationParameterPresetService(
-            session,
-            config_repository=self.application_config_repository,
-        )
-        self.credential_service = credential_service
-        self.shop_repository = shop_repository or ShopRepository(session)
-        self.shop_device_binding_repository = (
-            shop_device_binding_repository or ShopDeviceBindingRepository(session)
-        )
         self.asset_repository = asset_repository or AssetRepository(session)
         self.team_authorization_service = (
             team_authorization_service or TeamAuthorizationService(session)
@@ -159,8 +119,8 @@ class TaskService:
     ) -> PreparedTaskCreation:
         """Validate a future Task while allowing its Worker to be offline.
 
-        Schedules still require an enabled Device, declared Skill, ready Provider,
-        available Application and valid input. Worker connectivity is deliberately
+        Schedules still require an enabled Device, declared Skill and valid input.
+        Worker connectivity is deliberately
         deferred until the ordinary pending Task is claimed.
         """
 
@@ -214,10 +174,6 @@ class TaskService:
             execution_display_name=prepared.execution_display_name,
             status=TaskStatus.PENDING.value,
             input_json=prepared.input_json,
-            shop_links=[
-                TaskShop(shop_id=shop_id, position=position)
-                for position, shop_id in enumerate(data.shop_ids)
-            ],
             asset_links=[
                 TaskAsset(asset_id=asset_id, position=position)
                 for position, asset_id in enumerate(data.asset_ids)
@@ -234,22 +190,22 @@ class TaskService:
         team_id: UUID,
         actor: ActorContext | None,
     ) -> PreparedTaskCreation:
-        if (
-            data.parameter_preset_id is not None
-            and data.skill_id != TaskSkillId.YINGDAO_APP_RUN
-        ):
-            raise TaskInputInvalidError("影刀参数预设只支持 yingdao.app.run")
+        if data.skill_id.startswith("yingdao.") or data.parameter_preset_id is not None:
+            raise TaskInputInvalidError("影刀任务已停用，请使用 Worker 技能包")
+        if LOCAL_SHOPS_KEY in data.input:
+            raise TaskInputInvalidError("本机店铺只能从设备清单选择")
         self.team_authorization_service.require_execution_resources(
             team_id=team_id,
             device_id=data.target_device_id,
-            shop_ids=data.shop_ids,
         )
         device = self.repository.get_task_target_device(data.target_device_id)
         if device is None:
             raise TaskTargetDeviceInvalidError()
         if not device.enabled:
             raise TaskDeviceDisabledError()
-        self._validate_shop_context(data.target_device_id, data.shop_ids)
+        local_shops = resolve_worker_shops(
+            self.session, data.target_device_id, data.local_shop_ids, require_available=require_worker_online,
+        )
         self._validate_asset_context(data.asset_ids, team_id=team_id)
         if require_worker_online:
             runtime = self.repository.get_device_runtime(data.target_device_id)
@@ -263,10 +219,8 @@ class TaskService:
             raise TaskSkillNotAvailableError(
                 details={"skill_id": data.skill_id},
             )
-        provider_inventory = self._validate_provider_dependency(
-            data.target_device_id,
-            capability,
-        )
+        if capability.provider_code is not None or capability.runtime != "python":
+            raise TaskInputInvalidError("仅支持 Worker 本机技能")
         try:
             input_json = validate_skill_input(
                 data.skill_id,
@@ -287,29 +241,11 @@ class TaskService:
             raise TaskSkillSchemaUnavailableError(
                 details={"skill_id": data.skill_id, "reason": str(error)},
             ) from error
-        execution_display_name = capability.display_name
-        if data.skill_id == TaskSkillId.YINGDAO_APP_RUN:
-            (
-                input_json,
-                execution_display_name,
-                parameter_preset_version,
-            ) = self._validate_yingdao_application_run(
-                input_json,
-                provider_inventory,
-                parameter_preset_id=data.parameter_preset_id,
-                team_id=team_id,
-                actor=actor,
-                shop_ids=data.shop_ids,
-            )
+        if local_shops:
+            input_json[LOCAL_SHOPS_KEY] = local_shops
         return PreparedTaskCreation(
             input_json=input_json,
-            execution_display_name=execution_display_name,
-            parameter_preset_id=data.parameter_preset_id,
-            parameter_preset_version=(
-                parameter_preset_version
-                if data.parameter_preset_id is not None
-                else None
-            ),
+            execution_display_name=capability.display_name,
         )
 
     def _validate_asset_context(
@@ -335,139 +271,6 @@ class TaskService:
             raise TaskAssetInvalidError(
                 details={"asset_ids": [str(asset_id) for asset_id in invalid_ids]},
             )
-
-    def _validate_shop_context(
-        self,
-        device_id: UUID,
-        shop_ids: list[UUID],
-    ) -> None:
-        if not shop_ids:
-            return
-        shops_by_id = {
-            shop.shop_id: shop for shop in self.shop_repository.list_by_ids(shop_ids)
-        }
-        invalid_shop_ids = [
-            shop_id
-            for shop_id in shop_ids
-            if shop_id not in shops_by_id or not shops_by_id[shop_id].enabled
-        ]
-        if invalid_shop_ids:
-            raise TaskShopInvalidError(
-                details={"shop_ids": [str(shop_id) for shop_id in invalid_shop_ids]},
-            )
-        enabled_binding_shop_ids = (
-            self.shop_device_binding_repository.list_enabled_shop_ids_for_device(
-                device_id,
-                shop_ids,
-            )
-        )
-        unbound_shop_ids = [
-            shop_id for shop_id in shop_ids if shop_id not in enabled_binding_shop_ids
-        ]
-        if unbound_shop_ids:
-            raise TaskShopDeviceBindingInvalidError(
-                details={"shop_ids": [str(shop_id) for shop_id in unbound_shop_ids]},
-            )
-        self._require_credential_service().ensure_task_accounts_available(shop_ids)
-
-    def _validate_provider_dependency(
-        self,
-        device_id: UUID,
-        capability: DeviceSkillCapability,
-    ) -> YingdaoProviderInventory | None:
-        if capability.provider_code is None or capability.runtime == "discovery":
-            return None
-        if capability.provider_code != "yingdao":
-            raise TaskProviderNotReadyError(
-                details={"provider": capability.provider_code},
-            )
-        record = self.repository.get_provider_inventory(
-            device_id,
-            capability.provider_code,
-        )
-        if record is None:
-            raise TaskProviderNotReadyError(details={"provider": "yingdao"})
-        try:
-            inventory = YingdaoProviderInventory.model_validate(
-                record.inventory_payload,
-            )
-        except ValidationError as error:
-            raise TaskProviderNotReadyError(
-                details={"provider": "yingdao", "reason": "invalid_inventory"},
-            ) from error
-        if inventory.status == "need_login" or not inventory.logged_in:
-            raise TaskProviderLoginRequiredError()
-        if (
-            inventory.status == "version_unsupported"
-            or inventory.provider_version != "6.3.6"
-            or inventory.execution_version != "6.3.6"
-        ):
-            raise TaskProviderVersionUnsupportedError(
-                details={"required_version": "6.3.6"},
-            )
-        if (
-            inventory.status != "ready"
-            or not record.available
-            or not inventory.available
-            or not inventory.execution_available
-        ):
-            raise TaskProviderNotReadyError(details={"provider": "yingdao"})
-        return inventory
-
-    def _validate_yingdao_application_run(
-        self,
-        input_json: dict[str, Any],
-        inventory: YingdaoProviderInventory | None,
-        *,
-        parameter_preset_id: UUID | None,
-        team_id: UUID,
-        actor: ActorContext | None,
-        shop_ids: list[UUID],
-    ) -> tuple[dict[str, Any], str, int | None]:
-        if inventory is None:
-            raise TaskProviderNotReadyError(details={"provider": "yingdao"})
-        app_id = str(input_json["app_id"])
-        application = next(
-            (
-                application
-                for application in inventory.applications
-                if application.app_id == app_id
-            ),
-            None,
-        )
-        if application is None:
-            raise TaskApplicationNotAvailableError(
-                details={"app_id": app_id},
-            )
-        if parameter_preset_id is not None:
-            snapshot = (
-                self.parameter_preset_service.snapshot_for_actor(
-                    actor=actor,
-                    app_id=app_id,
-                    preset_id=parameter_preset_id,
-                    shop_ids=shop_ids,
-                )
-                if actor is not None
-                else self.parameter_preset_service.snapshot_for_team(
-                    team_id=team_id,
-                    app_id=app_id,
-                    preset_id=parameter_preset_id,
-                    shop_ids=shop_ids,
-                )
-            )
-            params = snapshot.parameters
-            preset_version = snapshot.preset_version
-        else:
-            config = self.application_config_repository.get("yingdao", app_id)
-            schema = AutomationInputSchema.model_validate(
-                config.input_schema if config is not None else {"fields": []},
-            )
-            try:
-                params = normalize_parameters(schema, input_json.get("params", {}))
-            except ValueError as error:
-                raise TaskInputInvalidError(str(error)) from error
-            preset_version = None
-        return {"app_id": app_id, "params": params}, application.app_name, preset_version
 
     def get(self, actor: ActorContext, task_id: UUID) -> Task:
         task = self.repository.get_for_actor(actor=actor, task_id=task_id)
@@ -705,7 +508,7 @@ class TaskService:
         self.session.commit()
         return task
 
-    def claim_with_account(
+    def claim_with_context(
         self,
         principal: WorkerPrincipal,
         *,
@@ -716,18 +519,16 @@ class TaskService:
         if task is None:
             self.session.commit()
             return None
+        local_shops = task.input_json.get(LOCAL_SHOPS_KEY, [])
+        if not worker_shop_snapshot_matches(self.session, principal.device_id, local_shops):
+            task.status = TaskStatus.FAILED.value
+            task.error_code = "WORKER_SHOP_MAPPING_CHANGED"
+            task.error_message = "设备店铺映射已变化，请重新选择店铺"
+            task.lease_until = None
+            task.finished_at = now or datetime.now(UTC)
+            self.session.commit()
+            return None
         try:
-            runtime = self.repository.get_device_runtime(principal.device_id)
-            accounts = (
-                self._require_credential_service().build_task_account_payloads(
-                    task.shop_ids,
-                    include_shop_name=_supports_task_account_shop_name(
-                        getattr(runtime, "worker_version", None),
-                    ),
-                )
-                if task.shop_ids
-                else []
-            )
             assets_by_id = {
                 asset.asset_id: asset
                 for asset in self.asset_repository.list_by_ids(task.asset_ids)
@@ -737,7 +538,7 @@ class TaskService:
             self.session.rollback()
             raise
         self.session.commit()
-        return ClaimedWorkerTask(task=task, accounts=accounts, assets=assets)
+        return ClaimedWorkerTask(task=task, assets=assets, local_shops=local_shops)
 
     def _claim_without_commit(
         self,
@@ -753,19 +554,14 @@ class TaskService:
         lease_until = claimed_at + timedelta(
             seconds=self.settings.worker_task_lease_seconds,
         )
+        runtime = self.repository.get_device_runtime(principal.device_id)
         return self.repository.claim_next(
             device_id=principal.device_id,
             now=claimed_at,
             lease_until=lease_until,
             precheck_only=precheck_only,
+            local_context_supported=_supports_local_shop_context(getattr(runtime, "worker_version", None)),
         )
-
-    def _require_credential_service(self) -> CredentialService:
-        if self.credential_service is None:
-            raise RuntimeError(
-                "CredentialService is required for a shop-scoped Task",
-            )
-        return self.credential_service
 
     def renew(
         self,

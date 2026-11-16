@@ -63,7 +63,7 @@ class ShopOperatingDailyMetric(TimestampMixin, Base):
     )
     shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"),
         nullable=False,
     )
     business_date: Mapped[date] = mapped_column(SQLDate, nullable=False)
@@ -218,7 +218,7 @@ class OperatingDataCollectionItem(TimestampMixin, Base):
     )
     shop_id: Mapped[UUID] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
+        ForeignKey("historical_shop_identities.shop_id", ondelete="RESTRICT"),
         nullable=False,
     )
     business_date: Mapped[date] = mapped_column(SQLDate, nullable=False)

@@ -8,7 +8,6 @@ from app.main import create_app
 from app.modules.devices.models import Device
 from app.modules.tasks.enums import TaskSkillId
 from app.modules.tasks.skill_contracts import validate_skill_input
-from app.modules.automation_apps.schemas import AutomationInputSchema, normalize_parameters
 from app.modules.workers.models import (
     DeviceRuntime,
     DeviceSkillCapability,
@@ -16,7 +15,6 @@ from app.modules.workers.models import (
 )
 from app.modules.workers.exceptions import WorkerAuthenticationError
 from app.modules.workers.schemas import (
-    ProviderInventoryUpsert,
     SkillCapabilitySnapshotUpsert,
     WorkerHeartbeat,
 )
@@ -225,155 +223,14 @@ def test_worker_token_hash_and_skill_contracts() -> None:
         TaskSkillId.SYSTEM_SLEEP,
         {"seconds": 45},
     ) == {"seconds": 45.0}
-    assert validate_skill_input(TaskSkillId.YINGDAO_TEST, {}) == {}
-    assert validate_skill_input(TaskSkillId.YINGDAO_DISCOVER, {}) == {}
-    assert validate_skill_input(
-        TaskSkillId.YINGDAO_APP_RUN,
-        {"app_id": "app-1", "params": {"count": 2}},
-    ) == {"app_id": "app-1", "params": {"count": 2}}
 
 
-def test_automation_application_parameters_apply_defaults_and_validate_types() -> None:
-    schema = AutomationInputSchema.model_validate(
-        {
-            "fields": [
-                {
-                    "name": "keyword",
-                    "label": "关键词",
-                    "type": "text",
-                    "required": True,
-                    "default_value": None,
-                    "options": [],
-                },
-                {
-                    "name": "mode",
-                    "label": "模式",
-                    "type": "select",
-                    "required": False,
-                    "default_value": "safe",
-                    "options": ["safe", "fast"],
-                },
-            ],
-        },
-    )
-
-    assert normalize_parameters(schema, {"keyword": "商品"}) == {
-        "keyword": "商品",
-        "mode": "safe",
-    }
-    with pytest.raises(ValueError, match="关键词"):
-        normalize_parameters(schema, {})
-    with pytest.raises(ValueError, match="关键词"):
-        normalize_parameters(schema, {"keyword": ""})
-    with pytest.raises(ValueError, match="模式"):
-        normalize_parameters(schema, {"keyword": "商品", "mode": "invalid"})
 
 
-def test_automation_application_parameters_preserve_unicode_names_and_text_defaults() -> None:
-    schema = AutomationInputSchema.model_validate(
-        {
-            "fields": [
-                {
-                    "name": "商品列表",
-                    "label": "",
-                    "type": "text",
-                    "required": True,
-                    "default_value": '{"page":1}',
-                    "options": [],
-                },
-                {
-                    "name": "数量",
-                    "label": "数量",
-                    "type": "number",
-                    "required": False,
-                    "default_value": 10,
-                    "options": [],
-                },
-                {
-                    "name": "启用",
-                    "label": "启用",
-                    "type": "boolean",
-                    "required": False,
-                    "default_value": True,
-                    "options": [],
-                },
-                {
-                    "name": "状态",
-                    "label": "状态",
-                    "type": "select",
-                    "required": False,
-                    "default_value": "ready",
-                    "options": ["ready", "paused"],
-                },
-            ],
-        },
-    )
-
-    field = schema.fields[0]
-    assert field.name == "商品列表"
-    assert field.label == "商品列表"
-    assert isinstance(field.default_value, str)
-    assert normalize_parameters(schema, {}) == {
-        "商品列表": '{"page":1}',
-        "数量": 10,
-        "启用": True,
-        "状态": "ready",
-    }
-    with pytest.raises(ValueError, match="商品列表"):
-        normalize_parameters(schema, {"商品列表": {"page": 1}})
-    with pytest.raises(ValueError, match="数量"):
-        normalize_parameters(schema, {"商品列表": "ok", "数量": "10"})
-    with pytest.raises(ValueError, match="启用"):
-        normalize_parameters(schema, {"商品列表": "ok", "启用": 1})
-    with pytest.raises(ValueError, match="状态"):
-        normalize_parameters(schema, {"商品列表": "ok", "状态": "unknown"})
 
 
-@pytest.mark.parametrize(
-    "name",
-    ["", "a b", "a\x00b", "x" * 101],
-)
-def test_automation_application_parameter_name_rejects_blank_or_invalid_unicode_keys(
-    name: str,
-) -> None:
-    with pytest.raises(ValueError):
-        AutomationInputSchema.model_validate(
-            {
-                "fields": [
-                    {
-                        "name": name,
-                        "label": "显示名称",
-                        "type": "text",
-                        "default_value": None,
-                        "options": [],
-                    },
-                ],
-            },
-        )
 
 
-def test_automation_application_parameter_name_rejects_duplicates_after_normalization() -> None:
-    with pytest.raises(ValueError, match="不能重复"):
-        AutomationInputSchema.model_validate(
-            {
-                "fields": [
-                    {
-                        "name": "商品列表",
-                        "label": "商品列表",
-                        "type": "text",
-                        "default_value": None,
-                        "options": [],
-                    },
-                    {
-                        "name": "商品列表",
-                        "label": "另一个名称",
-                        "type": "text",
-                        "default_value": None,
-                        "options": [],
-                    },
-                ],
-            },
-        )
 
 
 def test_notification_failure_does_not_rollback_runtime_transition() -> None:
@@ -418,39 +275,13 @@ def test_openapi_exposes_only_whitelisted_worker_task_operations() -> None:
         "/api/v1/worker/tasks/{task_id}/complete",
         "/api/v1/worker/tasks/{task_id}/fail",
         "/api/v1/worker/tasks/{task_id}/events",
-        "/api/v1/worker/provider-inventory",
         "/api/v1/worker/skill-capabilities",
-        "/api/v1/devices/{device_id}/provider-inventories",
         "/api/v1/devices/{device_id}/skill-capabilities",
-        "/api/v1/automation-app-configs/{provider_code}/{app_id}",
     }
     assert expected <= set(paths)
     assert all("command" not in path for path in paths)
 
 
-def test_provider_inventory_schema_has_no_device_identity_in_request() -> None:
-    data = ProviderInventoryUpsert.model_validate(
-        {
-            "provider_code": "yingdao",
-            "inventory": {
-                "provider": "yingdao",
-                "available": True,
-                "status": "ready",
-                "provider_version": "6.3.6",
-                "execution_available": True,
-                "execution_version": "6.3.6",
-                "logged_in": True,
-                "account_display": "GY00999",
-                "account_type": "PersonalBasic",
-                "enterprise_account": False,
-                "user_id": "yingdao-user-test",
-                "applications": [],
-                "discovered_at": "2026-08-20T12:00:00+00:00",
-            },
-        },
-    )
-
-    assert "device_id" not in data.model_dump(mode="json")
 
 
 def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
@@ -495,14 +326,12 @@ def test_worker_replaces_its_own_skill_capability_snapshot() -> None:
     )
     assert {item.skill_id for item in first} == {
         "system.echo",
-        "yingdao.app.run",
         "refund.sync",
     }
     assert all(item.device_id == device.device_id for item in first)
     assert {item.skill_id: item.classification for item in first} == {
         "refund.sync": "business",
         "system.echo": "internal",
-        "yingdao.app.run": "internal",
     }
 
     second = service.sync_skill_capabilities(
@@ -630,59 +459,3 @@ def test_legacy_snapshot_only_classifies_known_internal_skills() -> None:
 
     assert snapshot.skills[0].classification == "internal"
     assert snapshot.skills[1].classification is None
-
-
-def test_provider_inventory_accepts_unavailable_local_account_classification() -> None:
-    data = ProviderInventoryUpsert.model_validate(
-        {
-            "provider_code": "yingdao",
-            "inventory": {
-                "provider": "yingdao",
-                "available": True,
-                "provider_version": "6.3.6",
-                "execution_available": True,
-                "execution_version": "6.3.6",
-                "logged_in": True,
-                "account_display": "GY00999",
-                "account_type": None,
-                "enterprise_account": None,
-                "user_id": "yingdao-user-test",
-                "applications": [],
-                "discovered_at": "2026-08-22T12:00:00+00:00",
-            },
-        },
-    )
-
-    assert data.inventory.account_type is None
-    assert data.inventory.enterprise_account is None
-
-
-def test_provider_inventory_reads_legacy_application_payload_without_500() -> None:
-    data = ProviderInventoryUpsert.model_validate(
-        {
-            "provider_code": "yingdao",
-            "inventory": {
-                "provider": "yingdao",
-                "available": True,
-                "provider_version": "6.2.23",
-                "logged_in": True,
-                "account_display": "legacy",
-                "account_type": None,
-                "enterprise_account": None,
-                "user_id": "legacy-user",
-                "applications": [
-                    {
-                        "app_id": "legacy-app",
-                        "app_name": "旧应用",
-                        "package_version": "1",
-                        "entrypoint": "main",
-                    },
-                ],
-                "discovered_at": "2026-08-22T12:00:00+00:00",
-            },
-        },
-    )
-
-    assert data.inventory.status == "version_unsupported"
-    assert data.inventory.available is False
-    assert data.inventory.applications[0].version_id == "1"

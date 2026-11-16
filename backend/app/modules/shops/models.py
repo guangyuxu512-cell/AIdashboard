@@ -22,7 +22,9 @@ from app.shared.identifiers import generate_id
 
 
 class Shop(TimestampMixin, Base):
-    __tablename__ = "shops"
+    # Read-only identities retained solely to resolve historical business facts.
+    # Live shops and session status come from Worker inventory.
+    __tablename__ = "historical_shop_identities"
     __table_args__ = (
         CheckConstraint("length(trim(display_name)) > 0", name="display_name_not_blank"),
         CheckConstraint(
@@ -102,25 +104,4 @@ class Shop(TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
         index=True,
-    )
-
-
-class ShopDeviceBinding(TimestampMixin, Base):
-    __tablename__ = "shop_device_bindings"
-
-    shop_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey("shops.shop_id", ondelete="RESTRICT"),
-        primary_key=True,
-    )
-    device_id: Mapped[UUID] = mapped_column(
-        Uuid(as_uuid=True),
-        ForeignKey("devices.device_id", ondelete="RESTRICT"),
-        primary_key=True,
-    )
-    enabled: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True,
-        server_default=true(),
     )

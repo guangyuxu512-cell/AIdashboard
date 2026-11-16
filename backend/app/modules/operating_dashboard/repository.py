@@ -25,7 +25,6 @@ from app.modules.operating_dashboard.models import (
 from app.modules.shops.enums import ShopPlatform
 from app.modules.shops.models import Shop
 from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.sessions.models import ShopSession
 
 
 @dataclass(frozen=True)
@@ -100,23 +99,8 @@ class OperatingDashboardRepository:
     def list_session_recovery_metadata(
         self, shop_ids: Iterable[UUID],
     ) -> dict[UUID, SessionRecoveryMetadata]:
-        ids = tuple(set(shop_ids))
-        if not ids:
-            return {}
-        rows = self.session.execute(
-            select(
-                ShopSession.shop_id, ShopSession.version, ShopSession.status,
-                ShopSession.captured_at, ShopSession.validated_at,
-                (Shop.platform_shop_id.is_not(None) & (Shop.platform_shop_id != "")).label("identity_present"),
-            ).join(Shop, Shop.shop_id == ShopSession.shop_id).where(ShopSession.shop_id.in_(ids)),
-        ).all()
-        return {
-            row.shop_id: SessionRecoveryMetadata(
-                row.shop_id, row.version, row.status, row.captured_at,
-                row.validated_at, row.identity_present,
-            )
-            for row in rows
-        }
+        # Historical collection is paused and server shop Sessions no longer exist.
+        return {}
 
     def used_session_recovery_items(self, item_ids: Iterable[UUID]) -> set[UUID]:
         keys = {f"{SESSION_RESTORE_DEDUPE_PREFIX}{item_id}": item_id for item_id in item_ids}

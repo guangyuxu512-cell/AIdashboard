@@ -88,7 +88,7 @@ const capability = useQuery({
   retry: false,
 })
 const canSave = computed(
-  () => capability.data.value?.strategy_save_available ?? canRead.value,
+  () => props.service.manual ? capability.data.value?.strategy_save_available === true : canRead.value,
 )
 const latest = useQuery({
   queryKey: computed(() => ['selection-manual-run', props.contextKey]),
@@ -423,7 +423,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
           },
           () => '立即获取',
         ),
-        h(AppButton, { tone: 'text', onClick: () => edit(row) }, () => '编辑'),
+        h(AppButton, { tone: 'text', disabled: !canSave.value, onClick: () => edit(row) }, () => '编辑'),
       ]),
   },
 ])
@@ -461,7 +461,7 @@ const columns = computed<DataTableColumns<SelectionStrategy>>(() => [
       <template #primary-action
         ><AppButton
           tone="primary"
-          :disabled="capability.data.value?.strategy_save_available === false"
+          :disabled="capability.data.value?.strategy_save_available !== true"
           @click="edit(null)"
           >新建策略</AppButton
         ></template

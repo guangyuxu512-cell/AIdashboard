@@ -45,13 +45,6 @@ interface TableRowDto {
   not_operating_for_range: boolean
 }
 
-export interface OperatingDashboardSessionRecoveryDto {
-  collection_job_id: string
-  collection_item_id: string
-  session_version: number
-  requires_validation: boolean
-}
-
 interface DashboardReadDto {
   date_range: DateRangeDto
   comparison_date_range: DateRangeDto
@@ -92,8 +85,6 @@ interface DashboardReadDto {
       business_date: string
       state: OperatingDashboardCoverage['missingSamples'][number]['state']
       failure_reason: string | null
-      session_recovery?: OperatingDashboardSessionRecoveryDto | null
-      recovery_block_reason?: string | null
     }>
     missing_samples_truncated: boolean
     manual_backfill_required: boolean
@@ -102,71 +93,6 @@ interface DashboardReadDto {
     no_operating_scope: boolean
   }
   collection_available: boolean
-}
-
-export interface OperatingDashboardCollectionItemDto {
-  collection_item_id: string
-  shop_id: string
-  business_date: string
-  status:
-    | 'pending'
-    | 'running'
-    | 'succeeded'
-    | 'failed'
-    | 'skipped'
-    | 'paused_reauthorization'
-  retryable: boolean
-  failure_code: string | null
-  failure_message: string | null
-  failure_stage: string | null
-  attempt_count: number
-}
-
-export interface OperatingDashboardCollectionJobDto {
-  collection_job_id: string
-  status: 'pending' | 'running' | 'succeeded' | 'partial_failed' | 'failed'
-  counts: {
-    pending: number
-    running: number
-    succeeded: number
-    failed: number
-    skipped: number
-    paused_reauthorization: number
-  }
-  items: OperatingDashboardCollectionItemDto[]
-}
-
-export interface OperatingDashboardCollectionSubmissionDto {
-  state:
-    | 'up_to_date'
-    | 'collection_queued'
-    | 'attention_required'
-    | 'unsupported'
-    | 'not_operating'
-  message: string
-  collection_job: OperatingDashboardCollectionJobDto | null
-  missing_shop_days: number
-  queued_shop_days: number
-  active_shop_days: number
-  blocked_shop_days: number
-  // Optional during a rolling Backend/Frontend deployment. Older Backends
-  // did not expose durable prior-day waiting counts.
-  waiting_shop_days?: number
-  refund_attention_shop_days: number
-  not_operating_shop_days: number
-}
-
-export interface OperatingDashboardCollectionSubmission {
-  state: OperatingDashboardCollectionSubmissionDto['state']
-  message: string
-  collectionJob: OperatingDashboardCollectionJobDto | null
-  missingShopDays: number
-  queuedShopDays: number
-  activeShopDays: number
-  blockedShopDays: number
-  waitingShopDays: number
-  refundAttentionShopDays: number
-  notOperatingShopDays: number
 }
 
 export interface OperatingDashboardReadParams {
@@ -222,23 +148,6 @@ function mapTableRow(value: TableRowDto): OperatingDashboardTableRow {
   }
 }
 
-function mapCollectionSubmission(
-  value: OperatingDashboardCollectionSubmissionDto,
-): OperatingDashboardCollectionSubmission {
-  return {
-    state: value.state,
-    message: value.message,
-    collectionJob: value.collection_job,
-    missingShopDays: value.missing_shop_days,
-    queuedShopDays: value.queued_shop_days,
-    activeShopDays: value.active_shop_days,
-    blockedShopDays: value.blocked_shop_days,
-    waitingShopDays: value.waiting_shop_days ?? 0,
-    refundAttentionShopDays: value.refund_attention_shop_days,
-    notOperatingShopDays: value.not_operating_shop_days,
-  }
-}
-
 export function mapOperatingDashboardRead(
   value: DashboardReadDto,
 ): OperatingDashboardRead {
@@ -286,15 +195,6 @@ export function mapOperatingDashboardRead(
         businessDate: sample.business_date,
         state: sample.state,
         failureReason: sample.failure_reason,
-        sessionRecovery: sample.session_recovery
-          ? {
-              collectionJobId: sample.session_recovery.collection_job_id,
-              collectionItemId: sample.session_recovery.collection_item_id,
-              sessionVersion: sample.session_recovery.session_version,
-              requiresValidation: sample.session_recovery.requires_validation,
-            }
-          : null,
-        recoveryBlockReason: sample.recovery_block_reason ?? null,
       })),
       missingSamplesTruncated: value.coverage.missing_samples_truncated,
       manualBackfillRequired: value.coverage.manual_backfill_required,
@@ -357,51 +257,4 @@ export const operatingDashboardApi = {
     return mapOperatingDashboardRead(response.data)
   },
 
-  async requestCollectionUpdate(params: {
-    range: OperatingDashboardDateRange
-    filters: OperatingDashboardFilters
-    forceRecollect?: boolean
-  }): Promise<OperatingDashboardCollectionSubmission> {
-    const response =
-      await httpClient.post<OperatingDashboardCollectionSubmissionDto>(
-        `${basePath}/collections${params.forceRecollect ? '/recollect' : ''}`,
-        {
-          start_date: params.range.startDate,
-          end_date: params.range.endDate,
-          ...(params.filters.platform
-            ? { platform: params.filters.platform }
-            : {}),
-          ...(params.filters.shopId ? { shop_id: params.filters.shopId } : {}),
-        },
-      )
-    return mapCollectionSubmission(response.data)
-  },
-
-  async getCollection(
-    collectionJobId: string,
-  ): Promise<OperatingDashboardCollectionJobDto> {
-    const response = await httpClient.get<OperatingDashboardCollectionJobDto>(
-      `${basePath}/collections/${encodeURIComponent(collectionJobId)}`,
-    )
-    return response.data
-  },
-
-  async recoverCollectionItem(params: {
-    collectionJobId: string
-    collectionItemId: string
-    sessionVersion: number
-    requiresValidation?: boolean
-  }): Promise<OperatingDashboardCollectionJobDto> {
-    const response = await httpClient.post<OperatingDashboardCollectionJobDto>(
-      `${basePath}/collections/${encodeURIComponent(params.collectionJobId)}/retry`,
-      {
-        item_ids: [params.collectionItemId],
-        session_recovery_version: params.sessionVersion,
-        ...(params.requiresValidation
-          ? { revalidate_current_session: true }
-          : {}),
-      },
-    )
-    return response.data
-  },
 }

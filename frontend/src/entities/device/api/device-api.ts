@@ -3,7 +3,6 @@ import { httpClient, type PageDto, type PageParams } from '@/shared/api'
 import type {
   DeviceCreateDto,
   DeviceLocalShopInventoryDto,
-  DeviceProviderInventoryReadDto,
   DeviceReadDto,
   DeviceSkillCapabilityReadDto,
   DeviceUpdateDto,
@@ -63,15 +62,6 @@ export const deviceApi = {
 
   async remove(deviceId: string): Promise<void> {
     await httpClient.delete(`/api/v1/devices/${deviceId}`)
-  },
-
-  async getProviderInventories(
-    deviceId: string,
-  ): Promise<DeviceProviderInventoryReadDto[]> {
-    const response = await httpClient.get<DeviceProviderInventoryReadDto[]>(
-      `/api/v1/devices/${deviceId}/provider-inventories`,
-    )
-    return response.data
   },
 
   async getSkillCapabilities(

@@ -2,7 +2,6 @@
 import { computed, ref, watch } from 'vue'
 import dayjs from 'dayjs'
 import { NAlert } from 'naive-ui'
-import { useShopSelectionOptionsQuery } from '@/entities/shop/api/shop-queries'
 import { FilterBar, FilterField } from '@/shared/components'
 import {
   AppButton,
@@ -44,7 +43,6 @@ watch(
     if (errors && Object.keys(errors).length) more.value = true
   },
 )
-const shops = useShopSelectionOptionsQuery()
 const dateOptions = computed(() => [
   { label: '昨日', value: 'yesterday' },
   { label: '近7天', value: 'last7Days' },
@@ -92,20 +90,6 @@ function select<K extends 'groupId' | 'selling' | 'carrier'>(
 <template>
   <div class="product-data-filters">
     <FilterBar density="compact">
-      <FilterField width="sm">
-        <AppSelect
-          :model-value="modelValue.shopId"
-          :options="shops.data.value ?? []"
-          :loading="shops.isFetching.value"
-          filterable
-          clearable
-          :disabled="!enabled"
-          placeholder="全部店铺"
-          @update:model-value="
-            update('shopId', $event === null ? null : String($event))
-          "
-        />
-      </FilterField>
       <FilterField width="sm"
         ><AppInput
           :model-value="modelValue.productId"

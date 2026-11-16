@@ -10,10 +10,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install --yes --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/* \
-    && groupadd --system app && useradd --system --gid app --home-dir /app app \
+RUN groupadd --system app && useradd --system --gid app --home-dir /app app \
     && install -d -o app -g app /app/data/assets
 
 COPY pyproject.toml ./

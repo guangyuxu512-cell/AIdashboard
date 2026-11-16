@@ -53,7 +53,8 @@ function toCreateDto(input: ScheduleSaveInput): ScheduleCreateDto {
   return {
     name: input.name,
     target_device_id: input.deviceId,
-    shop_ids: [...input.shopIds],
+    shop_ids: [],
+    local_shop_ids: [...input.shopIds],
     execution_type: input.executionType,
     ...(input.executionType === 'yingdao_application' && input.applicationId
       ? { application_id: input.applicationId }
@@ -80,7 +81,7 @@ function toUpdateDto(input: Partial<ScheduleSaveInput>): ScheduleUpdateDto {
     ...(input.deviceId !== undefined
       ? { target_device_id: input.deviceId }
       : {}),
-    ...(input.shopIds !== undefined ? { shop_ids: [...input.shopIds] } : {}),
+    ...(input.shopIds !== undefined ? { local_shop_ids: [...input.shopIds] } : {}),
     ...(input.executionType !== undefined
       ? { execution_type: input.executionType }
       : {}),
@@ -202,6 +203,7 @@ function createMockScheduleDataSource(): ScheduleDataSource {
       if (dto.target_device_id !== undefined)
         row.target_device_id = dto.target_device_id
       if (dto.shop_ids !== undefined) row.shop_ids = [...dto.shop_ids]
+      if (dto.local_shop_ids !== undefined) row.local_shop_ids = [...dto.local_shop_ids]
       if (dto.execution_type !== undefined) {
         row.execution_type = dto.execution_type
       }

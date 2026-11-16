@@ -1,13 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import {
-  NDropdown,
-  NPopover,
-  NTooltip,
-  type DropdownOption,
-  type SelectOption,
-} from 'naive-ui'
-import { ChevronDown, RefreshCw } from '@lucide/vue'
+import { NPopover, type SelectOption } from 'naive-ui'
 
 import FilterBar from '@/shared/components/FilterBar.vue'
 import FilterField from '@/shared/components/FilterField.vue'
@@ -21,7 +14,6 @@ import type {
   OperatingDashboardCoverage,
   OperatingDashboardCoverageMissing,
   OperatingDashboardFilters,
-  OperatingDashboardSessionRecovery,
 } from '../model/types'
 import { formatShanghaiDate } from '../model/dashboard'
 
@@ -29,20 +21,11 @@ const props = defineProps<{
   modelValue: OperatingDashboardFilters
   shopOptions: SelectOption[]
   platformOptions: SelectOption[]
-  refreshing?: boolean
-  refreshAvailable: boolean
   coverage?: OperatingDashboardCoverage | null
-  refreshFeedback?: {
-    tone: 'success' | 'warning' | 'error'
-    message: string
-  } | null
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: OperatingDashboardFilters]
-  refresh: []
-  recollect: []
-  recover: [target: OperatingDashboardSessionRecovery]
 }>()
 
 const dateOptions = [
@@ -79,24 +62,6 @@ const platformSelectOptions = computed<SelectOption[]>(() => [
   ...props.platformOptions,
 ])
 
-const recollectOptions = computed<DropdownOption[]>(() => {
-  const scopeCount = props.coverage?.totalShopDays ?? 0
-  return [
-    {
-      key: 'recollect',
-      label:
-        scopeCount > 0
-          ? `重新采集当前筛选范围（${scopeCount} 个店铺日期）`
-          : '重新采集当前筛选范围',
-      // A deliberate start boundary is not a collection failure.  There is
-      // no valid platform work for an explicit recollection in this scope.
-      disabled:
-        props.coverage?.state === 'unsupported' ||
-        props.coverage?.noOperatingScope === true,
-    },
-  ]
-})
-
 const coverageText = computed(() => {
   const coverage = props.coverage
   if (!coverage) return null
@@ -107,7 +72,7 @@ const coverageText = computed(() => {
     coverage.missingShopDays > 0 &&
     coverage.missingSamples.every((sample) => sample.state === 'missing')
   )
-    return '所选范围尚未采集，请点击更新数据'
+    return '所选范围尚未采集'
   return `所选范围已采集 ${coverage.collectedShopDays}/${coverage.totalShopDays} 个应采店铺日期`
 })
 
@@ -189,9 +154,6 @@ function updateDatePreset(value: AppOptionValue): void {
   datePreset.value = value
 }
 
-function selectRecollect(key: string | number): void {
-  if (key === 'recollect') emit('recollect')
-}
 </script>
 
 <template>
@@ -230,52 +192,8 @@ function selectRecollect(key: string | number): void {
           placeholder="全部平台"
         />
       </FilterField>
-      <template #primary-action>
-        <NTooltip v-if="!refreshAvailable">
-          <template #trigger>
-            <span class="operating-dashboard-filter__refresh-trigger">
-              <AppButton tone="primary" disabled>
-                <RefreshCw :size="16" aria-hidden="true" />
-                更新数据
-              </AppButton>
-            </span>
-          </template>
-          经营数据更新暂不可用
-        </NTooltip>
-        <AppButton
-          v-else
-          tone="primary"
-          :loading="refreshing"
-          :disabled="refreshing"
-          @click="$emit('refresh')"
-        >
-          <RefreshCw :size="16" aria-hidden="true" />
-          更新数据
-        </AppButton>
-        <NDropdown
-          v-if="refreshAvailable"
-          trigger="click"
-          :options="recollectOptions"
-          @select="selectRecollect"
-        >
-          <AppButton
-            tone="secondary"
-            :disabled="refreshing"
-            aria-label="更多数据更新操作"
-          >
-            <ChevronDown :size="16" aria-hidden="true" />
-          </AppButton>
-        </NDropdown>
-      </template>
     </FilterBar>
-    <p
-      v-if="refreshFeedback"
-      class="operating-dashboard-filter__feedback"
-      :class="`operating-dashboard-filter__feedback--${refreshFeedback.tone}`"
-      role="status"
-    >
-      {{ refreshFeedback.message }}
-    </p>
+    <p class="operating-dashboard-filter__coverage" role="status">经营数据采集已暂停，当前展示历史数据。</p>
     <p
       v-if="coverageText"
       class="operating-dashboard-filter__coverage"
@@ -304,21 +222,6 @@ function selectRecollect(key: string | number): void {
             class="operating-dashboard-filter__missing-item"
           >
             <span>{{ coverageSampleText(sample) }}</span>
-            <AppButton
-              v-if="sample.sessionRecovery"
-              tone="secondary"
-              size="small"
-              :disabled="refreshing || !refreshAvailable"
-              @click="$emit('recover', sample.sessionRecovery)"
-              >{{
-                sample.sessionRecovery.requiresValidation
-                  ? '复核会话并恢复'
-                  : '恢复该日期'
-              }}</AppButton
-            >
-            <span v-else-if="sample.recoveryBlockReason">{{
-              sample.recoveryBlockReason
-            }}</span>
           </div>
           <span v-if="coverage?.missingSamplesTruncated">其余缺失项未展开</span>
         </div>

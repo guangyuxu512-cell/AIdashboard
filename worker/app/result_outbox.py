@@ -78,18 +78,6 @@ class ResultOutbox:
     def store(self, item: TerminalDelivery) -> None:
         self._write(item, previous=None)
 
-    def replace_inventory_failure(self, item: TerminalDelivery) -> TerminalDelivery:
-        """Preserve the existing discovery failure behavior without losing results."""
-        if item.status != "success" or item.provider_inventory is None:
-            raise OutboxError("terminal has no provider report")
-        replacement = TerminalDelivery(
-            task_id=item.task_id, skill_id=item.skill_id, status="failed",
-            error_code="PROVIDER_INVENTORY_REPORT_FAILED",
-            error_message="Provider inventory could not be saved",
-        )
-        self._write(replacement, previous=item)
-        return replacement
-
     def _write(self, item: TerminalDelivery, *, previous: TerminalDelivery | None) -> None:
         # Keep legacy deliveries readable by a Worker rolled back to 0.5.0.
         # Direct deliveries retain their marker and must finish before rollback.

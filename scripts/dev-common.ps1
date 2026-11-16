@@ -5,7 +5,6 @@ $script:ProjectRoot = Split-Path -Parent $PSScriptRoot
 $script:RuntimeDirectory = Join-Path $script:ProjectRoot '.dev-runtime'
 $script:BackendDirectory = Join-Path $script:ProjectRoot 'backend'
 $script:FrontendDirectory = Join-Path $script:ProjectRoot 'frontend'
-$script:ElectronDirectory = Join-Path $script:ProjectRoot 'electron'
 $script:BackendPython = Join-Path $script:BackendDirectory '.venv\Scripts\python.exe'
 
 function Get-DevRuntimeDirectory {
@@ -195,21 +194,6 @@ function Test-FrontendReal {
     }
     $normalizedCommandLine = $listener.CommandLine.Replace('"', '')
     return $normalizedCommandLine -match '--mode(?:=|\s+)real'
-}
-
-function Test-ElectronRunning {
-    return $null -ne (Get-ElectronMainProcess)
-}
-
-function Get-ElectronMainProcess {
-    $escapedAppPath = [regex]::Escape($script:ElectronDirectory)
-    $renderer = Get-CimInstance Win32_Process -Filter "Name = 'electron.exe'" -ErrorAction SilentlyContinue |
-        Where-Object { $_.CommandLine -match "--app-path=.?$escapedAppPath" } |
-        Select-Object -First 1
-    if ($null -eq $renderer) {
-        return $null
-    }
-    return Get-Process -Id ([int]$renderer.ParentProcessId) -ErrorAction SilentlyContinue
 }
 
 function Wait-DevCondition(

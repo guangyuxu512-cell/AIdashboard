@@ -74,13 +74,6 @@ export const useThemeStore = defineStore('theme', () => {
 
     watch(mode, persistThemeMode, { flush: 'sync' })
     watch(resolvedPreset, applyPreset, { immediate: true, flush: 'sync' })
-    watch(
-      resolvedTheme,
-      (theme) => {
-        window.desktop?.appearance.setTitleBarTheme(theme)
-      },
-      { immediate: true, flush: 'sync' },
-    )
   }
 
   return { mode, resolvedPreset, resolvedTheme, initialize, setMode }

@@ -25,8 +25,8 @@ from app.modules.devices.models import Device
 from app.modules.tasks.enums import TERMINAL_TASK_STATUS_VALUES, TaskStatus
 from app.modules.tasks.models import Task, TaskEvent
 from app.modules.workers.precheck_contract import PRECHECK_KIND
+from app.modules.workers.shop_context import LOCAL_SHOPS_KEY
 from app.modules.workers.models import (
-    DeviceProviderInventory,
     DeviceRuntime,
     DeviceSkillCapability,
 )
@@ -365,12 +365,6 @@ class TaskRepository:
     def get_device_runtime(self, device_id: UUID) -> DeviceRuntime | None:
         return self.session.get(DeviceRuntime, device_id)
 
-    def get_provider_inventory(
-        self,
-        device_id: UUID,
-        provider_code: str,
-    ) -> DeviceProviderInventory | None:
-        return self.session.get(DeviceProviderInventory, (device_id, provider_code))
 
     def has_active_for_device(self, device_id: UUID) -> bool:
         return bool(
@@ -396,6 +390,7 @@ class TaskRepository:
         now: datetime,
         lease_until: datetime,
         precheck_only: bool = False,
+        local_context_supported: bool = True,
     ) -> Task | None:
         # Ordinary RPA tasks remain exclusive. Prechecks may use five shops per
         # device and three slots per shop. Serialize this device's short claim
@@ -429,9 +424,13 @@ class TaskRepository:
             ).group_by(shop_column),
         ).all())
         full_shops = [shop for shop, count in global_counts.items() if shop and count >= 3]
+        eligible = [~Task.skill_id.like("yingdao.%"), ~Task.shop_links.any()]
+        if not local_context_supported:
+            eligible.append(~Task.input_json.has_key(LOCAL_SHOPS_KEY))
         predicates = [
             Task.target_device_id == device_id,
             Task.status == TaskStatus.PENDING.value,
+            *eligible,
         ]
         if precheck_only or active:
             predicates.append(Task.skill_id == PRECHECK_KIND)
@@ -445,6 +444,7 @@ class TaskRepository:
                     Task.target_device_id == device_id,
                     Task.status == TaskStatus.PENDING.value,
                     Task.skill_id != PRECHECK_KIND,
+                    *eligible,
                 ).order_by(Task.created_at.asc(), Task.task_id.asc()).limit(1),
             ).first()
             if barrier is not None:

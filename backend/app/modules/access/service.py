@@ -241,30 +241,17 @@ class TeamAuthorizationService:
         ):
             raise TeamResourceAccessDeniedError()
 
-    def require_shop_access(self, actor: ActorContext, shop_id: UUID) -> None:
-        if actor.is_super_account:
-            return
-        if not self.resource_repository.has_shop_access(
-            actor.require_team_id(),
-            shop_id,
-        ):
-            raise TeamResourceAccessDeniedError()
-
     def require_execution_resources(
         self,
         *,
         team_id: UUID,
         device_id: UUID,
-        shop_ids: list[UUID],
     ) -> None:
         team = self.team_repository.get(team_id)
         if team is None or not team.enabled:
             raise TeamResourceAccessDeniedError()
         if not self.resource_repository.has_device_access(team_id, device_id):
             raise TeamResourceAccessDeniedError()
-        for shop_id in shop_ids:
-            if not self.resource_repository.has_shop_access(team_id, shop_id):
-                raise TeamResourceAccessDeniedError()
 
 
 class _LegacyAccessManagementService:
@@ -1116,7 +1103,7 @@ class AccessManagementService:
         return (
             [ModuleCode(code) for code in self.team_module_access_repository.list_codes(team_id)],
             self.team_resource_access_repository.list_device_ids(team_id),
-            self.team_resource_access_repository.list_shop_ids(team_id),
+            [],
         )
 
     def update_team_authorization(
@@ -1128,9 +1115,11 @@ class AccessManagementService:
         request_id: str | None = None,
     ) -> tuple[list[ModuleCode], list[UUID], list[UUID]]:
         self._require_enabled_team(team_id)
+        if data.shop_ids:
+            raise TeamResourceInvalidError()
         self._validate_granted_resources(
             device_ids=data.device_ids,
-            shop_ids=data.shop_ids,
+            shop_ids=[],
         )
         affected_user_ids = self.membership_repository.list_active_user_ids_for_team(
             team_id,
@@ -1140,7 +1129,6 @@ class AccessManagementService:
             [item.value for item in data.module_codes],
         )
         self.team_resource_access_repository.replace_device_ids(team_id, data.device_ids)
-        self.team_resource_access_repository.replace_shop_ids(team_id, data.shop_ids)
         # Team grants back module navigation and resource selectors.  Revoke
         # current sessions after any change so a renderer cannot restore a
         # cached permission set after a removal.  The server also rechecks the
@@ -1224,14 +1212,11 @@ class AccessManagementService:
         shop_ids: list[UUID],
     ) -> None:
         from app.modules.devices.repository import DeviceRepository
-        from app.modules.shops.repository import ShopRepository
 
         device_repository = DeviceRepository(self.session)
-        shop_repository = ShopRepository(self.session)
         if any(device_repository.get(device_id) is None for device_id in device_ids):
             raise TeamResourceInvalidError()
-        shops = shop_repository.list_by_ids(shop_ids)
-        if len(shops) != len(shop_ids):
+        if shop_ids:
             raise TeamResourceInvalidError()
 
     def _managed_members(

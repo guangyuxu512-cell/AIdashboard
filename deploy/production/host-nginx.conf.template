@@ -14,7 +14,8 @@ server {
 }
 
 server {
-    listen 443 ssl http2;
+    # Preserve the existing IP endpoint as the TLS default when domain vhosts are added.
+    listen 443 ssl http2 default_server;
     server_name ${PRODUCTION_DOMAIN};
 
     ssl_certificate ${PRODUCTION_TLS_CERTIFICATE_PATH};

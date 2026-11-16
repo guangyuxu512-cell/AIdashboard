@@ -55,24 +55,12 @@ def test_skill_descriptors_keep_stable_cross_system_metadata() -> None:
     assert set(descriptors) == {
         "system.echo",
         "system.sleep",
-        "yingdao.test",
-        "yingdao.discover",
-        "yingdao.app.run",
     }
     assert descriptors["system.echo"].model_dump() == {
         "skill_id": "system.echo",
         "display_name": "Echo",
         "runtime": "python",
         "provider": None,
-        "version": "1",
-        "classification": "internal",
-        "input_schema": None,
-    }
-    assert descriptors["yingdao.discover"].model_dump() == {
-        "skill_id": "yingdao.discover",
-        "display_name": "影刀能力发现",
-        "runtime": "discovery",
-        "provider": "yingdao",
         "version": "1",
         "classification": "internal",
         "input_schema": None,
@@ -509,9 +497,6 @@ def test_worker_capability_payload_uses_authenticated_device_headers() -> None:
     assert {skill["skill_id"] for skill in payload["skills"]} == {
         "system.echo",
         "system.sleep",
-        "yingdao.app.run",
-        "yingdao.test",
-        "yingdao.discover",
     }
     assert {skill["classification"] for skill in payload["skills"]} == {
         "internal",
@@ -615,7 +600,7 @@ def test_python_executor_creates_isolated_runtime_files(tmp_path: Path) -> None:
         "skill_id": "system.echo",
         "params": {"message": "hello"},
         "paths": {"images": str((tmp_path / "images").resolve())},
-        "accounts": [],
+        "local_shops": [],
     }
 
     duplicate = asyncio.run(

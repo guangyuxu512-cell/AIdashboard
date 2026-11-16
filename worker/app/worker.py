@@ -1,7 +1,6 @@
 import asyncio
 import logging
 from datetime import UTC, datetime
-from typing import Protocol
 
 import httpx
 
@@ -10,7 +9,6 @@ from app.config import WorkerSettings
 from app.contracts import (
     ExecutionResult,
     ExecutionStatus,
-    ProviderInventoryReport,
     RuntimeEventType,
     SkillCapabilitySnapshot,
     WorkerTask,
@@ -28,17 +26,12 @@ from app.shop_session_health import ShopSessionHealth
 from app.skills import SkillRegistry, registry
 from app.skills.registry import SkillClassification
 from app.version import WORKER_VERSION
-from app.providers.yingdao.contracts import YingdaoDiscoveryResult
 from app.task_images import TaskImagePreparer, TaskImagePreparationError
 
 
 logger = logging.getLogger(__name__)
 _PRECHECK_KIND = "douyin.category_schema"
 _PRECHECK_DEVICE_LIMIT = 15
-
-
-class ProviderDiscovery(Protocol):
-    async def discover(self) -> YingdaoDiscoveryResult: ...
 
 
 class Worker:
@@ -50,7 +43,6 @@ class Worker:
         event_bus: RuntimeEventBus | None = None,
         event_reporter: BackendEventReporter | None = None,
         local_runtime_state: LocalRuntimeState | None = None,
-        provider_discovery: ProviderDiscovery | None = None,
         skill_registry: SkillRegistry = registry,
         image_preparer: TaskImagePreparer | None = None,
         capability_runtime = None,
@@ -62,7 +54,6 @@ class Worker:
         self.event_bus = event_bus or RuntimeEventBus()
         self.event_reporter = event_reporter
         self.local_runtime_state = local_runtime_state
-        self.provider_discovery = provider_discovery
         self.skill_registry = skill_registry
         self.image_preparer = image_preparer
         self.capability_runtime = capability_runtime
@@ -91,11 +82,6 @@ class Worker:
         reporter_task = (
             asyncio.create_task(self.event_reporter.run(stop_event))
             if self.event_reporter is not None
-            else None
-        )
-        provider_task = (
-            asyncio.create_task(self._provider_inventory_loop(stop_event))
-            if self.provider_discovery is not None
             else None
         )
         rpa_task = (asyncio.create_task(self._rpa_inventory_loop(stop_event))
@@ -154,8 +140,6 @@ class Worker:
             heartbeat_supervisor_task.cancel()
             if reporter_task is not None:
                 reporter_task.cancel()
-            if provider_task is not None:
-                provider_task.cancel()
             if rpa_task is not None:
                 rpa_task.cancel()
             await self._cancel_shop_health_probe()
@@ -165,7 +149,6 @@ class Worker:
                     for task in (
                         heartbeat_supervisor_task,
                         reporter_task,
-                        provider_task,
                         rpa_task,
                     )
                     if task is not None
@@ -363,28 +346,6 @@ class Worker:
         except Exception as error:
             logger.warning("Worker runtime status update failed: %s", error)
 
-    async def _provider_inventory_loop(self, stop_event: asyncio.Event) -> None:
-        while not stop_event.is_set():
-            try:
-                if self.provider_discovery is not None:
-                    inventory = await self.provider_discovery.discover()
-                    if self.local_runtime_state is not None:
-                        self.local_runtime_state.set_provider_inventory(inventory)
-                    await self.client.report_provider_inventory(
-                        ProviderInventoryReport(
-                            provider_code="yingdao",
-                            inventory=inventory.model_dump(mode="json", by_alias=True),
-                        ),
-                    )
-            except asyncio.CancelledError:
-                raise
-            except Exception as error:
-                logger.warning("Provider inventory refresh failed: %s", error)
-            await self._wait_or_stop(
-                stop_event,
-                self.settings.provider_inventory_interval_seconds,
-            )
-
     async def _rpa_inventory_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
             try:
@@ -525,10 +486,6 @@ class Worker:
                 status=result.status.value,
                 result=_redact_value(result.result or {}) if result.status is ExecutionStatus.SUCCESS
                 else (_redact_value(result.result) if result.result is not None else None),
-                provider_inventory=(
-                    _redact_value(result.provider_inventory.model_dump(mode="json"))
-                    if result.provider_inventory is not None else None
-                ),
                 error_code=result.error_code or "SKILL_EXECUTION_FAILED"
                 if result.status is ExecutionStatus.FAILED else None,
                 error_message=safe_message if result.status is ExecutionStatus.FAILED else None,
@@ -595,15 +552,11 @@ class Worker:
             return False
         for delivery in pending:
             try:
-                if delivery.provider_inventory is not None:
-                    try:
-                        await self.client.report_provider_inventory(
-                            ProviderInventoryReport.model_validate(delivery.provider_inventory),
-                        )
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception:
-                        delivery = self.result_outbox.replace_inventory_failure(delivery)
+                if delivery.skill_id.startswith("yingdao."):
+                    # Preserve old terminal evidence locally without replaying a
+                    # retired task or blocking new Worker results.
+                    self.result_outbox.reject(delivery)
+                    continue
                 if delivery.skill_id == "douyin.category_schema":
                     if delivery.result_delivery == "product":
                         digest = await self.client.deliver_product_precheck(

@@ -12,7 +12,6 @@ import {
   NTooltip,
   useMessage,
 } from 'naive-ui'
-import ShopSelector from '@/entities/shop/ui/ShopSelector.vue'
 import { ProductInfoCell } from '@/entities/product'
 import {
   DataTable,
@@ -50,6 +49,8 @@ const message = useMessage()
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
 const filters = ref<CandidateQuery>(candidateFilters(route?.query ?? {}))
+// Legacy central-shop selections cannot constrain the paused history view.
+filters.value.shopId = null
 const keyword = ref(filters.value.keyword),
   detailId = ref<string | null>(null),
   busy = ref(false)
@@ -567,14 +568,6 @@ const scrollWidth = computed(() => {
 <template>
   <div class="selection-panel candidate-pool">
     <FilterBar density="compact">
-      <FilterField width="md"
-        ><ShopSelector
-          v-model="filters.shopId"
-          clearable
-          label-tooltip
-          placeholder="全部请求店铺"
-          @update:model-value="filterChanged"
-      /></FilterField>
       <FilterField width="lg"
         ><AppInput
           v-model="keyword"

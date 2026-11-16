@@ -15,7 +15,6 @@ from app.modules.workers.exceptions import (
     WorkerCredentialStateConflictError,
 )
 from app.modules.workers.models import (
-    DeviceProviderInventory,
     DeviceRuntime,
     DeviceSkillCapability,
     WorkerDeviceCredential,
@@ -23,16 +22,13 @@ from app.modules.workers.models import (
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.schemas import (
     BusinessSkillCatalogItemRead,
-    DeviceProviderInventoryRead,
     DeviceRuntimeRead,
     DeviceSkillCapabilityRead,
-    ProviderInventoryUpsert,
     SkillCapabilitySnapshotUpsert,
     WorkerCredentialRead,
     WorkerHeartbeat,
     WorkerProvisioningRead,
     WorkerTokenIssuedRead,
-    YingdaoProviderInventory,
 )
 from app.modules.workers.security import (
     generate_worker_token,
@@ -264,38 +260,7 @@ class WorkerService:
             for device_id, runtime in self.repository.get_runtimes(device_ids).items()
         }
 
-    def save_provider_inventory(
-        self,
-        principal: WorkerPrincipal,
-        data: ProviderInventoryUpsert,
-        *,
-        now: datetime | None = None,
-    ) -> DeviceProviderInventoryRead:
-        updated_at = now or datetime.now(UTC)
-        inventory = data.inventory
-        record = self.repository.upsert_provider_inventory(
-            device_id=principal.device_id,
-            provider_code=data.provider_code.value,
-            available=inventory.available,
-            provider_version=inventory.provider_version,
-            account_display=inventory.account_display,
-            account_type=inventory.account_type,
-            enterprise_account=inventory.enterprise_account,
-            last_discovered_at=inventory.discovered_at,
-            inventory_payload=inventory.model_dump(mode="json"),
-            updated_at=updated_at,
-        )
-        self.session.commit()
-        return self.to_provider_inventory_read(record)
 
-    def get_provider_inventory_reads(
-        self,
-        device_id: UUID,
-    ) -> list[DeviceProviderInventoryRead]:
-        return [
-            self.to_provider_inventory_read(record)
-            for record in self.repository.get_provider_inventories(device_id)
-        ]
 
     def sync_skill_capabilities(
         self,
@@ -306,7 +271,9 @@ class WorkerService:
     ) -> list[DeviceSkillCapabilityRead]:
         records = self.repository.replace_skill_capabilities(
             device_id=principal.device_id,
-            skills=data.skills,
+            skills=[skill for skill in data.skills
+                    if not skill.skill_id.startswith("yingdao.") and skill.provider is None
+                    and skill.runtime == "python"],
             updated_at=now or datetime.now(UTC),
         )
         self.session.commit()
@@ -349,25 +316,6 @@ class WorkerService:
             updated_at=runtime.updated_at,
         )
 
-    @staticmethod
-    def to_provider_inventory_read(
-        record: DeviceProviderInventory,
-    ) -> DeviceProviderInventoryRead:
-        inventory = YingdaoProviderInventory.model_validate(
-            record.inventory_payload,
-        )
-        return DeviceProviderInventoryRead(
-            device_id=record.device_id,
-            provider_code=record.provider_code,
-            available=inventory.available,
-            provider_version=inventory.provider_version,
-            account_display=inventory.account_display,
-            account_type=inventory.account_type,
-            enterprise_account=inventory.enterprise_account,
-            last_discovered_at=record.last_discovered_at,
-            inventory=inventory,
-            updated_at=record.updated_at,
-        )
 
     @staticmethod
     def to_skill_capability_read(
