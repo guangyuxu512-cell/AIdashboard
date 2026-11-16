@@ -24,6 +24,7 @@ from app.runtime_events import (
     _SENSITIVE_MESSAGE,
 )
 from app.result_outbox import OutboxError, ResultOutbox, TerminalDelivery
+from app.shop_session_health import ShopSessionHealth
 from app.skills import SkillRegistry, registry
 from app.skills.registry import SkillClassification
 from app.version import WORKER_VERSION
@@ -66,6 +67,11 @@ class Worker:
         self.image_preparer = image_preparer
         self.capability_runtime = capability_runtime
         self.rpa_bridge = rpa_bridge
+        self.shop_session_health = ShopSessionHealth(rpa_bridge) if rpa_bridge is not None else None
+        self._shop_health_probe: asyncio.Task[None] | None = None
+        self._last_rpa_inventory = None
+        self._rpa_inventory_report_lock = asyncio.Lock()
+        self._active_task_ids = set()
         self._next_capability_check = 0.0
         self.result_outbox = ResultOutbox(settings.runtime_root / "result-outbox")
         self.started_at = datetime.now(UTC)
@@ -122,12 +128,16 @@ class Worker:
                     else:
                         task = await self.client.claim()
                     if task is not None:
+                        # Verification never adds a competing platform request
+                        # when actual work starts on this Worker.
+                        self._active_task_ids.add(task.task_id)
+                        await self._cancel_shop_health_probe()
                         if task.skill_id == _PRECHECK_KIND:
-                            prechecks.add(asyncio.create_task(self._execute_task(task)))
+                            prechecks.add(asyncio.create_task(self._execute_claimed_task(task)))
                             # Fill available slots immediately instead of adding
                             # the ordinary idle-poll interval to every claim.
                             continue
-                        await self._execute_task(task)
+                        await self._execute_claimed_task(task)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
@@ -148,6 +158,7 @@ class Worker:
                 provider_task.cancel()
             if rpa_task is not None:
                 rpa_task.cancel()
+            await self._cancel_shop_health_probe()
             await asyncio.gather(
                 *[
                     task
@@ -378,17 +389,60 @@ class Worker:
         while not stop_event.is_set():
             try:
                 inventory = await self.rpa_bridge.list_shops()
-                await self.client.report_rpa_inventory({"available": True,
-                    "installation_id": str(inventory.installation_id),
-                    "shops": [shop.model_dump(by_alias=True) for shop in inventory.shops]})
+                self._last_rpa_inventory = inventory
+                await self._report_rpa_inventory(inventory)
+                if (self.shop_session_health is not None and not self._active_task_ids
+                        and (self._shop_health_probe is None or self._shop_health_probe.done())):
+                    shop = self.shop_session_health.due(inventory.shops)
+                    if shop is not None:
+                        self._shop_health_probe = asyncio.create_task(self._verify_local_shop(inventory, shop))
             except asyncio.CancelledError:
                 raise
             except Exception:
+                self._last_rpa_inventory = None
                 try:
                     await self.client.report_rpa_inventory({"available": False})
                 except Exception:
                     pass
             await self._wait_or_stop(stop_event, self.settings.provider_inventory_interval_seconds)
+
+    async def _report_rpa_inventory(self, inventory) -> None:
+        async with self._rpa_inventory_report_lock:
+            if self._last_rpa_inventory is not inventory:
+                return
+            shops = []
+            for shop in inventory.shops:
+                item = shop.model_dump(mode="json", by_alias=True)
+                if self.shop_session_health is not None:
+                    item.update(self.shop_session_health.report(shop))
+                shops.append(item)
+            await self.client.report_rpa_inventory({"available": True,
+                "installation_id": str(inventory.installation_id), "shops": shops})
+
+    async def _verify_local_shop(self, inventory, shop) -> None:
+        try:
+            await self.shop_session_health.check(shop)
+            # An older probe may not replace a newly discovered RPA snapshot.
+            if self._last_rpa_inventory is inventory:
+                await self._report_rpa_inventory(inventory)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # Status is advisory; retry on a later inventory cycle.
+            pass
+
+    async def _cancel_shop_health_probe(self) -> None:
+        probe, self._shop_health_probe = self._shop_health_probe, None
+        if probe is not None:
+            if not probe.done():
+                probe.cancel()
+            await asyncio.gather(probe, return_exceptions=True)
+
+    async def _execute_claimed_task(self, task: WorkerTask) -> None:
+        try:
+            await self._execute_task(task)
+        finally:
+            self._active_task_ids.discard(task.task_id)
 
     async def _refresh_capabilities_if_due(self) -> None:
         if self.capability_runtime is None:

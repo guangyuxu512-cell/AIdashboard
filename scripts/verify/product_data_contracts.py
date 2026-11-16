@@ -20,41 +20,6 @@ EXPECTED_ROUTES = [
         "request_model": None,
         "response_model": "ProductDataListRead",
     },
-    {
-        "path": "/api/v1/product-data/collection-batches",
-        "method": "POST",
-        "status": 202,
-        "request_model": "ProductDataCollectionBatchRequest",
-        "response_model": "ProductDataCollectionBatchRead",
-    },
-    {
-        "path": "/api/v1/product-data/collection-batches/{collection_batch_id}",
-        "method": "GET",
-        "status": 200,
-        "request_model": None,
-        "response_model": "ProductDataCollectionBatchRead",
-    },
-    {
-        "path": "/api/v1/product-data/collection-shops",
-        "method": "GET",
-        "status": 200,
-        "request_model": None,
-        "response_model": "list",
-    },
-    {
-        "path": "/api/v1/product-data/collections",
-        "method": "POST",
-        "status": 202,
-        "request_model": "ProductDataCollectionRequest",
-        "response_model": "ProductDataGenerationRead",
-    },
-    {
-        "path": "/api/v1/product-data/collections/{generation_id}",
-        "method": "GET",
-        "status": 200,
-        "request_model": None,
-        "response_model": "ProductDataGenerationRead",
-    },
 ]
 
 EXPECTED_DTOS = {

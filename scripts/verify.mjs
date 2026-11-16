@@ -24,7 +24,7 @@ const args = process.argv.slice(2);
 const verificationStarted = Date.now();
 if (args.includes("--help")) {
   console.log(
-    "pnpm verify [--strict] [--full] [--only=backend,frontend,mobile,electron,worker] [--report=path]\nDefault: offline contracts + checker self-tests + in-memory API/client probes.\n--full: declared full-offline profile, not PG/runtime/native/production. Exit 0 scoped checks pass (known differences remain WARN); 1 new/stale difference or test failure; 2 blocked/missing dependency or skipped applicable tests. No installation, ports, platform calls or migration.\n--strict: every known contract difference also fails. --only selects full-profile suites; quick checks always run.",
+    "pnpm verify [--strict] [--full] [--only=backend,frontend,electron,worker] [--report=path]\nDefault: offline contracts + checker self-tests + in-memory API/client probes.\n--full: declared full-offline profile, not PG/runtime/native/production. Exit 0 scoped checks pass (known differences remain WARN); 1 new/stale difference or test failure; 2 blocked/missing dependency or skipped applicable tests. No installation, ports, platform calls or migration.\n--strict: every known contract difference also fails. --only selects full-profile suites; quick checks always run.",
   );
   process.exit(0);
 }
@@ -42,10 +42,10 @@ if (!full && args.some((arg) => arg.startsWith("--only=")))
 const suites = args
   .find((x) => x.startsWith("--only="))
   ?.slice(7)
-  .split(",") ?? ["backend", "frontend", "mobile", "electron", "worker"];
+  .split(",") ?? ["backend", "frontend", "electron", "worker"];
 if (
   suites.some(
-    (x) => !["backend", "frontend", "mobile", "electron", "worker"].includes(x),
+    (x) => !["backend", "frontend", "electron", "worker"].includes(x),
   )
 )
   throw new Error("Unknown full-offline suite");
@@ -97,10 +97,10 @@ const report = {
         ]
       : []),
     ...(full
-      ? ["backend", "frontend", "mobile", "electron", "worker"]
+      ? ["backend", "frontend", "electron", "worker"]
           .filter((x) => !suites.includes(x))
           .map((x) => `${x} full suite not selected`)
-      : ["five full validation suites (use --full)"]),
+      : ["four full validation suites (use --full)"]),
   ],
 };
 let blocked = false,

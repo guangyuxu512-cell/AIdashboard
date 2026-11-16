@@ -12,12 +12,6 @@ from app.modules.access.enums import DataScope
 from app.modules.credentials.api import get_credential_service, get_shop_authorized_actor
 from app.modules.credentials.enums import VerificationChannel
 from app.modules.credentials.schemas import CredentialStatusRead
-from app.modules.sessions.api import (
-    get_shop_authorized_actor as get_session_shop_authorized_actor,
-    get_shop_session_service,
-)
-from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.sessions.schemas import ShopSessionMetadataRead
 from app.modules.shops.enums import ShopPlatform
 
 
@@ -60,28 +54,10 @@ class ApiCredentialService:
         return status.model_copy(update={"enabled": False})
 
 
-class ApiSessionService:
-    def get_metadata(self, shop_id: UUID) -> ShopSessionMetadataRead:
-        return ShopSessionMetadataRead(
-            session_id=None,
-            configured=False,
-            status=ShopSessionStatus.NOT_CONFIGURED,
-            version=0,
-            source_device_id=None,
-            captured_at=None,
-            validated_at=None,
-            expires_at=None,
-        )
-
-
 def request(method: str, path: str, **kwargs: object) -> Response:
     application = create_app()
     application.dependency_overrides[get_credential_service] = ApiCredentialService
-    application.dependency_overrides[get_shop_session_service] = ApiSessionService
     application.dependency_overrides[get_shop_authorized_actor] = lambda: API_ACTOR
-    application.dependency_overrides[get_session_shop_authorized_actor] = (
-        lambda: API_ACTOR
-    )
 
     async def send() -> Response:
         transport = ASGITransport(app=application)
@@ -100,8 +76,7 @@ def test_credential_and_session_reads_never_return_sensitive_payloads() -> None:
     assert "secret" not in credential_response.text.lower()
     assert "password" not in credential_response.text.lower()
 
-    assert session_response.status_code == 200
-    assert session_response.json()["status"] == "not_configured"
+    assert session_response.status_code == 404
     assert "payload" not in session_response.text.lower()
     assert "cookie" not in session_response.text.lower()
 
@@ -130,12 +105,10 @@ def test_openapi_has_write_only_secret_and_safe_read_schemas() -> None:
 
     create_secret = components["CredentialCreate"]["properties"]["secret"]
     credential_read = components["CredentialStatusRead"]["properties"]
-    session_read = components["ShopSessionMetadataRead"]["properties"]
 
     assert create_secret["format"] == "password"
     assert create_secret["writeOnly"] is True
     assert "secret" not in credential_read
     assert "secret_encrypted" not in credential_read
     assert not any("password" in field for field in credential_read)
-    assert "payload" not in session_read
-    assert "payload_encrypted" not in session_read
+    assert "ShopSessionMetadataRead" not in components

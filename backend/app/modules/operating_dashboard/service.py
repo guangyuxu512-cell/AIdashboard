@@ -51,7 +51,6 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDashboardTablePageRead,
     OperatingDashboardTableRowRead,
     OperatingDashboardTrendPointRead,
-    OperatingSessionRecoveryRead,
     OperatingDataCollectionCountsRead,
     OperatingDataCollectionItemRead,
     OperatingDataCollectionJobRead,
@@ -344,10 +343,6 @@ class OperatingDashboardService:
             shops=supported_shops, metric_by_shop_date=metric_by_shop_date,
             collection_states=collection_states, range_value=selected_range,
         )
-        self._attach_session_recovery_hints(
-            coverage, shops=supported_shops, collection_states=collection_states,
-            metric_by_shop_date=metric_by_shop_date, now=datetime.now(UTC),
-        )
         return OperatingDashboardRead(
             date_range=selected_range,
             comparison_date_range=comparison_range,
@@ -362,7 +357,7 @@ class OperatingDashboardService:
                 page_size=pagination.page_size,
             ),
             coverage=coverage,
-            collection_available=self.settings.operating_dashboard_collection_execution_enabled,
+            collection_available=False,
         )
 
     def enqueue_manual_collection(
@@ -1862,51 +1857,6 @@ class OperatingDashboardService:
             shops_with_unknown_operating_start=shops_with_unknown_operating_start,
             no_operating_scope=(total == 0 and not_operating_shop_days > 0),
         )
-
-    def _attach_session_recovery_hints(
-        self, coverage: OperatingDashboardCoverageRead, *, shops: list[DashboardShop],
-        collection_states: list[CollectionItemState],
-        metric_by_shop_date: dict[tuple[UUID, date], ShopOperatingDailyMetric], now: datetime,
-    ) -> None:
-        """Enrich only the existing bounded, authorized missing sample list."""
-        history_by_date: dict[tuple[UUID, date], list[CollectionItemState]] = defaultdict(list)
-        for state in collection_states:
-            history_by_date[(state.shop_id, state.business_date)].append(state)
-        candidates = []
-        for sample in coverage.missing_samples:
-            history = history_by_date[(sample.shop_id, sample.business_date)]
-            latest = _latest_state(history)
-            if latest is not None and _is_session_recovery_failure(latest, job_kind=latest.job_kind):
-                candidates.append((sample, latest, history))
-        if not candidates:
-            return
-        contexts = self.repository.list_session_recovery_metadata(
-            sample.shop_id for sample, _, _ in candidates
-        )
-        used = self.repository.used_session_recovery_items(
-            state.collection_item_id for _, state, _ in candidates
-        )
-        shops_by_id = {shop.shop_id: shop for shop in shops}
-        for sample, state, history in candidates:
-            context = contexts.get(sample.shop_id)
-            reason = _session_recovery_block_reason(
-                item=state, job_kind=state.job_kind, shop=shops_by_id[sample.shop_id],
-                context=context, history=history,
-                metric=metric_by_shop_date.get((sample.shop_id, sample.business_date)),
-                already_used=state.collection_item_id in used, now=now,
-                freshness_seconds=self.settings.shop_session_validation_freshness_seconds,
-                require_fresh_validation=False,
-            )
-            sample.recovery_block_reason = reason
-            if reason is None and context is not None and self.settings.operating_dashboard_collection_execution_enabled:
-                sample.session_recovery = OperatingSessionRecoveryRead(
-                    collection_job_id=state.collection_job_id,
-                    collection_item_id=state.collection_item_id, session_version=context.version,
-                    requires_validation=_session_recovery_requires_validation(
-                        context, now=now,
-                        freshness_seconds=self.settings.shop_session_validation_freshness_seconds,
-                    ),
-                )
 
     @staticmethod
     def _shop_range_values(

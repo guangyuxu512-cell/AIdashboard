@@ -17,6 +17,22 @@ from app.capability_host import CapabilityHost
 from app.capability_runtime import CapabilityRuntime
 from app.capability_updates import CapabilityUpdater
 from app.contracts import WorkerTask
+from app.rpa_session_bridge import LocalSession
+
+
+def test_merchant_category_uses_merchant_and_shared_cookies_with_compass_present():
+    session = LocalSession.model_validate({
+        'localShopId': 'test-local', 'platformShopId': 'test-shop', 'platform': 'douyin',
+        'userAgent': 'synthetic-agent', 'cookies': [
+            {'name': 'shared', 'value': 'synthetic-shared', 'domain': '.jinritemai.com', 'path': '/'},
+            {'name': 'merchant', 'value': 'synthetic-merchant', 'domain': 'fxg.jinritemai.com', 'path': '/'},
+            {'name': 'compass', 'value': 'synthetic-compass', 'domain': 'compass.jinritemai.com', 'path': '/'},
+        ],
+    })
+    header = CapabilityHost.cookie_header(session)
+    assert 'shared=synthetic-shared' in header
+    assert 'merchant=synthetic-merchant' in header
+    assert 'synthetic-compass' not in header
 
 
 def test_new_signed_skill_is_loaded_advertised_and_executed(tmp_path):

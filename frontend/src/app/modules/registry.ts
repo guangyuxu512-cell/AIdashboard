@@ -9,13 +9,10 @@ import {
   Package,
   Library,
   Settings,
-  Sparkles,
   Store,
   Workflow,
 } from '@lucide/vue'
 import type { Component } from 'vue'
-
-import { AI_WORKBENCH_ROUTES } from '@/features/ai-workbench/model/routes'
 
 export type ModuleNavigationGroup = 'development' | 'management'
 export type ModuleNavigationParent =
@@ -107,6 +104,7 @@ export const MODULE_REGISTRY = [
     routePath: '/shops',
     icon: Store,
     enabled: true,
+    navigationVisible: false,
     permissionCode: null,
     order: 20,
   },
@@ -123,19 +121,6 @@ export const MODULE_REGISTRY = [
     navigationVisible: false,
     permissionCode: null,
     order: 25,
-  },
-  {
-    moduleCode: 'ai-workbench',
-    accessModuleCode: null,
-    moduleName: 'AI工作台',
-    navigationGroup: 'management',
-    navigationParent: null,
-    routeName: AI_WORKBENCH_ROUTES.generate.name,
-    routePath: AI_WORKBENCH_ROUTES.generate.path,
-    icon: Sparkles,
-    enabled: true,
-    permissionCode: null,
-    order: 27,
   },
   {
     moduleCode: 'operating-dashboard',
@@ -178,19 +163,6 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 29,
-  },
-  {
-    moduleCode: 'product-library',
-    accessModuleCode: null,
-    moduleName: '商品库',
-    navigationGroup: 'management',
-    navigationParent: 'product-center',
-    routeName: 'product-library',
-    routePath: '/products',
-    icon: Package,
-    enabled: true,
-    permissionCode: null,
-    order: 30,
   },
   {
     moduleCode: 'device',

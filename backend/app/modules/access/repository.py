@@ -20,6 +20,11 @@ from app.modules.users.models import User
 
 MembershipWithTeam = tuple[TeamMembership, Team]
 
+# Existing grants can outlive the removed central library until its separate
+# schema retirement. Ignore only that retired code; all other unknown codes
+# still fail closed when converted to ModuleCode.
+_RETIRED_PRODUCT_LIBRARY = "product-library"
+
 
 class TeamRepository:
     def __init__(self, session: Session) -> None:
@@ -192,7 +197,10 @@ class MembershipModuleAccessRepository:
                 MembershipModuleAccess.membership_id,
                 MembershipModuleAccess.module_code,
             )
-            .where(MembershipModuleAccess.membership_id.in_(membership_ids))
+            .where(
+                MembershipModuleAccess.membership_id.in_(membership_ids),
+                MembershipModuleAccess.module_code != _RETIRED_PRODUCT_LIBRARY,
+            )
             .order_by(
                 MembershipModuleAccess.membership_id.asc(),
                 MembershipModuleAccess.module_code.asc(),
@@ -249,7 +257,10 @@ class TeamModuleAccessRepository:
         return list(
             self.session.scalars(
                 select(TeamModuleAccess.module_code)
-                .where(TeamModuleAccess.team_id == team_id)
+                .where(
+                    TeamModuleAccess.team_id == team_id,
+                    TeamModuleAccess.module_code != _RETIRED_PRODUCT_LIBRARY,
+                )
                 .order_by(TeamModuleAccess.module_code.asc()),
             ),
         )
@@ -262,7 +273,10 @@ class TeamModuleAccessRepository:
             return {}
         rows = self.session.execute(
             select(TeamModuleAccess.team_id, TeamModuleAccess.module_code)
-            .where(TeamModuleAccess.team_id.in_(team_ids))
+            .where(
+                TeamModuleAccess.team_id.in_(team_ids),
+                TeamModuleAccess.module_code != _RETIRED_PRODUCT_LIBRARY,
+            )
             .order_by(TeamModuleAccess.team_id.asc(), TeamModuleAccess.module_code.asc()),
         )
         result: dict[UUID, list[str]] = {}
@@ -419,11 +433,6 @@ class AccessManagementRepository:
         plane, while each business module continues to own its model.
         """
 
-        from app.modules.ai_workbench.models import (
-            GenerationJob,
-            ProductMaterialGroup,
-            TemplateGroup,
-        )
         from app.modules.assets.models import Asset
         from app.modules.automation_apps.models import AutomationParameterPreset
         from app.modules.audit.models import AuditLog
@@ -442,9 +451,6 @@ class AccessManagementRepository:
             (AutomationParameterPreset, AutomationParameterPreset.team_id),
             (Schedule, Schedule.team_id),
             (Task, Task.team_id),
-            (TemplateGroup, TemplateGroup.team_id),
-            (ProductMaterialGroup, ProductMaterialGroup.team_id),
-            (GenerationJob, GenerationJob.team_id),
             (ProductSelectionCandidate, ProductSelectionCandidate.team_id),
             (ProductSelectionRun, ProductSelectionRun.team_id),
             (ProductSelectionStrategy, ProductSelectionStrategy.team_id),

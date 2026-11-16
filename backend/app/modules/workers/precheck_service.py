@@ -23,6 +23,7 @@ from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
 from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, validate_terminal_result
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
+from app.modules.workers.session_health import merge_session_observations, worker_session_observation
 
 
 class PrecheckUnavailable(AppError):
@@ -52,7 +53,7 @@ def session_snapshot_expired(session: Session, task: Task) -> bool:
     platform_id = task.input_json.get("platform_shop_id")
     if not all(isinstance(value, str) and value for value in (revision, local_id, platform_id)):
         return False
-    latest = session.execute(select(Task.status, Task.error_code).where(
+    latest = session.execute(select(Task.status, Task.error_code, Task.finished_at, Task.created_at).where(
         Task.target_device_id == task.target_device_id, Task.skill_id == PRECHECK_KIND,
         Task.input_json["local_shop_id"].astext == local_id,
         Task.input_json["platform_shop_id"].astext == platform_id,
@@ -60,7 +61,15 @@ def session_snapshot_expired(session: Session, task: Task) -> bool:
         Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED",
         Task.task_id != task.task_id,
     ).order_by(Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc()).limit(1)).first()
-    return bool(latest and latest.status == "failed" and latest.error_code == "SHOP_SESSION_EXPIRED")
+    known = (("invalid" if latest.status == "failed" else "valid"), latest.finished_at or latest.created_at) if latest else None
+    inventory = session.get(WorkerRpaShopInventory, task.target_device_id)
+    if inventory is not None:
+        for shop in inventory.shops:
+            if (shop.get("localShopId"), shop.get("platformShopId"), shop.get("sessionRevision")) == (local_id, platform_id, revision):
+                observed = worker_session_observation(shop)
+                known = merge_session_observations(known, observed)
+                break
+    return bool(known and known[0] == "invalid")
 
 
 def supports_saved_shop_sessions(version: str) -> bool:
@@ -249,7 +258,8 @@ class WorkerPrecheckService:
             .group_by(Task.target_device_id, local_key)
         ).all()}
         latest = self.session.execute(
-            select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
+            select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code,
+                   Task.finished_at, Task.created_at)
             .where(task_device_scope, Task.skill_id == PRECHECK_KIND,
                    Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED",
                    revision_key.is_not(None))
@@ -257,9 +267,17 @@ class WorkerPrecheckService:
             .order_by(Task.target_device_id, local_key, platform_key, revision_key,
                       Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc())
         ).all()
-        invalid_snapshots = {(device_id, local_id, platform_id, revision)
-                             for device_id, local_id, platform_id, revision, status, error in latest
-                             if status == "failed" and error == "SHOP_SESSION_EXPIRED"}
+        observations = {(device_id, local_id, platform_id, revision):
+                        ("invalid" if status == "failed" else "valid", finished or created)
+                        for device_id, local_id, platform_id, revision, status, error, finished, created in latest}
+        for device, inventory, _, _ in rows:
+            for shop in inventory.shops:
+                observed = worker_session_observation(shop)
+                key = (device.device_id, shop.get("localShopId"), shop.get("platformShopId"), shop.get("sessionRevision"))
+                merged = merge_session_observations(observations.get(key), observed)
+                if merged:
+                    observations[key] = merged
+        invalid_snapshots = {key for key, (status, _) in observations.items() if status == "invalid"}
         invalid_shops = {(device_id, local_id, platform_id)
                          for device_id, local_id, platform_id, _ in invalid_snapshots}
         # For this product, retry a different shop, not the same platform shop
@@ -385,8 +403,26 @@ def save_rpa_inventory(session: Session, device_id: UUID, data: RpaInventoryRepo
     inventory.last_discovered_at = now
     inventory.updated_at = now
     if data.available:
+        previous = {}
+        if inventory.installation_id == data.installation_id:
+            previous = {(shop.get("localShopId"), shop.get("platformShopId"), shop.get("sessionRevision")): shop
+                        for shop in inventory.shops}
+        shops = []
+        for shop in data.shops:
+            row = shop.model_dump(mode="json", by_alias=True)
+            checked_at = shop.session_checked_at
+            if checked_at and checked_at > now + timedelta(minutes=5):
+                # A bad device clock must not make its entire inventory or
+                # unrelated prechecks unavailable.
+                checked_at = None
+                row["sessionStatus"], row["sessionCheckedAt"] = None, None
+            old = previous.get((shop.local_shop_id, shop.platform_shop_id, shop.session_revision))
+            old_observation = worker_session_observation(old, now=now) if old else None
+            if old_observation and (checked_at is None or old_observation[1] > checked_at):
+                row["sessionStatus"], row["sessionCheckedAt"] = old_observation[0], old_observation[1].isoformat()
+            shops.append(row)
         inventory.installation_id = data.installation_id
-        inventory.shops = [shop.model_dump(by_alias=True) for shop in data.shops]
+        inventory.shops = shops
     session.commit()
 
 

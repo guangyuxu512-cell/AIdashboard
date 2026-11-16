@@ -16,7 +16,6 @@ import {
   DetailDrawer,
   ErrorState,
   LoadingState,
-  StatusTag,
 } from '@/shared/components'
 import { AppButton } from '@/shared/ui'
 import type { SelectionService } from '../model/contracts'
@@ -27,7 +26,6 @@ import {
   formatFirstListed,
   comparablePreviousRank,
   rankChange,
-  collectionLabels,
   discoveryLabels,
   discoveryDescriptions,
   sourceProductUrl,
@@ -191,7 +189,7 @@ async function copyProductId() {
     message.error('商品ID复制失败')
   }
 }
-async function act(action: 'collect' | 'metrics' | 'competitor') {
+async function act(action: 'metrics' | 'competitor') {
   if (busy.value || !row.value) return
   const id = row.value.id
   const contextKey = props.contextKey
@@ -203,11 +201,9 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
   busy.value = true
   try {
     const receipt =
-      action === 'collect'
-        ? await props.service.demoAction(id, 'collect')
-        : action === 'metrics'
-          ? await props.service.updateCompassMetrics(id)
-          : await props.service.markCompetitor(merchantShopId!)
+      action === 'metrics'
+        ? await props.service.updateCompassMetrics(id)
+        : await props.service.markCompetitor(merchantShopId!)
     if (props.id !== id || props.contextKey !== contextKey) return
     message.info(receipt.message)
     await query.refetch()
@@ -444,14 +440,6 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
                 }}</NTooltip
               ></NDescriptionsItem
             >
-            <NDescriptionsItem label="商品资料采集状态"
-              ><NText v-if="row.collectionStatus === 'unknown'" depth="3"
-                >—</NText
-              ><StatusTag
-                v-else
-                :label="collectionLabels[row.collectionStatus]"
-                :tone="row.collectionStatus === 'failed' ? 'error' : 'neutral'"
-            /></NDescriptionsItem>
             <NDescriptionsItem label="屏蔽状态">{{
               row.blocked ? '已屏蔽' : '未屏蔽'
             }}</NDescriptionsItem>
@@ -544,20 +532,6 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
               @click="updateBasic"
               >更新基础信息</AppButton
             >
-            <NTooltip :disabled="service.available">
-              <template #trigger>
-                <span class="candidate-detail__action-trigger">
-                  <AppButton
-                    tone="primary"
-                    :disabled="!row || busy || !service.available"
-                    :loading="busy"
-                    @click="act('collect')"
-                    >采集资料</AppButton
-                  >
-                </span>
-              </template>
-              资料采集待接入
-            </NTooltip>
           </div>
         </div>
       </template>
@@ -657,8 +631,5 @@ async function act(action: 'collect' | 'metrics' | 'competitor') {
 }
 .candidate-detail__feedback:empty {
   display: none;
-}
-.candidate-detail__action-trigger {
-  display: inline-flex;
 }
 </style>

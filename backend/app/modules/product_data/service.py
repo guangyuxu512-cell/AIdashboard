@@ -339,5 +339,5 @@ class ProductDataService:
         return ProductDataListRead(items=items, total=total, page=query.page, page_size=query.page_size,
             coverage=ProductDataCoverageRead(supported_shop_count=len(supported), collected_shop_count=len(collected_shops),
                 missing_shop_ids=[value for value in supported if value not in set(collected_shops)],
-                collection_available=self.settings.product_data_collection_execution_enabled,
+                collection_available=False,
                 unit_unconfirmed_codes=[code for code, metric in METRIC_BY_CODE.items() if not metric.unit_verified]))

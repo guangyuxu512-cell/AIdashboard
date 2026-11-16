@@ -10,13 +10,9 @@ const realTestFiles = [
   '**/parameter-presets-real-api.spec.ts',
   '**/real-api.spec.ts',
   '**/operating-dashboard-recovery-real.spec.ts',
-  '**/ai-workbench-real-api.spec.ts',
-  '**/ai-workbench-real-backend.spec.ts',
+  '**/execution-navigation-real-bundle.spec.ts',
 ]
 const visualTestFiles = [
-  '**/ai-assets.spec.ts',
-  '**/ai-generation.spec.ts',
-  '**/ai-templates.spec.ts',
   '**/home.spec.ts',
 ]
 

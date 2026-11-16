@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -45,3 +46,19 @@ class DeviceRead(BaseModel):
     worker_runtime: DeviceRuntimeRead | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class DeviceLocalShopRead(BaseModel):
+    local_shop_id: str
+    platform_shop_id: str | None
+    shop_name: str
+    platform: str
+    session_status: Literal["valid", "invalid", "reauthorization_required", "unknown"]
+    status_observed_at: datetime | None = None
+
+
+class DeviceLocalShopInventoryRead(BaseModel):
+    device_id: UUID
+    available: bool
+    last_discovered_at: datetime | None
+    shops: list[DeviceLocalShopRead]

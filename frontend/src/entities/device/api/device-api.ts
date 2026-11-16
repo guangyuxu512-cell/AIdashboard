@@ -2,6 +2,7 @@ import { httpClient, type PageDto, type PageParams } from '@/shared/api'
 
 import type {
   DeviceCreateDto,
+  DeviceLocalShopInventoryDto,
   DeviceProviderInventoryReadDto,
   DeviceReadDto,
   DeviceSkillCapabilityReadDto,
@@ -30,6 +31,13 @@ export const deviceApi = {
   async get(deviceId: string): Promise<DeviceReadDto> {
     const response = await httpClient.get<DeviceReadDto>(
       `/api/v1/devices/${deviceId}`,
+    )
+    return response.data
+  },
+
+  async getLocalShops(deviceId: string): Promise<DeviceLocalShopInventoryDto> {
+    const response = await httpClient.get<DeviceLocalShopInventoryDto>(
+      `/api/v1/devices/${deviceId}/local-shops`,
     )
     return response.data
   },

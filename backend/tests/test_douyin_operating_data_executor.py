@@ -1,18 +1,11 @@
 from collections import defaultdict
 from datetime import date, timedelta
-from types import SimpleNamespace
 from threading import Lock
 from time import sleep
 from uuid import UUID, uuid4
 
-from app.modules.sessions.auth_context import ShopSessionAuthContext, StoredSessionCookie
-from app.modules.sessions.enums import ShopSessionStatus
-from app.modules.shops.enums import ShopPlatform
 from app.platforms.douyin.operating_data import (
     CompassDailyMetrics,
-    CompassDailyRead,
-    DouyinOperatingDataBusinessError,
-    DouyinOperatingDataMetricUnavailableError,
 )
 from app.platforms.douyin.operating_data_executor import (
     CollectionOutcome,
@@ -21,14 +14,9 @@ from app.platforms.douyin.operating_data_executor import (
     CollectionTimings,
     DailyCollectionRequest,
     DouyinOperatingDataBatchExecutor,
-    SessionAwareDouyinOperatingDataCollector,
     ShopCollectionGuard,
 )
-from app.platforms.exceptions import (
-    PlatformAuthenticationInvalidError,
-    PlatformResponseInvalidError,
-    PlatformSignerFailedError,
-)
+
 
 
 DAY = date(2026, 9, 19)
@@ -185,203 +173,9 @@ def test_process_guard_rejects_an_overlapping_same_shop_collection() -> None:
     assert outcome.failure_code == "SHOP_COLLECTION_IN_PROGRESS"
 
 
-class _FakeHealthService:
-    def __init__(self, *, version: int = 4) -> None:
-        self.applied_updates = []
-        self.checked = 0
-        self.version = version
 
-    def check(self, shop_id: UUID, *, force: bool) -> object:
-        assert force is False
-        self.checked += 1
-        return SimpleNamespace(
-            shop_id=shop_id,
-            platform=ShopPlatform.DOUYIN,
-            status=ShopSessionStatus.VALID,
-            version=self.version,
-        )
-
-    def apply_response_cookie_updates(
-        self,
-        context,
-        updates,
-    ) -> int:  # type: ignore[no-untyped-def]
-        self.applied_updates.append((context, updates))
-        return len(updates)
-
-
-class _FakeAccessor:
-    def __init__(self, context: ShopSessionAuthContext) -> None:
-        self.context = context
-        self.marked: list[ShopSessionStatus] = []
-
-    def get_auth_context(
-        self,
-        shop_id: UUID,
-        platform: ShopPlatform,
-    ) -> ShopSessionAuthContext:
-        assert shop_id == self.context.shop_id
-        assert platform is ShopPlatform.DOUYIN
-        return self.context
-
-    def mark_validation_status(
-        self,
-        shop_id: UUID,
-        expected_version: int,
-        status: ShopSessionStatus,
-    ) -> None:
-        assert shop_id == self.context.shop_id
-        assert expected_version == self.context.session_version
-        self.marked.append(status)
-
-
-class _FakeConnector:
-    def __init__(self, result: CompassDailyRead | Exception) -> None:
-        self.result = result
-
-    def fetch_daily_metrics(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-        del args, kwargs
-        if isinstance(self.result, Exception):
-            raise self.result
-        return self.result
-
-
-def _session_collector(
-    result: CompassDailyRead | Exception,
-) -> tuple[SessionAwareDouyinOperatingDataCollector, _FakeHealthService, _FakeAccessor]:
-    shop_id = uuid4()
-    context = ShopSessionAuthContext(
-        shop_id=shop_id,
-        platform=ShopPlatform.DOUYIN,
-        session_version=4,
-        cookies=(),
-    )
-    health = _FakeHealthService()
-    accessor = _FakeAccessor(context)
-    return (
-        SessionAwareDouyinOperatingDataCollector(
-            health_service=health,  # type: ignore[arg-type]
-            session_accessor=accessor,  # type: ignore[arg-type]
-            connector=_FakeConnector(result),  # type: ignore[arg-type]
-        ),
-        health,
-        accessor,
-    )
-
-
-def test_session_aware_collector_classifies_signer_and_auth_failures() -> None:
-    signer_collector, _, signer_accessor = _session_collector(
-        PlatformSignerFailedError(details={"retryable": True}),
-    )
-    signer_request = DailyCollectionRequest(signer_accessor.context.shop_id, DAY)
-    signer_outcome = signer_collector.collect(signer_request)
-
-    assert signer_outcome.stage is CollectionStage.SIGNING
-    assert signer_outcome.retryable is True
-    assert signer_outcome.requires_reauthorization is False
-    assert signer_accessor.marked == []
-
-    auth_collector, _, auth_accessor = _session_collector(
-        PlatformAuthenticationInvalidError(),
-    )
-    auth_outcome = auth_collector.collect(
-        DailyCollectionRequest(auth_accessor.context.shop_id, DAY),
-    )
-
-    assert auth_outcome.failure_code == "SHOP_REAUTHORIZATION_REQUIRED"
-    assert auth_outcome.requires_reauthorization is True
-    assert auth_accessor.marked == [ShopSessionStatus.INVALID]
-
-
-def test_session_aware_collector_does_not_mark_business_rejection_invalid() -> None:
-    collector, _, accessor = _session_collector(
-        DouyinOperatingDataBusinessError(details={"platform_code": "100008"}),
-    )
-
-    outcome = collector.collect(
-        DailyCollectionRequest(accessor.context.shop_id, DAY),
-    )
-
-    assert outcome.failure_code == "DOUYIN_OPERATING_DATA_REJECTED"
-    assert outcome.requires_reauthorization is False
-    assert accessor.marked == []
-
-
-def test_session_aware_collector_rejects_a_version_change_after_health_check() -> None:
-    collector, health, accessor = _session_collector(
-        CompassDailyRead(
-            shop_id=uuid4(),
-            statistic_date=DAY,
-            metrics=CompassDailyMetrics(0, 0),
-            cookie_updates=(),
-            signature_duration_ms=None,
-            platform_duration_ms=0,
-            parse_duration_ms=0,
-        ),
-    )
-    health.version = accessor.context.session_version - 1
-
-    outcome = collector.collect(
-        DailyCollectionRequest(accessor.context.shop_id, DAY),
-    )
-
-    assert outcome.failure_code == "SHOP_SESSION_VERSION_CONFLICT"
-    assert outcome.retryable is True
-    assert outcome.requires_reauthorization is False
-
-
-def test_session_aware_collector_keeps_required_metric_parse_hint_safe() -> None:
-    collector, _, accessor = _session_collector(
-        PlatformResponseInvalidError(
-            details={"failure_stage": "core_index_parse", "metric": "pay_cnt"},
-        ),
-    )
-
-    outcome = collector.collect(DailyCollectionRequest(accessor.context.shop_id, DAY))
-
-    assert outcome.stage is CollectionStage.RESPONSE_PARSE
-    assert outcome.failure_code == "DOUYIN_OPERATING_DATA_INVALID_RESPONSE"
-    assert outcome.failure_message == "抖店经营数据响应缺少或无法读取必要指标：成交订单数"
-    assert outcome.retryable is False
-
-
-def test_session_aware_collector_marks_a_known_scalarless_core_value_unknown() -> None:
-    collector, _, accessor = _session_collector(
-        DouyinOperatingDataMetricUnavailableError(
-            details={"failure_stage": "core_index_parse", "metric": "income_amt"},
-        ),
-    )
-
-    outcome = collector.collect(DailyCollectionRequest(accessor.context.shop_id, DAY))
-
-    assert outcome.stage is CollectionStage.RESPONSE_PARSE
-    assert outcome.failure_code == "DOUYIN_OPERATING_DATA_METRICS_UNAVAILABLE"
-    assert outcome.failure_message == "抖店平台未提供可确认的经营指标值"
-    assert outcome.retryable is False
-    assert outcome.requires_reauthorization is False
-
-
-def test_session_aware_collector_persists_only_explicit_response_cookie_updates() -> None:
-    shop_id = uuid4()
-    read = CompassDailyRead(
-        shop_id=shop_id,
-        statistic_date=DAY,
-        metrics=CompassDailyMetrics(98660, 93),
-        cookie_updates=(
-            StoredSessionCookie(name="rotated", value="synthetic-cookie"),
-        ),
-        signature_duration_ms=10,
-        platform_duration_ms=20,
-        parse_duration_ms=1,
-    )
-    collector, health, accessor = _session_collector(read)
-    # Use the collector's authoritative ShopSession identity; the fake read
-    # carries no session information and its shop_id is not a permission key.
-    outcome = collector.collect(DailyCollectionRequest(accessor.context.shop_id, DAY))
-
-    assert outcome.status is CollectionStatus.SUCCEEDED
-    assert len(health.applied_updates) == 1
-    assert outcome.timings.signature_ms == 10
-    assert outcome.timings.platform_response_ms == 20
-    assert outcome.timings.response_parse_ms == 1
-    assert health.checked == 1
+def test_server_operating_collection_is_paused() -> None:
+    import pytest
+    from app.platforms.douyin.operating_data_executor import collect_douyin_operating_data_once
+    with pytest.raises(RuntimeError, match="经营数据采集已暂停"):
+        collect_douyin_operating_data_once(DailyCollectionRequest(uuid4(), DAY))

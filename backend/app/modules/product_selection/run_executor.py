@@ -23,7 +23,6 @@ from app.modules.product_selection.run_service import (
 )
 from app.modules.product_selection.service import ProductSelectionFactService
 from app.modules.product_selection.basic_contract import SelectionBasicRequest
-from app.modules.sessions.auth_context import ShopSessionAuthContext
 from app.platforms.douyin.product_selection import (
     CompassBasicInfo, CompassRankPage, CompassSelectionBusinessError,
 )
@@ -31,16 +30,16 @@ from app.platforms.exceptions import PlatformRequestFailedError
 from app.platforms.exceptions import PlatformResponseInvalidError
 
 
+class SelectionContext(Protocol):
+    shop_id: UUID
+
+
 class SelectionPlatformIO(Protocol):
-    """The production adapter uses the existing Accessor/HTTP/Signer, not browser fetch.
+    """Synthetic injection boundary; production platform execution is paused."""
 
-    This protocol is also the isolated synthetic-test injection boundary.
-    Production submissions use the bounded frozen plan and execution switch.
-    """
-
-    def session_context(self, shop_id: UUID) -> ShopSessionAuthContext: ...
-    def rank(self, context: ShopSessionAuthContext, request: SelectionResolvedRequest, page_no: int) -> CompassRankPage: ...
-    def basic_info(self, context: ShopSessionAuthContext, product_id: str) -> CompassBasicInfo: ...
+    def session_context(self, shop_id: UUID) -> SelectionContext: ...
+    def rank(self, context: SelectionContext, request: SelectionResolvedRequest, page_no: int) -> CompassRankPage: ...
+    def basic_info(self, context: SelectionContext, product_id: str) -> CompassBasicInfo: ...
 
 
 class SelectionRunExecutor:
@@ -249,10 +248,10 @@ class SelectionRunExecutor:
 
 
 def build_selection_run_executor(settings: Settings | None = None) -> SelectionRunExecutor:
-    from app.modules.product_selection.platform_io import SelectionStoredSessionIO
+    from app.modules.product_selection.platform_io import SelectionUnavailableIO
     factory = get_session_factory()
     return SelectionRunExecutor(
-        session_factory=factory, platform=SelectionStoredSessionIO(factory),
+        session_factory=factory, platform=SelectionUnavailableIO(),
         settings=settings or get_settings(),
     )
 

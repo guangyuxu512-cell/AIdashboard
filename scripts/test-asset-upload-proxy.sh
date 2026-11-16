@@ -107,14 +107,6 @@ class Receiver(BaseHTTPRequestHandler):
                 "authorized": authorized, "device": self.headers.get("X-Device-ID"),
                 "size": len(body), "sha256": hashlib.sha256(body).hexdigest(),
             }), "application/json")
-        if self.path.startswith("/internal/mobile-collection/v1/"):
-            size = int(self.headers.get("Content-Length", "0"))
-            body = self.rfile.read(size).decode()
-            authorized = self.headers.get("Authorization") == "Bearer synthetic-proxy-token"
-            return self.reply(200 if authorized else 401, json.dumps({
-                "backend": "transport-fixture", "path": self.path,
-                "body": body, "authorized": authorized,
-            }), "application/json")
         Receiver.arrivals += 1
         self.connection.settimeout(10)
         size = int(self.headers.get("Content-Length", "0"))
@@ -207,32 +199,17 @@ for origin in "$http_origin" "$https_origin"; do
     test "$code" = 413
     test "$(curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/api/v1/assets")" = "$before"
 
-    # Internal mobile endpoints must preserve the complete URI, query, body and
-    # Authorization header. The fixture is not an application credential check.
+    # Retired central mobile-ingest routes must not reach the Backend or SPA.
+    before="$(curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/api/v1/assets")"
     for path in \
         '/internal/mobile-collection/v1/attempts/register?scope=one%2Ftwo&replay=1' \
         '/internal/mobile-collection/v1/attempts/00000000-0000-0000-0000-000000000001/credentials/refresh'; do
-        for auth in missing invalid valid; do
-            auth_headers=()
-            expected_code=401
-            authorized=false
-            if [[ "$auth" == invalid ]]; then
-                auth_headers=(-H 'Authorization: Bearer invalid-proxy-token')
-            elif [[ "$auth" == valid ]]; then
-                auth_headers=(-H 'Authorization: Bearer synthetic-proxy-token')
-                expected_code=200
-                authorized=true
-            fi
-            code="$(curl "${curl_options[@]}" "${trust[@]}" "${auth_headers[@]}" \
-                -H 'Content-Type: application/json' --data-binary '{"proxyFixture":true}' \
-                -D "$test_root/internal.headers" -o "$test_root/internal.json" \
-                -w '%{http_code}' "$origin$path")"
-            test "$code" = "$expected_code"
-            tr -d '\r' < "$test_root/internal.headers" | grep -Eqi '^Content-Type: application/json'
-            expected="$(printf '{"backend": "transport-fixture", "path": "%s", "body": "{\\"proxyFixture\\":true}", "authorized": %s}\n' "$path" "$authorized")"
-            test "$(cat "$test_root/internal.json")" = "$expected"
-        done
+        code="$(curl "${curl_options[@]}" "${trust[@]}" \
+            -H 'Content-Type: application/json' --data-binary '{"proxyFixture":true}' \
+            -o "$test_root/retired-mobile" -w '%{http_code}' "$origin$path")"
+        test "$code" = 404
     done
+    test "$(curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/api/v1/assets")" = "$before"
 
     # Do not expose a broader /internal/ or a different protocol-version prefix.
     curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/index.html" -o "$test_root/pc.html"
