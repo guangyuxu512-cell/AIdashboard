@@ -19,6 +19,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, TimestampMixin
+from app.modules.automation_apps.models import AutomationParameterPreset
 from app.shared.identifiers import generate_id
 
 
@@ -110,7 +111,9 @@ class Task(TimestampMixin, Base):
     )
     parameter_preset_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("automation_parameter_presets.preset_id", ondelete="RESTRICT"),
+        # Historical task references remain in the database; loading their
+        # metadata must not depend on the retired automation API being mounted.
+        ForeignKey(AutomationParameterPreset.__table__.c.preset_id, ondelete="RESTRICT"),
         nullable=True,
     )
     parameter_preset_version: Mapped[int | None] = mapped_column(

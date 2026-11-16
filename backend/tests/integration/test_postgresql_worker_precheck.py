@@ -89,6 +89,68 @@ def submission(*, product="product-a", revision=1, attempt=1, title="fixture"):
         "input": {"category_id": "1000005146", "title": title}})
 
 
+def test_cold_start_postgres_accepts_product_precheck(ready_precheck, tmp_path):
+    """A clean application process can dispatch without loading retired APIs."""
+    import os
+    from pathlib import Path
+    import subprocess
+    import sys
+
+    engine, principal, _, device_id = ready_precheck
+    with Session(engine) as session:
+        capability = session.scalar(select(DeviceSkillCapability).where(
+            DeviceSkillCapability.device_id == device_id,
+            DeviceSkillCapability.skill_id == "douyin.category_schema"))
+        capability.skill_version = "2.0.0"
+        session.commit()
+
+    code = r'''
+import os
+import sys
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+from app.main import app
+from app.core.config import Settings, get_settings
+from app.core.database import get_database_engine
+from app.modules.sessions.application_auth import ApplicationPrincipal, ClientGrant
+from app.modules.workers.precheck_api import _precheck_authenticator, require_precheck_application
+
+grant = ClientGrant.model_validate_json(sys.stdin.read())
+principal = ApplicationPrincipal(grant, "synthetic-token")
+class StubAuthorizer:
+    def authenticate(self, client_id, token):
+        assert client_id == grant.client_id
+        return principal
+
+app.dependency_overrides[require_precheck_application] = lambda: principal
+app.dependency_overrides[_precheck_authenticator] = lambda: StubAuthorizer()
+app.dependency_overrides[get_settings] = lambda: Settings(application_worker_precheck_enabled=True)
+engine = get_database_engine()
+with engine.connect() as connection:
+    assert connection.scalar(text("SELECT current_database()")) == os.environ["TEST_EXPECTED_FEATURE_DB"]
+
+payload = {"kind": "douyin.category_schema", "delivery": "product",
+           "context": {"product_id": "cold-start-test", "revision": 1, "attempt": 1},
+           "input": {"category_id": "0", "title": "fixture", "operation": "predict",
+                     "image_url": "https://image.test/example.jpg"}}
+client = TestClient(app)
+try:
+    first = client.post("/internal/applications/v1/worker-prechecks", json=payload)
+    second = client.post("/internal/applications/v1/worker-prechecks", json=payload)
+    assert first.status_code == second.status_code == 202
+    assert first.json()["task_id"] == second.json()["task_id"]
+finally:
+    client.close()
+'''
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
+    env["BACKEND_DATABASE_URL"] = engine.url.render_as_string(hide_password=False)
+    env["TEST_EXPECTED_FEATURE_DB"] = engine.url.database
+    result = subprocess.run([sys.executable, "-c", code], input=principal.grant.model_dump_json(),
+                            cwd=tmp_path, env=env, capture_output=True, text=True, timeout=40, check=False)
+    assert result.returncode == 0, "cold-start PostgreSQL precheck submission failed"
+
+
 def test_controlled_context_allows_only_one_product_revision(ready_precheck):
     engine, _, auth, _ = ready_precheck
     auth.grant = ClientGrant.model_validate({**auth.grant.model_dump(),

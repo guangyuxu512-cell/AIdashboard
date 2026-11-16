@@ -23,6 +23,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base, TimestampMixin
+from app.modules.automation_apps.models import AutomationParameterPreset
 from app.shared.identifiers import generate_id
 
 
@@ -139,7 +140,8 @@ class Schedule(TimestampMixin, Base):
     )
     parameter_preset_id: Mapped[UUID | None] = mapped_column(
         Uuid(as_uuid=True),
-        ForeignKey("automation_parameter_presets.preset_id", ondelete="RESTRICT"),
+        # Retain the historical foreign key without enabling the retired API.
+        ForeignKey(AutomationParameterPreset.__table__.c.preset_id, ondelete="RESTRICT"),
         nullable=True,
     )
     shop_links: Mapped[list["ScheduleShop"]] = relationship(
