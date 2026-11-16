@@ -215,7 +215,6 @@ def get_settings() -> Settings:
     settings = Settings()
     # Selection is deliberately paused until a Worker implementation exists.
     # A stale environment flag must not revive server-side execution.
-    settings.worker_schedule_execution_enabled = False
     settings.product_data_collection_execution_enabled = False
     settings.product_selection_execution_enabled = False
     settings.product_selection_schedule_enabled = False

@@ -1,6 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { scheduleApi } from './schedule-api'
 import { createScheduleDataSource } from './schedule-data-source'
+
+afterEach(() => vi.restoreAllMocks())
 
 describe('mock schedule data source', () => {
   it('filters, creates, toggles and archives schedules', async () => {
@@ -17,6 +20,7 @@ describe('mock schedule data source', () => {
       },
     })
     expect(enabled.items).toHaveLength(1)
+    expect(enabled.executionEnabled).toBe(false)
 
     const selectedDate = await source.list({
       page: 1,
@@ -60,4 +64,18 @@ describe('mock schedule data source', () => {
       '定时计划不存在',
     )
   })
+})
+
+it('uses the actual Worker scheduler status from the real API', async () => {
+  vi.spyOn(scheduleApi, 'list').mockResolvedValue({
+    items: [], total: 0, page: 1, page_size: 10, execution_enabled: true,
+  })
+  const result = await createScheduleDataSource('real').list({
+    page: 1,
+    pageSize: 10,
+    filters: {
+      enabled: null, deviceId: null, search: '', occurrenceDate: null, viewTimezone: null,
+    },
+  })
+  expect(result.executionEnabled).toBe(true)
 })

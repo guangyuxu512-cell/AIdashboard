@@ -230,6 +230,7 @@ export function useScheduleManagement() {
     runtimeDeviceName,
     rows,
     total: computed(() => listQuery.data.value?.total ?? 0),
+    executionEnabled: computed(() => listQuery.data.value?.executionEnabled ?? null),
     listLoading: computed(() =>
       isInitialQueryLoading(listQuery.isPending.value, listQuery.data.value),
     ),
