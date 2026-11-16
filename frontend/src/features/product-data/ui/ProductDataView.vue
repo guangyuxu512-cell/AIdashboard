@@ -36,7 +36,6 @@ import ProductFieldConfigDialog from './ProductFieldConfigDialog.vue'
 import ProductGroupManagerDialog from './ProductGroupManagerDialog.vue'
 import ProductBatchGroupDialog from './ProductBatchGroupDialog.vue'
 import ProductDataDetailDrawer from './ProductDataDetailDrawer.vue'
-import ProductDataCollectionAction from './ProductDataCollectionAction.vue'
 
 const props = defineProps<{
   source: ProductDataSource
@@ -219,22 +218,6 @@ function batchSaved() {
         >已选 {{ checked.length }} 件</span
       >
       <template #actions>
-        <ProductDataCollectionAction
-          v-if="source.collect"
-          :source="source"
-          :context-key="contextKey"
-          :shop-id="params.filters.shopId"
-          :period="
-            params.filters.datePreset === 'custom'
-              ? null
-              : params.filters.datePreset === 'last7Days'
-                ? '7d'
-                : params.filters.datePreset === 'last30Days'
-                  ? '30d'
-                  : '1d'
-          "
-          :enabled="query.data.value?.coverage?.collectionAvailable === true"
-        />
         <NTooltip :disabled="groupsEnabled && !!draft.shopId">
           <template #trigger
             ><span
