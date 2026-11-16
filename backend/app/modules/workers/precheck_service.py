@@ -9,7 +9,7 @@ from uuid import UUID, uuid4
 
 import httpx
 from pydantic import SecretStr
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
@@ -21,7 +21,7 @@ from app.modules.sessions.application_auth import ApplicationAuthenticationError
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
-from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, validate_terminal_result
+from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, validate_terminal_result
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 
 
@@ -57,7 +57,8 @@ def session_snapshot_expired(session: Session, task: Task) -> bool:
         Task.input_json["local_shop_id"].astext == local_id,
         Task.input_json["platform_shop_id"].astext == platform_id,
         Task.input_json["_session_revision"].astext == revision,
-        Task.status.in_(("success", "failed")), Task.task_id != task.task_id,
+        or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")),
+        Task.task_id != task.task_id,
     ).order_by(Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc()).limit(1)).first()
     return bool(latest and latest.status == "failed" and latest.error_code == "SHOP_SESSION_EXPIRED")
 
@@ -99,6 +100,65 @@ class WorkerPrecheckService:
                 data.context.product_id, data.context.revision):
             raise PrecheckUnavailable()
 
+    def available_shops(self, principal: ApplicationPrincipal) -> list[dict]:
+        """Expose authorized Worker-reported shop identities, never their Sessions."""
+        grant = self._grant(principal)
+        now = datetime.now(UTC)
+        device_scope = (Device.device_id.not_in(grant.excluded_precheck_devices)
+                        if grant.all_precheck_devices else Device.device_id.in_(grant.device_ids))
+        task_device_scope = (Task.target_device_id.not_in(grant.excluded_precheck_devices)
+                             if grant.all_precheck_devices else Task.target_device_id.in_(grant.device_ids))
+        rows = self.session.execute(
+            select(Device, WorkerRpaShopInventory, DeviceRuntime.worker_version, DeviceSkillCapability.skill_version)
+            .join(DeviceRuntime, DeviceRuntime.device_id == Device.device_id)
+            .join(WorkerRpaShopInventory, WorkerRpaShopInventory.device_id == Device.device_id)
+            .join(DeviceSkillCapability, DeviceSkillCapability.device_id == Device.device_id)
+            .where(device_scope, Device.enabled.is_(True), Device.deleted_at.is_(None),
+                   DeviceRuntime.connection_status == "online", DeviceRuntime.last_seen_at >= now - timedelta(seconds=90),
+                   WorkerRpaShopInventory.available.is_(True),
+                   WorkerRpaShopInventory.last_discovered_at >= now - timedelta(minutes=5),
+                   DeviceSkillCapability.skill_id == PRECHECK_KIND)
+        ).all()
+        local_key = Task.input_json["local_shop_id"].astext
+        platform_key = Task.input_json["platform_shop_id"].astext
+        revision_key = Task.input_json["_session_revision"].astext
+        latest = self.session.execute(
+            select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
+            .where(task_device_scope, Task.skill_id == PRECHECK_KIND, revision_key.is_not(None),
+                   or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")))
+            .distinct(Task.target_device_id, local_key, platform_key, revision_key)
+            .order_by(Task.target_device_id, local_key, platform_key, revision_key,
+                      Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc())
+        ).all()
+        invalid = {(device_id, local_id, platform_id, revision)
+                   for device_id, local_id, platform_id, revision, status, error in latest
+                   if status == "failed" and error == "SHOP_SESSION_EXPIRED"}
+        invalid_shops = {(device_id, local_id, platform_id) for device_id, local_id, platform_id, _ in invalid}
+        found: dict[UUID, dict] = {}
+        for device, inventory, worker_version, skill_version in rows:
+            if not supports_saved_shop_sessions(worker_version) or not supports_category_lookup(skill_version):
+                continue
+            for shop in inventory.shops:
+                local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
+                if (shop.get("platform") != "douyin" or shop.get("sessionStored") is not True
+                        or not isinstance(local_id, str) or not local_id
+                        or not isinstance(platform_id, str) or not platform_id
+                        or not self._authorized_shop(grant, device.device_id, local_id, platform_id)):
+                    continue
+                revision = shop.get("sessionRevision")
+                if ((device.device_id, local_id, platform_id, revision) in invalid
+                        or (not revision and (device.device_id, local_id, platform_id) in invalid_shops)):
+                    continue
+                observation = shop.get("sessionStatus")
+                if observation == "invalid":
+                    continue
+                identity = mapped_shop_id(platform_id)
+                value = {"shop_id": identity, "display_name": str(shop.get("shopName") or "店铺")[:200],
+                         "platform": "douyin", "session_status": "valid" if observation == "valid" else "captured"}
+                if identity not in found or value["session_status"] == "valid":
+                    found[identity] = value
+        return sorted(found.values(), key=lambda value: str(value["shop_id"]))
+
     def submit(self, principal: ApplicationPrincipal, data: PrecheckSubmission) -> Task:
         grant = self._grant(principal)
         self._require_allowed_context(grant, data)
@@ -107,7 +167,8 @@ class WorkerPrecheckService:
         lock_key = json.dumps([grant.client_id, data.context.product_id, data.context.revision],
                               ensure_ascii=False, separators=(",", ":"))
         self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(lock_key, 0))))
-        request_data = {"kind": data.kind, "input": data.input.model_dump()}
+        # Omit new defaults so the hash of already queued schema tasks is unchanged.
+        request_data = {"kind": data.kind, "input": data.input.model_dump(mode="json", exclude_defaults=True)}
         if data.delivery == "product":
             request_data["delivery"] = data.delivery
         request_hash = hashlib.sha256(json.dumps(
@@ -140,7 +201,7 @@ class WorkerPrecheckService:
         task_device_scope = (Task.target_device_id.not_in(grant.excluded_precheck_devices)
                              if grant.all_precheck_devices else Task.target_device_id.in_(grant.device_ids))
         rows = self.session.execute(
-            select(Device, WorkerRpaShopInventory, DeviceRuntime.worker_version)
+            select(Device, WorkerRpaShopInventory, DeviceRuntime.worker_version, DeviceSkillCapability.skill_version)
             .join(DeviceRuntime, DeviceRuntime.device_id == Device.device_id)
             .join(WorkerRpaShopInventory, WorkerRpaShopInventory.device_id == Device.device_id)
             .join(DeviceSkillCapability, DeviceSkillCapability.device_id == Device.device_id)
@@ -187,7 +248,8 @@ class WorkerPrecheckService:
         latest = self.session.execute(
             select(Task.target_device_id, local_key, platform_key, revision_key, Task.status, Task.error_code)
             .where(task_device_scope, Task.skill_id == PRECHECK_KIND,
-                   Task.status.in_(("success", "failed")), revision_key.is_not(None))
+                   or_(Task.status == "success", and_(Task.status == "failed", Task.error_code == "SHOP_SESSION_EXPIRED")),
+                   revision_key.is_not(None))
             .distinct(Task.target_device_id, local_key, platform_key, revision_key)
             .order_by(Task.target_device_id, local_key, platform_key, revision_key,
                       Task.finished_at.desc().nullslast(), Task.created_at.desc(), Task.task_id.desc())
@@ -222,12 +284,13 @@ class WorkerPrecheckService:
                         and shop["sessionRevision"] != old_revision
                         and (device.device_id, local_id, platform_id, shop["sessionRevision"]) not in invalid_snapshots
                         for shop in inventory.shops)
-                    for device, inventory, _ in rows)
+                    for device, inventory, _, _ in rows)
                 if not refreshed and isinstance(platform_id, str):
                     avoided_shops.add(platform_id)
         choices = []
-        for device, inventory, worker_version in rows:
-            if not supports_saved_shop_sessions(worker_version):
+        for device, inventory, worker_version, skill_version in rows:
+            if (not supports_saved_shop_sessions(worker_version)
+                    or (data.input.operation != "schema" and not supports_category_lookup(skill_version))):
                 continue
             for shop in inventory.shops:
                 local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
@@ -236,6 +299,7 @@ class WorkerPrecheckService:
                     session_revision = None
                 if (shop.get("platform") != "douyin" or shop.get("sessionStored") is not True or not isinstance(local_id, str)
                         or not isinstance(platform_id, str)
+                        or (data.input.shop_id is not None and mapped_shop_id(platform_id) != data.input.shop_id)
                         or not self._authorized_shop(grant, device.device_id, local_id, platform_id)
                         or platform_id in avoided_shops
                         or (session_revision is None and (device.device_id, local_id, platform_id) in invalid_shops)
@@ -272,6 +336,8 @@ class WorkerPrecheckService:
             created_at=self.session.scalar(select(func.clock_timestamp())),
             input_json={"category_id": data.input.category_id, "title": data.input.title,
                         "local_shop_id": local_id, "platform_shop_id": platform_id,
+                        **({"operation": data.input.operation} if data.input.operation != "schema" else {}),
+                        **({"image_url": data.input.image_url} if data.input.image_url is not None else {}),
                         **({"_session_revision": session_revision} if session_revision else {}),
                         "_precheck_context": {"client_id": grant.client_id,
                             "product_id": data.context.product_id, "revision": data.context.revision},
@@ -359,7 +425,8 @@ def accept_precheck_terminal(session: Session, device_id: UUID, task_id: UUID, d
 
 
 def product_delivery_context(session: Session, authenticator: ApplicationAuthenticator,
-                             device_id: UUID, task_id: UUID, *, protocol_v2: bool = False) -> dict:
+                             device_id: UUID, task_id: UUID, *, protocol_v2: bool = False,
+                             protocol_v3: bool = False) -> dict:
     """Authenticate the assigned Worker and describe only its own direct delivery."""
     record = session.scalar(select(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.task_id == task_id))
     task = session.get(Task, task_id)
@@ -400,6 +467,8 @@ def product_delivery_context(session: Session, authenticator: ApplicationAuthent
                             and re.fullmatch(r"[0-9a-f]{64}", revision)) and not superseded,
                        "superseded": superseded,
                        "receipt_sha256": task.result_json.get("delivery_sha256") if superseded else None})
+    if protocol_v3:
+        result["operation"] = task.input_json.get("operation", "schema")
     return result
 
 
@@ -451,26 +520,46 @@ def sign_current_precheck(session: Session, authenticator: ApplicationAuthentica
         key, separator, value = pair.strip().partition("=")
         if separator:
             pairs[key] = value
-    params = {"appid": "1", "_bid": "ffa_goods", "_lid": "029388877158"}
+    operation = task.input_json.get("operation", "schema")
+    if operation not in {"schema", "tree", "search", "predict"}:
+        raise PrecheckInvalidResult()
+    lid = {"schema": "029388877158", "tree": "197362053948",
+           "search": "165756507732", "predict": "209821032275"}[operation]
+    params = {"appid": "1", "_bid": "ffa_goods", "_lid": lid}
     if pairs.get("s_v_web_id"):
         params.update({"verifyFp": pairs["s_v_web_id"], "fp": pairs["s_v_web_id"]})
     if pairs.get("msToken"):
         params["msToken"] = pairs["msToken"]
-    body = json.dumps({
-        "context": {"feature": {"session_publish_id": "helper_" + uuid4().hex,
-                                 "image_smart_publish_info": "[]"},
-                    "operation_type": "select_normal,normal", "category_id": task.input_json["category_id"], "ability": []},
-        "model": {"pic": {"value": []}, "title": {"value": task.input_json["title"]},
-                  "goods_category_appeal": {"value": False}},
-        "appid": 1, "_bid": "ffa_goods", "_lid": "029388877158",
-    }, ensure_ascii=False, separators=(",", ":"))
-    url = httpx.URL("https://fxg.jinritemai.com/product/tproduct/getSchema", params=params)
+    if operation == "schema":
+        path, method = "/product/tproduct/getSchema", "POST"
+        payload = {
+            "context": {"feature": {"session_publish_id": "helper_" + uuid4().hex,
+                                     "image_smart_publish_info": "[]"},
+                        "operation_type": "select_normal,normal", "category_id": task.input_json["category_id"], "ability": []},
+            "model": {"pic": {"value": []}, "title": {"value": task.input_json["title"]},
+                      "goods_category_appeal": {"value": False}},
+            "appid": 1, "_bid": "ffa_goods", "_lid": lid,
+        }
+    elif operation == "predict":
+        path, method = "/product/tproduct/predictCategoryN", "POST"
+        payload = {"scene": "predict_by_title_and_img", "pic": [{"url": task.input_json["image_url"]}],
+                   "title": task.input_json["title"], "publish_id": "helper_" + uuid4().hex,
+                   "is_auction_or_mass": False, "appid": 1, "_bid": "ffa_goods", "_lid": "209821037550"}
+    elif operation == "tree":
+        path, method, payload = "/product/tproduct/categoryOptionsN", "GET", None
+        params.update({"cid": task.input_json["category_id"], "display_all": "0"})
+    else:
+        path, method, payload = "/product/tproduct/searchCategoryN", "GET", None
+        params.update({"key": task.input_json["title"], "search_type": "1"})
+    body = (json.dumps(payload, ensure_ascii=False, separators=(",", ":")) if payload is not None else "")
+    url = httpx.URL("https://fxg.jinritemai.com" + path, params=params)
     try:
         for _ in range(2):
             signed = signer.sign(DouyinSignRequest(
-                host="fxg.jinritemai.com", full_url=str(url), method="POST", cookie=SecretStr(cookie),
+                host="fxg.jinritemai.com", full_url=str(url), method=method, cookie=SecretStr(cookie),
                 user_agent=data.user_agent, referer="https://fxg.jinritemai.com/ffa/g/create",
-                body=SecretStr(body), ms_token=SecretStr(params["msToken"]) if "msToken" in params else None,
+                body=SecretStr(body) if payload is not None else None,
+                ms_token=SecretStr(params["msToken"]) if "msToken" in params else None,
                 aid=4272, page_id=6241,
             ))
             generated = signed.ms_token.get_secret_value() if signed.ms_token else None

@@ -15,7 +15,7 @@ from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSubmission, PrecheckTerminal
-from app.modules.workers.precheck_contract import PrecheckSignInput
+from app.modules.workers.precheck_contract import PrecheckSignInput, mapped_shop_id
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, session_snapshot_expired, sign_current_precheck
 from app.integrations.douyin_signer.schemas import DouyinSignResult
@@ -47,7 +47,7 @@ def ready_precheck(postgresql_engine):
         assert connection.exec_driver_sql("SELECT current_database()").scalar_one() in {
             "control_center_feat_worker_capability_precheck", "control_center_feat_worker_direct_result",
             "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
-            "control_center_feat_worker_parallel_precheck"}
+            "control_center_feat_worker_parallel_precheck", "control_center_feat_worker_category_ops"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -346,6 +346,47 @@ def test_signer_is_scoped_to_current_device_and_task(ready_precheck):
         with pytest.raises(PrecheckNotFound):
             sign_current_precheck(session, auth, signer, device_id, task.task_id, headers)
         assert len(signer.requests) == 1
+
+
+@pytest.mark.parametrize(("operation", "path", "method"), [
+    ("tree", "/product/tproduct/categoryOptionsN", "GET"),
+    ("search", "/product/tproduct/searchCategoryN", "GET"),
+    ("predict", "/product/tproduct/predictCategoryN", "POST"),
+])
+def test_category_operations_require_updated_capability_and_freeze_the_target(ready_precheck, operation, path, method):
+    engine, principal, auth, device_id = ready_precheck
+
+    class Signer:
+        def sign(self, request):
+            assert request.method == method and path in request.full_url
+            return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
+
+    request_input = {"category_id": "0", "title": "商品", "operation": operation,
+                     "shop_id": str(mapped_shop_id("123"))}
+    if operation == "predict":
+        request_input["image_url"] = "https://image.test/example.jpg"
+    payload = PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+        "context": {"product_id": "product-category", "revision": 1, "attempt": 1}, "input": request_input})
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        assert service.available_shops(principal) == []
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, payload)
+        session.rollback()
+        capability = session.scalar(select(DeviceSkillCapability).where(DeviceSkillCapability.device_id == device_id,
+                                           DeviceSkillCapability.skill_id == "douyin.category_schema"))
+        capability.skill_version = "2.0.0"
+        session.commit()
+        assert [item["shop_id"] for item in service.available_shops(principal)] == [mapped_shop_id("123")]
+        task = service.submit(principal, payload)
+        assert task.input_json["operation"] == operation and task.input_json["local_shop_id"] == "local-1"
+        task.status, task.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        signed = sign_current_precheck(session, auth, Signer(), device_id, task.task_id,
+                                      PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        assert set(signed) == {"url", "body"} and path in signed["url"]
+        context = product_delivery_context(session, auth, device_id, task.task_id, protocol_v2=True, protocol_v3=True)
+        assert context["operation"] == operation
 
 
 def test_safe_string_business_code_survives_failure_and_replay(ready_precheck):
