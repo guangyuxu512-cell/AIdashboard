@@ -7,6 +7,7 @@ from fastapi.exceptions import RequestValidationError
 from pydantic import ValidationError
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.core.database import get_database_session
 from app.core.exceptions import COMMON_ERROR_RESPONSES, ErrorResponse
 from app.modules.access.contracts import ActorContext
@@ -37,6 +38,10 @@ router = APIRouter(
 get_schedule_authorized_actor = require_module_access(ModuleCode.SCHEDULE)
 
 
+class ScheduleListPage(Page[ScheduleListItemRead]):
+    execution_enabled: bool
+
+
 def get_schedule_service(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> ScheduleService:
@@ -65,7 +70,7 @@ def create_schedule(
     return service.create(data, actor)
 
 
-@router.get("", response_model=Page[ScheduleListItemRead])
+@router.get("", response_model=ScheduleListPage)
 def list_schedules(
     actor: Annotated[ActorContext, Depends(get_schedule_authorized_actor)],
     service: Annotated[ScheduleService, Depends(get_schedule_service)],
@@ -77,8 +82,8 @@ def list_schedules(
     enabled: Annotated[bool | None, Query()] = None,
     device_id: Annotated[UUID | None, Query()] = None,
     search: Annotated[str | None, Query(max_length=500)] = None,
-) -> Page[ScheduleListItemRead]:
-    return service.list_management(
+) -> ScheduleListPage:
+    result = service.list_management(
         actor=actor,
         page=pagination.page,
         page_size=pagination.page_size,
@@ -87,6 +92,10 @@ def list_schedules(
         search=search,
         occurrence_date=occurrence_query.occurrence_date,
         view_timezone=occurrence_query.view_timezone,
+    )
+    return ScheduleListPage(
+        **result.model_dump(),
+        execution_enabled=get_settings().worker_schedule_execution_enabled,
     )
 
 

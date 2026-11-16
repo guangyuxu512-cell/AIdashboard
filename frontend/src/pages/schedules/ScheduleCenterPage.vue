@@ -17,7 +17,9 @@ const management = useScheduleManagement()
 
 <template>
   <div class="page-container schedule-center-page">
-    <NAlert type="warning" :show-icon="false">定时执行已暂停，现有计划不会自动触发。</NAlert>
+    <NAlert v-if="management.executionEnabled.value === false" type="warning" :show-icon="false">
+      当前环境的 Worker 定时执行未启用，计划不会自动触发。
+    </NAlert>
     <ScheduleFilterBar
       v-model="management.filterDraft.value"
       :device-options="management.deviceOptions.value"

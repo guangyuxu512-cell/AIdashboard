@@ -414,6 +414,8 @@ Backend 计算的 UTC Instant。
 `occurrence_date=YYYY-MM-DD` 和 `view_timezone=<IANA timezone>`。缺任一参数或无效时区返回 422；
 筛选范围是该本地日期转换的 UTC `[start, end)`，匹配该范围内的 `ScheduleRun.scheduled_for` 或
 `Schedule.next_run_at`，然后才计算 total 和 page。详情、下载及触发状态不以此参数改变。
+列表响应另含布尔值 `execution_enabled`，表示当前环境的 Worker 定时执行器是否启用；
+它不改变任何计划的启停状态，也不表示选品或影刀定时已开启。
 
 ## 资料库 Asset API
 
