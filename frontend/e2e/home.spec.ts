@@ -10,17 +10,17 @@ async function ensureAutomationNavigationExpanded(
   await expect(deviceNavigation).toBeVisible()
 }
 
-test('starts on the Device Center instead of the hidden foundation playground', async ({
+test('starts on the Shop Center instead of the hidden foundation playground', async ({
   page,
 }) => {
   await page.goto('/')
 
-  await expect(page).toHaveURL(/#\/devices$/)
+  await expect(page).toHaveURL(/#\/shops$/)
   await expect(page.getByText('UI 基础设施', { exact: true })).toHaveCount(0)
   await expect(
     page.getByRole('heading', { name: 'Design System Playground' }),
   ).toHaveCount(0)
-  await expect(page.getByText('设备中心', { exact: true }).first()).toBeVisible()
+  await expect(page.getByRole('region', { name: '筛选条件' })).toBeVisible()
 })
 
 test('renders the desktop AppShell and Design System V2 preview on its development route', async ({

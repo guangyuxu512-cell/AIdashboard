@@ -1,0 +1,4 @@
+@import 'vant/lib/index.css';
+@import './tokens.css';
+@import './vant-theme.css';
+@import './base.css';

@@ -297,8 +297,9 @@ def test_ordinary_update_explains_the_explicit_session_recovery_path() -> None:
     ) == "普通补缺仍受冷却或次数保护，请在“查看缺失”中核实是否可复核会话并恢复"
 
 
-def test_paused_history_does_not_offer_session_recovery() -> None:
-    """Retained historical failures must not offer retired server recovery."""
+def test_recovery_projection_matches_eight_exhausted_daily_items_without_writes_or_validation() -> None:
+    """Production-shaped metadata, synthetic shops/IDs; no real credentials/DB."""
+    now = datetime(2026, 10, 17, 3, 10, tzinfo=UTC)
     shops = [DashboardShop(uuid4(), f"synthetic recovery {n}", ShopPlatform.DOUYIN, True) for n in (1, 2)]
     states = []
     for shop, day_count in zip(shops, (2, 6), strict=True):
@@ -310,16 +311,37 @@ def test_paused_history_does_not_offer_session_recovery() -> None:
                 failure_stage="session_preparation", retryable=True,
                 attempt_count=3, updated_at=failure_time,
             ), shop_id=shop.shop_id, business_date=business_date))
-    service = OperatingDashboardService(None, settings=Settings(
+    contexts = {shop.shop_id: SessionRecoveryMetadata(
+        shop.shop_id, n, ShopSessionStatus.VALID,
+        now - timedelta(hours=3), now - timedelta(minutes=34), True,
+    ) for n, shop in enumerate(shops, start=2)}
+    queries = []
+
+    class ReadOnlyRepository:
+        def list_session_recovery_metadata(self, shop_ids):
+            queries.append(("metadata", set(shop_ids)))
+            return contexts
+
+        def used_session_recovery_items(self, item_ids):
+            queries.append(("dedupe", set(item_ids)))
+            return set()
+
+    service = OperatingDashboardService(None, repository=ReadOnlyRepository(), settings=Settings(
         _env_file=None, operating_dashboard_collection_execution_enabled=True,
     ))
     coverage = service._coverage(
         shops=shops, metric_by_shop_date={}, collection_states=states,
         range_value=OperatingDashboardDateRangeRead(start_date=date(2026, 10, 10), end_date=date(2026, 10, 15)),
     )
-    assert len(coverage.missing_samples) == 12
-    assert all(sample.session_recovery is None and sample.recovery_block_reason is None
-               for sample in coverage.missing_samples)
+    service._attach_session_recovery_hints(
+        coverage, shops=shops, collection_states=states, metric_by_shop_date={}, now=now,
+    )
+    hints = [sample.session_recovery for sample in coverage.missing_samples if sample.session_recovery]
+    assert len(hints) == 8 and all(hint.requires_validation for hint in hints)
+    assert queries == [
+        ("metadata", {shop.shop_id for shop in shops}),
+        ("dedupe", {state.collection_item_id for state in states}),
+    ]
     assert all(state.status == "failed" and state.attempt_count == 3 for state in states)
     assert coverage.collected_shop_days == 0
 

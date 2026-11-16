@@ -16,7 +16,7 @@ from app.core.exceptions import AppError
 
 class ApplicationSessionUnavailableError(AppError):
     code = "APPLICATION_SESSION_UNAVAILABLE"
-    message = "软件接口未启用或授权配置不可用"
+    message = "软件 Session 接口未启用或授权配置不可用"
     status_code = 503
 
 
@@ -28,8 +28,20 @@ class ApplicationAuthenticationError(AppError):
 
 class ApplicationTransportError(AppError):
     code = "APPLICATION_TLS_REQUIRED"
-    message = "软件接口需要 HTTPS 连接"
+    message = "软件 Session 接口需要 HTTPS 连接"
     status_code = 403
+
+
+class ApplicationShopNotFoundError(AppError):
+    code = "APPLICATION_SHOP_NOT_FOUND"
+    message = "店铺不存在或未授权"
+    status_code = 404
+
+
+class ApplicationSessionBusyError(AppError):
+    code = "APPLICATION_SESSION_BUSY"
+    message = "店铺或授权正在更新，请稍后重试"
+    status_code = 409
 
 
 class DeviceShopGrant(BaseModel):
@@ -159,3 +171,11 @@ class ApplicationAuthenticator:
         if grant is None or not grant.enabled:
             raise ApplicationAuthenticationError()
         return grant
+
+    def reauthorize(self, principal: ApplicationPrincipal, shop_id: UUID) -> ClientGrant:
+        current = self.authenticate(principal.grant.client_id, principal.token).grant
+        if current.authorized_by_user_id != principal.grant.authorized_by_user_id:
+            raise ApplicationAuthenticationError()
+        if shop_id not in current.shop_ids:
+            raise ApplicationShopNotFoundError()
+        return current

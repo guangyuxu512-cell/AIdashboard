@@ -85,6 +85,8 @@ export interface CandidateMerchant {
 }
 export type CandidateDiscovery =
   'new-in-scope' | 'known' | 'outside-scope' | 'unknown'
+export type MaterialCollectionStatus =
+  'not-collected' | 'demo-collected' | 'failed' | 'unknown'
 export interface SelectionCandidate {
   id: string
   /** Canonical Team candidate UUID used by the collection API. */
@@ -118,6 +120,7 @@ export interface SelectionCandidate {
   discovery: CandidateDiscovery
   firstDiscoveredAt: string | null
   metricsRetrievedAt: string | null
+  collectionStatus: MaterialCollectionStatus
   firstListed: boolean | null
   userPaidAmountRange: string | null
   userPaidAmountUnit: string | null
@@ -150,12 +153,25 @@ export interface DemoReceipt {
     count: number | null
   }[]
 }
+export interface BatchCollectItemResult {
+  candidateId: string
+  productId: string | null
+  state: 'demo' | 'submitted' | 'reused' | 'failed'
+  message: string
+}
+export interface BatchCollectReceipt {
+  mode: 'mock' | 'real'
+  requestId?: string
+  // One result per distinct product; all supplied candidate aliases are returned.
+  results: (BatchCollectItemResult & { candidateIds: string[] })[]
+}
 export interface SelectionService {
   readonly available: boolean
   readonly strategySaveAvailable?: boolean
   readonly scheduleAvailable?: boolean
   readonly candidatesAvailable?: boolean
   readonly candidateBlockAvailable?: boolean
+  readonly materialCollectionAvailable?: boolean
   batches?(
     strategyId: string,
     shopId: string | null,
@@ -203,8 +219,9 @@ export interface SelectionService {
   candidate(id: string, receiptId?: string | null): Promise<SelectionCandidate>
   demoAction(
     id: string,
-    action: 'block' | 'restore',
+    action: 'collect' | 'block' | 'restore',
   ): Promise<DemoReceipt>
+  collectBatch(candidateIds: string[]): Promise<BatchCollectReceipt>
   updateCompassMetrics(id: string): Promise<DemoReceipt>
   markCompetitor(merchantShopId: string): Promise<DemoReceipt>
 }

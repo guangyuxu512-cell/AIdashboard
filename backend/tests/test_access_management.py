@@ -36,7 +36,6 @@ from app.modules.access.models import (
     TeamShopAccess,
 )
 from app.modules.access.module_access import ModuleCode
-from app.modules.access.repository import MembershipModuleAccessRepository
 from app.modules.access.schemas import (
     AccessMemberCreate,
     AccessMemberTeamUpdate,
@@ -62,10 +61,10 @@ TEST_PASSWORD = "correct-horse-battery"
 
 def test_product_module_authorization_contract_accepts_registered_values_only() -> None:
     payload = TeamAuthorizationUpdate.model_validate(
-        {"module_codes": ["product-selection"]}
+        {"module_codes": ["product-selection", "product-library"]}
     )
-    assert payload.module_codes == [ModuleCode.PRODUCT_SELECTION]
-    for values in (["product-center"], ["product-library"], ["product-selection", "product-selection"]):
+    assert payload.module_codes == [ModuleCode.PRODUCT_SELECTION, ModuleCode.PRODUCT_LIBRARY]
+    for values in (["product-center"], ["product-library", "product-library"]):
         with pytest.raises(ValidationError):
             TeamAuthorizationUpdate.model_validate({"module_codes": values})
 
@@ -80,7 +79,7 @@ def test_product_modules_require_explicit_team_grants_and_revocation_takes_effec
         member = service.create_member(create_member_input(team.team_id))
         actor = actor_for(member.user_id, team.team_id, member.memberships[0].membership_id)
         modules = ModuleAccessService(session)
-        for code in (ModuleCode.PRODUCT_SELECTION,):
+        for code in (ModuleCode.PRODUCT_SELECTION, ModuleCode.PRODUCT_LIBRARY):
             with pytest.raises(ModuleAccessDeniedError):
                 modules.require_module_access(actor, code)
         service.update_team_authorization(
@@ -88,39 +87,11 @@ def test_product_modules_require_explicit_team_grants_and_revocation_takes_effec
             TeamAuthorizationUpdate(module_codes=[ModuleCode.PRODUCT_SELECTION]),
         )
         modules.require_module_access(actor, ModuleCode.PRODUCT_SELECTION)
+        with pytest.raises(ModuleAccessDeniedError):
+            modules.require_module_access(actor, ModuleCode.PRODUCT_LIBRARY)
         service.update_team_authorization(team.team_id, TeamAuthorizationUpdate(module_codes=[]))
         with pytest.raises(ModuleAccessDeniedError):
             modules.require_module_access(actor, ModuleCode.PRODUCT_SELECTION)
-
-
-def test_retired_library_grants_do_not_break_other_team_permissions(
-    database: tuple[sessionmaker[Session], PasswordService],
-) -> None:
-    factory, password_service = database
-    with factory() as session:
-        service = AccessManagementService(session, password_service)
-        team = service.create_team(TeamCreate(name="历史商品库授权团队"))
-        service.update_team_authorization(
-            team.team_id, TeamAuthorizationUpdate(module_codes=[ModuleCode.TASK]),
-        )
-        member = service.create_member(create_member_input(team.team_id))
-        membership_id = member.memberships[0].membership_id
-        session.add_all([
-            TeamModuleAccess(team_id=team.team_id, module_code="product-library"),
-            MembershipModuleAccess(membership_id=membership_id, module_code="product-library"),
-        ])
-        session.commit()
-
-        actor = actor_for(member.user_id, team.team_id, membership_id)
-        assert ModuleAccessService(session).list_for_actor(actor) == [ModuleCode.TASK]
-        assert service.get_team_authorization(team.team_id)[0] == [ModuleCode.TASK]
-        assert service.team_module_access_repository.list_codes_for_teams([team.team_id]) == {
-            team.team_id: ["task"],
-        }
-        assert MembershipModuleAccessRepository(session).list_codes_for_memberships([membership_id]) == {}
-        # Read compatibility does not modify existing grants before migration.
-        assert session.get(TeamModuleAccess, (team.team_id, "product-library")) is not None
-        assert session.get(MembershipModuleAccess, (membership_id, "product-library")) is not None
 
 
 class UnassignedActorContextService:
@@ -211,7 +182,7 @@ def test_team_grants_are_shared_by_current_members_and_not_member_rows(
         module_service.require_module_access(actor, ModuleCode.ASSET)
         module_service.require_module_access(actor, ModuleCode.SETTINGS)
         with pytest.raises(ModuleAccessDeniedError):
-            module_service.require_module_access(actor, ModuleCode.TASK)
+            module_service.require_module_access(actor, ModuleCode.AI_WORKBENCH)
 
 
 def test_unassigned_member_keeps_a_valid_session_with_no_module_menu() -> None:

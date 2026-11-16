@@ -84,7 +84,7 @@ describe('Human Auth Data Source', () => {
     })
 
     expect((await source.getCurrentModuleAccess()).moduleCodes).toEqual(
-      expect.arrayContaining(['product-selection']),
+      expect.arrayContaining(['product-selection', 'product-library']),
     )
 
     await source.login({

@@ -47,11 +47,21 @@ test('keeps the production brand compact and hides development navigation', asyn
   expect(runtimeErrors).toEqual([])
 })
 
-test('retired routes fall back to the execution center', async ({
+test('keeps every AI visual fixture out of a production-like build', async ({
   page,
 }) => {
-  for (const route of ['/ai-workbench/templates', '/ai-workbench/generate', '/products']) {
-    await page.goto(`/#${route}`)
-    await expect(page).toHaveURL(/#\/devices$/)
-  }
+  await page.goto('/#/ai-workbench/templates?visualMock=1')
+
+  await expect(page.getByRole('region', { name: '模板库工具栏' })).toBeVisible()
+  await expect(page.getByText('电商标准套图 A', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('竞品复刻 A', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('极简白底', { exact: true })).toHaveCount(0)
+
+  await page.goto('/#/ai-workbench/generate?visualMock=1')
+  await expect(page.getByRole('navigation', { name: 'AI 功能入口' })).toBeVisible()
+  await expect(page.getByText('手机支架', { exact: true })).toHaveCount(0)
+
+  await page.goto('/#/ai-workbench/records?visualMock=1')
+  await expect(page.getByLabel('生成记录列表')).toBeVisible()
+  await expect(page.getByText('张三', { exact: true })).toHaveCount(0)
 })

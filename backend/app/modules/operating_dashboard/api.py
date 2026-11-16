@@ -20,7 +20,6 @@ from app.modules.operating_dashboard.schemas import (
     OperatingDataCollectionSubmissionRead,
 )
 from app.modules.operating_dashboard.exceptions import (
-    OperatingDashboardCollectionUnavailableError,
     OperatingDashboardInvalidRequestError,
 )
 from app.modules.operating_dashboard.service import (
@@ -93,7 +92,11 @@ def enqueue_operating_collection(
         Depends(get_operating_dashboard_service),
     ],
 ) -> OperatingDataCollectionSubmissionRead:
-    raise OperatingDashboardCollectionUnavailableError()
+    return service.request_collection_update(
+        actor=actor,
+        request=request,
+        force_recollect=False,
+    )
 
 
 @router.post(
@@ -110,7 +113,11 @@ def recollect_operating_collection(
 ) -> OperatingDataCollectionSubmissionRead:
     """Explicitly refresh the selected persisted scope after user intent."""
 
-    raise OperatingDashboardCollectionUnavailableError()
+    return service.request_collection_update(
+        actor=actor,
+        request=request,
+        force_recollect=True,
+    )
 
 
 @router.get(
@@ -145,4 +152,10 @@ def retry_operating_collection(
         Depends(get_operating_dashboard_service),
     ],
 ) -> OperatingDataCollectionJobRead:
-    raise OperatingDashboardCollectionUnavailableError()
+    return service.retry_failed_collection_items(
+        actor=actor,
+        collection_job_id=collection_job_id,
+        item_ids=request.item_ids,
+        session_recovery_version=request.session_recovery_version,
+        revalidate_current_session=request.revalidate_current_session,
+    )

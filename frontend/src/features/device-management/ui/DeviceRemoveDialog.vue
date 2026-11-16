@@ -31,7 +31,7 @@ defineEmits<{
       <ul>
         <li>设备将退出正常设备列表</li>
         <li>Worker Token 立即失效</li>
-        <li>本机店铺映射将不再参与任务分配</li>
+        <li>店铺绑定将停用</li>
         <li>历史任务和能力记录仍保留</li>
         <li>设备 UUID 不会复用</li>
       </ul>

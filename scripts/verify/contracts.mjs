@@ -4,11 +4,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const root = fileURLToPath(new URL("../../", import.meta.url));
-const pc = "frontend/src/entities/";
+const pc = "frontend/src/entities/",
+  mobile = "mobile/src/entities/";
 const backend = "backend/app/modules/";
 const enumRef = (domain, name) => [`${backend}${domain}/enums.py`, name];
 const dtoRef = (domain, name) => [`${backend}${domain}/schemas.py`, name];
-const taskConsumers = ["frontend"].map(
+const taskConsumers = ["frontend", "mobile"].map(
   (client) => `${client}/src/entities/task/api/contracts.ts`,
 );
 const shopSessionContract = `${pc}shop-session/api/contracts.ts`;
@@ -28,6 +29,14 @@ export const manifest = {
     [
       enumRef("audit", "AuditTargetType"),
       [`${pc}audit-log/model/types.ts`, "AuditTargetType"],
+    ],
+    [
+      enumRef("workers", "SkillClassification"),
+      [`${mobile}device/api/contracts.ts`, "DeviceSkillClassificationDto"],
+    ],
+    [
+      enumRef("workers", "WorkerConnectionStatus"),
+      [`${mobile}device/api/contracts.ts`, "DeviceConnectionStatusDto"],
     ],
     [
       enumRef("operating_dashboard", "OperatingCollectionJobStatus"),
@@ -63,7 +72,7 @@ export const manifest = {
       enumRef("audit", "AuditTargetType"),
       [`${pc}audit-log/model/types.ts`, "TARGET_LABELS"],
     ],
-    ...["frontend"].map((client) => [
+    ...["frontend", "mobile"].map((client) => [
       enumRef("tasks", "TaskStatus"),
       [`${client}/src/entities/task/model/status-meta.ts`, "TASK_STATUS_META"],
     ]),
@@ -81,6 +90,10 @@ export const manifest = {
       dtoRef("audit", "AuditLogRead"),
       [`${pc}audit-log/model/types.ts`, "AuditLogViewModel"],
       { team_id: "teamId" },
+    ],
+    [
+      dtoRef("access", "MyTeamMembershipRead"),
+      [`${mobile}human-auth/api/contracts.ts`, "HumanTeamMembershipDto"],
     ],
     [
       dtoRef("sessions", "ShopSessionMetadataRead"),
@@ -109,7 +122,7 @@ export const manifest = {
         "OperatingDashboardSessionRecoveryDto",
       ],
     ],
-    ...["frontend"].flatMap((client) => [
+    ...["frontend", "mobile"].flatMap((client) => [
       [
         dtoRef("devices", "DeviceRead"),
         [`${client}/src/entities/device/api/contracts.ts`, "DeviceReadDto"],
@@ -118,7 +131,9 @@ export const manifest = {
         dtoRef("workers", "YingdaoProviderInventory"),
         [
           `${client}/src/entities/device/api/contracts.ts`,
-          "YingdaoProviderInventoryDto",
+          client === "frontend"
+            ? "YingdaoProviderInventoryDto"
+            : "YingdaoProviderInventoryReadDto",
         ],
       ],
       [
@@ -435,7 +450,6 @@ export function pythonPaths() {
         .concat(
           "backend/app/modules/operating_dashboard/schemas.py",
           "backend/app/modules/access/enums.py",
-          "backend/app/modules/workers/enums.py",
         ),
     ),
   ];

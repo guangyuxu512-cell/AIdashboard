@@ -275,16 +275,15 @@ def test_read_uses_formal_sort_and_pagination_contract() -> None:
     assert getattr(pagination, "page_size") == 10
 
 
-def test_retry_is_paused_without_calling_collection_service() -> None:
+def test_retry_keeps_old_default_and_maps_explicit_revalidation() -> None:
     for flag in (None, False, True):
         service = DashboardServiceStub()
         body = {"item_ids": [str(uuid4())], "session_recovery_version": 3}
         if flag is not None:
             body["revalidate_current_session"] = flag
         response = request("POST", f"/api/v1/operating-dashboard/collections/{JOB_ID}/retry", service=service, json=body)
-        assert response.status_code == 503
-        assert response.json()["code"] == "OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE"
-        assert service.retry_calls == []
+        assert response.status_code == 202
+        assert service.retry_calls[0]["revalidate_current_session"] is (flag is True)
 
 
 def test_revalidation_requires_an_explicit_single_item_version_and_boolean() -> None:
@@ -313,7 +312,7 @@ def test_read_rejects_half_of_a_sort_contract_before_service_execution() -> None
     assert service.read_calls == []
 
 
-def test_manual_update_is_paused_without_creating_a_job() -> None:
+def test_manual_update_returns_a_durable_job_only_when_gap_work_exists() -> None:
     service = DashboardServiceStub()
 
     response = request(
@@ -327,12 +326,13 @@ def test_manual_update_is_paused_without_creating_a_job() -> None:
         },
     )
 
-    assert response.status_code == 503
-    assert response.json()["code"] == "OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE"
-    assert service.enqueue_calls == []
+    assert response.status_code == 200
+    assert response.json()["collection_job"]["collection_job_id"] == str(JOB_ID)
+    assert service.enqueue_calls[0]["actor"] == ACTOR
+    assert service.enqueue_calls[0]["force_recollect"] is False
 
 
-def test_explicit_recollect_is_paused_without_creating_a_job() -> None:
+def test_explicit_recollect_uses_the_scoped_recollect_contract() -> None:
     service = DashboardServiceStub()
 
     response = request(
@@ -347,6 +347,11 @@ def test_explicit_recollect_is_paused_without_creating_a_job() -> None:
         },
     )
 
-    assert response.status_code == 503
-    assert response.json()["code"] == "OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE"
-    assert service.enqueue_calls == []
+    assert response.status_code == 200
+    assert response.json()["state"] == "collection_queued"
+    assert service.enqueue_calls[0]["actor"] == ACTOR
+    assert service.enqueue_calls[0]["force_recollect"] is True
+    request_value = service.enqueue_calls[0]["request"]
+    assert getattr(request_value, "start_date") == date(2026, 9, 19)
+    assert getattr(request_value, "end_date") == date(2026, 9, 20)
+    assert getattr(request_value, "platform") is ShopPlatform.DOUYIN

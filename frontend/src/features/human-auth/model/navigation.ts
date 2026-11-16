@@ -1,4 +1,4 @@
-export const DEFAULT_AUTHENTICATED_ROUTE = '/devices'
+export const DEFAULT_AUTHENTICATED_ROUTE = '/shops'
 
 export function resolveSafeRedirect(value: unknown): string {
   if (

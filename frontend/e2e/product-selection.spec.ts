@@ -165,7 +165,7 @@ test('candidate three-column width rebalance at ordinary and wide viewports', as
           (await rows
             .first()
             .locator('td')
-            .nth(0)
+            .nth(1)
             .evaluate((cell) => cell.getBoundingClientRect().width)) - expected,
         ),
       )
@@ -178,15 +178,15 @@ test('candidate three-column width rebalance at ordinary and wide viewports', as
         image = row.querySelector('.product-image')!
       return {
         columns: widths,
-        productInfo: widths[0],
-        merchant: widths[1],
-        category: widths[2],
-        threeColumnTotal: widths.slice(0, 3).reduce((a, b) => a + b, 0),
+        productInfo: widths[1],
+        merchant: widths[2],
+        category: widths[3],
+        threeColumnTotal: widths.slice(1, 4).reduce((a, b) => a + b, 0),
         title: title.getBoundingClientRect().width,
         image: image.getBoundingClientRect().width,
         rowHeight: row.getBoundingClientRect().height,
-        padding: getComputedStyle(cells[0]!).padding,
-        verticalBorder: getComputedStyle(cells[0]!).borderRightWidth,
+        padding: getComputedStyle(cells[1]!).padding,
+        verticalBorder: getComputedStyle(cells[1]!).borderRightWidth,
         rawId: row.querySelector('.product-info-cell__id-text')!.textContent,
       }
     })
@@ -356,7 +356,7 @@ test('candidate product identity fits four themes with stable copy slots and acc
         .poll(() => body.evaluate((element) => element.scrollTop))
         .toBe(0)
       await settleTransitions(page)
-      await expect(page.getByRole('columnheader')).toHaveCount(10)
+      await expect(page.getByRole('columnheader')).toHaveCount(12)
       for (const heading of await page.getByRole('columnheader').all())
         await expect(heading).toBeInViewport()
       const dimensions = await rows.first().evaluate((row) => {
@@ -395,14 +395,14 @@ test('candidate product identity fits four themes with stable copy slots and acc
       const titleBudget = await rows.first().evaluate((row) => {
         const title = row.querySelector('.product-info-cell__title')!,
           id = row.querySelector('.product-info-cell__id')!
-        const merchant = row.querySelector('td:nth-child(2)')!,
+        const merchant = row.querySelector('td:nth-child(3)')!,
           text = merchant.querySelector('.n-ellipsis')!
         const first = title.getBoundingClientRect(),
           next = text.getBoundingClientRect(),
-          style = getComputedStyle(row.querySelector('td:nth-child(1)')!)
+          style = getComputedStyle(row.querySelector('td:nth-child(2)')!)
         return {
           title: first.width,
-          column: row.querySelector('td:nth-child(1)')!.getBoundingClientRect()
+          column: row.querySelector('td:nth-child(2)')!.getBoundingClientRect()
             .width,
           gap:
             next.left - Math.max(first.right, id.getBoundingClientRect().right),
@@ -462,9 +462,11 @@ test('candidate product identity fits four themes with stable copy slots and acc
   await rows.first().locator('.product-info-cell__title').hover()
   await expect(page.locator('.n-popover')).toContainText('Essence')
   await page.mouse.move(10, 10)
-  await expect(rows.first().getByRole('checkbox')).toHaveCount(0)
+  await rows.first().getByRole('checkbox').check()
+  await expect(page.getByText('已选 1 项', { exact: true })).toBeVisible()
   await page.locator('.n-pagination-item').filter({ hasText: /^2$/ }).click()
   await expect(rows).toHaveCount(10)
+  await expect(page.getByText('已选 1 项', { exact: true })).toHaveCount(0)
   await rows.first().getByRole('button', { name: '详情', exact: true }).click()
   await expect(page.locator('.n-drawer')).toContainText('罗盘视频数据')
   await page
@@ -532,8 +534,8 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   await page.mouse.move(10, 10)
   await expect(page.locator('.n-popover')).toBeHidden()
   for (const [index, text] of [
-    [1, longMerchant],
-    [2, longCategory],
+    [2, longMerchant],
+    [3, longCategory],
   ] as const) {
     const ellipsis = rows
       .first()
@@ -596,7 +598,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
         .evaluateAll((elements) =>
           elements.map((element) => getComputedStyle(element).textAlign),
         )
-      expect(alignments).toEqual(Array(10).fill('center'))
+      expect(alignments).toEqual(Array(12).fill('center'))
     }
     await scrollCandidateTableToRight(page)
     await page.screenshot({
@@ -615,7 +617,7 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
     })
     const colors = await rows.first().evaluate((row) => {
       const plain = row.querySelector('.product-info-cell__title')!
-      const missing = row.querySelector('td:nth-child(8) .n-text')!
+      const missing = row.querySelector('td:nth-child(9) .n-text')!
       return {
         body: getComputedStyle(plain).color,
         missing: getComputedStyle(missing).color,
@@ -706,9 +708,15 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
     animations: 'disabled',
   })
   await page.locator('.n-drawer-header__close').click()
+  await rows
+    .first()
+    .getByRole('button', { name: '采集资料', exact: true })
+    .click()
   await expect(
-    rows.first().getByRole('button', { name: '采集资料', exact: true }),
-  ).toHaveCount(0)
+    page.getByText('商品资料采集流程演示；未发起真实采集，未写入正式商品库', {
+      exact: true,
+    }),
+  ).toBeVisible()
   await rows.first().getByRole('button', { name: '屏蔽', exact: true }).click()
   await expect(rows).toHaveCount(0)
   await page.getByText('未屏蔽', { exact: true }).click()
@@ -729,18 +737,44 @@ test('candidate pool: four themes, column alignment, IDs, full sort/pagination, 
   expect(apiRequests).toEqual([])
 })
 
-test('candidate pagination and detail remain available after central collection removal', async ({
+test('batch demo selects only the current page, rejects empty selection and guards rapid clicks', async ({
   page,
 }, info) => {
   await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
   await expect(rows).toHaveCount(10)
+  await expect(batch).toBeDisabled()
+  await expect(page.getByText(/已选 \d+ 项/)).toHaveCount(0)
+  const selectAll = page.locator('.n-data-table-thead').getByRole('checkbox')
+  await selectAll.hover()
+  await expect(page.getByText('全选仅当前页', { exact: true })).toBeVisible()
+  await page.mouse.move(10, 10)
+  await expect(page.getByText('全选仅当前页', { exact: true })).toBeHidden()
+  await selectAll.focus()
+  await expect(page.getByText('全选仅当前页', { exact: true })).toBeVisible()
+  await selectAll.check()
+  await batch.focus()
+  await expect(page.getByText('已选 10 项', { exact: true })).toBeVisible()
+  await page.screenshot({
+    path: info.outputPath('batch-selected-current-page.png'),
+    animations: 'disabled',
+  })
+  await batch.evaluate((button) => {
+    ;(button as HTMLButtonElement).click()
+    ;(button as HTMLButtonElement).click()
+  })
   await expect(
-    page.getByRole('button', { name: '批量采集资料', exact: true }),
-  ).toHaveCount(0)
-  await expect(rows.first().getByRole('checkbox')).toHaveCount(0)
+    page.getByText('资料采集演示完成 10 项，失败 0 项；未发起真实采集', {
+      exact: true,
+    }),
+  ).toHaveCount(1)
+  await expect(batch).toBeDisabled()
+  await expect(page.getByText(/已选 \d+ 项/)).toHaveCount(0)
+  await page.locator('.n-data-table-thead').getByRole('checkbox').check()
   await page.locator('.n-pagination-item').filter({ hasText: /^2$/ }).click()
   await expect(rows.first()).toContainText('演示商品 11')
+  await expect(batch).toBeDisabled()
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.getByRole('button', { name: '重置', exact: true }).click()
   await expect(rows).toHaveCount(10)
@@ -787,6 +821,52 @@ test('candidate pagination and detail remain available after central collection 
     animations: 'disabled',
   })
 })
+test('exception-only: batch partial failure preserves failed selection and all item feedback', async ({
+  page,
+}, info) => {
+  // Only intercept the development Mock module; no proposed Backend endpoint or production hook.
+  await page.route(
+    '**/src/features/product-selection/api/selection-mock-handlers.ts*',
+    async (route) => {
+      const response = await route.fetch()
+      const source = await response.text()
+      const marker = 'function collect(id) {'
+      expect(source).toContain(marker)
+      await route.fulfill({
+        response,
+        body: source.replace(
+          marker,
+          `${marker}\n if (id === "candidate-001") throw new Error("受控演示采集失败");`,
+        ),
+      })
+    },
+  )
+  await page.goto('/#/product-selection?candidate_size=10')
+  const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  await expect(rows).toHaveCount(10)
+  await rows.nth(0).getByRole('checkbox').check()
+  await rows.nth(1).getByRole('checkbox').check()
+  await rows.nth(2).getByRole('checkbox').check()
+  await page.getByRole('button', { name: '批量采集资料', exact: true }).click()
+  await expect(
+    page.getByText('资料采集演示完成 2 项，失败 1 项；未发起真实采集', {
+      exact: true,
+    }),
+  ).toBeVisible()
+  await expect(
+    page.getByText('9087654321098765001：受控演示采集失败', { exact: true }),
+  ).toBeVisible()
+  await expect(rows.nth(0).getByRole('checkbox')).not.toBeChecked()
+  await expect(rows.nth(1).getByRole('checkbox')).toBeChecked()
+  await expect(rows.nth(2).getByRole('checkbox')).not.toBeChecked()
+  await expect(page.getByText('已选 1 项', { exact: true })).toBeVisible()
+  await expect(page.locator('.n-message')).toHaveCount(0)
+  await page.screenshot({
+    path: info.outputPath('batch-partial-failure.png'),
+    animations: 'disabled',
+  })
+})
+
 test('strategy drawer retrieval refreshes saved recent results without saving drafts or creating unsaved strategies', async ({
   page,
 }, info) => {
@@ -958,10 +1038,10 @@ test('strategy: right drawer, categories/all, retrieval without saving, validati
   await expect(row).toContainText('演示获取 4 项')
   await page
     .getByRole('navigation', { name: '选品库切换' })
-    .getByRole('button', { name: '候选池', exact: true })
+    .getByRole('button', { name: '采集任务', exact: true })
     .click()
   await expect(
-    page.getByRole('columnheader', { name: '商品信息', exact: true }),
+    page.getByRole('button', { name: '创建采集任务', exact: true }),
   ).toBeVisible()
   await page
     .getByRole('navigation', { name: '选品库切换' })
@@ -1490,6 +1570,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
   await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
+  const batch = page.getByRole('button', { name: '批量采集资料', exact: true })
   const refresh = page.getByRole('button', { name: '刷新列表', exact: true })
   const detail = page.locator('.n-drawer')
   await expect(rows).toHaveCount(10)
@@ -1506,6 +1587,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
     '价格／价格带',
     '差评率',
     '首次上架日期',
+    '采集状态',
     '操作',
   ])
   await expect(rows.nth(1)).toContainText('↑ 2')
@@ -1538,7 +1620,20 @@ test('centered candidate columns and consistent bordered details: four rendered 
       )
       await expect(page.locator('.n-dropdown')).toBeHidden()
       await loadCandidateImages(page)
+      await expect(batch).toBeDisabled()
+      const disabledColors = await batch.evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }))
+      expect(disabledColors.text).not.toBe(disabledColors.background)
+      await rows.first().getByRole('checkbox').check()
+      await expect(batch).toBeEnabled()
       await settleTransitions(page)
+      const primaryColors = await batch.evaluate((element) => ({
+        text: getComputedStyle(element).color,
+        background: getComputedStyle(element).backgroundColor,
+      }))
+      expect(primaryColors.background).not.toBe(disabledColors.background)
       const secondaryColors = await refresh.evaluate((element) => ({
         text: getComputedStyle(element).color,
         background: getComputedStyle(element).backgroundColor,
@@ -1558,9 +1653,9 @@ test('centered candidate columns and consistent bordered details: four rendered 
         return color
       })
       expect(linkColor).toBe(tokenColor)
-      expect(secondaryColors.text).not.toBe(secondaryColors.background)
+      expect(secondaryColors.background).not.toBe(primaryColors.background)
       const rowDimensions = await rows.first().evaluate((row) => {
-        const cell = row.querySelector('td:nth-child(1)')!
+        const cell = row.querySelector('td:nth-child(2)')!
         const cells = [...row.querySelectorAll('td')]
         const actions = row.querySelector('.selection-candidate-actions')!
         const buttons = [...actions.querySelectorAll('button')]
@@ -1585,6 +1680,10 @@ test('centered candidate columns and consistent bordered details: four rendered 
               buttons[0]!
                 .querySelector('.n-button__content')!
                 .getBoundingClientRect().right,
+            buttons[2]!
+              .querySelector('.n-button__content')!
+              .getBoundingClientRect().left -
+              buttons[1]!.getBoundingClientRect().right,
           ],
           actionWrap: getComputedStyle(actions).flexWrap,
           actionCenterOffset:
@@ -1644,7 +1743,8 @@ test('centered candidate columns and consistent bordered details: four rendered 
       const actualWidths = rowDimensions.cells.map((cell) =>
         Math.round(cell.width),
       )
-      expect(actualWidths[0]).toBeGreaterThanOrEqual(260)
+      expect(actualWidths[0]).toBe(44)
+      expect(actualWidths[1]).toBeGreaterThanOrEqual(260)
       expect(actualWidths.at(-1)).toBe(220)
       for (const width of actualWidths) expect(width).toBeGreaterThan(0)
       expect(
@@ -1694,11 +1794,13 @@ test('centered candidate columns and consistent bordered details: four rendered 
           .getByText('↓ 2', { exact: true })
           .evaluate((element) => getComputedStyle(element).color),
       ).toBe(semanticColors.error)
-      await expect(rows.first().locator('td').nth(2)).toHaveText('上衣')
+      await expect(rows.first().locator('td').nth(3)).toHaveText('上衣')
       colorEvidence.push({
         theme: id,
         viewport,
         rowDimensions,
+        disabledColors,
+        primaryColors,
         secondaryColors,
         linkColor,
       })
@@ -1707,6 +1809,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
         path: info.outputPath(`${id}-${viewport.width}-candidate-final.png`),
         animations: 'disabled',
       })
+      await rows.first().getByRole('checkbox').uncheck()
       await page.mouse.move(10, 10)
       await settleTransitions(page)
       await page.screenshot({
@@ -1849,7 +1952,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
       await expect(detail).not.toContainText('近30天销量')
       await expect(
         detail.getByRole('button', { name: '采集资料', exact: true }),
-      ).toHaveCount(0)
+      ).toBeInViewport()
       await expect(
         detail.getByRole('button', { name: '更新基础信息', exact: true }),
       ).toBeInViewport()
@@ -1902,7 +2005,7 @@ test('centered candidate columns and consistent bordered details: four rendered 
       rows
         .first()
         .locator('td')
-        .nth(0)
+        .nth(1)
         .evaluate((cell) => Math.round(cell.getBoundingClientRect().width)),
     )
     .toBeCloseTo(360, 0)
@@ -1918,9 +2021,10 @@ test('centered candidate columns and consistent bordered details: four rendered 
       .locator('.product-info-cell__title')
       .evaluate((e) => e.getBoundingClientRect().height),
   ).toBeLessThanOrEqual(24)
-  expect(wideWidths[1]).toBeGreaterThan(140)
-  expect(wideWidths[2]).toBeGreaterThan(100)
-  expect(wideWidths[0]).toBeGreaterThanOrEqual(260)
+  expect(wideWidths[2]).toBeGreaterThan(140)
+  expect(wideWidths[3]).toBeGreaterThan(100)
+  expect(wideWidths[0]).toBe(44)
+  expect(wideWidths[1]).toBeGreaterThanOrEqual(260)
   expect(wideWidths.at(-1)).toBe(220)
   await page.screenshot({
     path: info.outputPath('candidate-full-width-2240.png'),
@@ -1939,9 +2043,13 @@ test('centered candidate columns and consistent bordered details: four rendered 
   await expect(
     page.getByText('基础信息更新流程演示；未向平台请求', { exact: true }),
   ).toBeVisible()
+  await detail.getByRole('button', { name: '采集资料', exact: true }).click()
+  await expect(detail).toContainText('已演示采集')
   await detail.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(rows.first()).toContainText('已演示采集')
   await refresh.click()
   await expect(rows).toHaveCount(10)
+  await expect(rows.first()).toContainText('已演示采集')
 })
 
 test('detail typography: four themes, primary values, compact header metadata and narrow drawer wrapping', async ({
@@ -2165,6 +2273,10 @@ test('detail missing timestamp and zero metrics stay distinct from leaderboard t
         [/clicksRange:\s*(['"])1000–5000\1/, 'clicksRange: "0"'],
         [/soldUnitsRange:\s*(['"])100–500\1/, 'soldUnitsRange: "0"'],
         [/videoCountRange:\s*(['"])10–50\1/, 'videoCountRange: null'],
+        [
+          /collectionStatus:\s*(['"])not-collected\1/,
+          'collectionStatus: "unknown"',
+        ],
       ]
       for (const [pattern, replacement] of replacements) {
         expect(source).toMatch(pattern)
@@ -2181,9 +2293,18 @@ test('detail missing timestamp and zero metrics stay distinct from leaderboard t
   await page.goto('/#/product-selection?candidate_size=10')
   const rows = page.locator('.n-data-table-tbody .n-data-table-tr')
   await expect(rows).toHaveCount(10)
-  await expect(
-    page.getByRole('columnheader', { name: '采集状态' }),
-  ).toHaveCount(0)
+  const collection = rows.first().locator('td').nth(10)
+  await expect(collection).toHaveText('—')
+  const missingColors = await rows
+    .first()
+    .locator('td')
+    .evaluateAll((cells) =>
+      [8, 10].map(
+        (index) =>
+          getComputedStyle(cells[index]!.querySelector('.n-text')!).color,
+      ),
+    )
+  expect(missingColors[1]).toBe(missingColors[0])
   await rows.first().getByRole('button', { name: '详情', exact: true }).click()
   const detail = page.locator('.n-drawer')
   await expect(detail.locator('.candidate-detail__title')).toHaveText(longTitle)

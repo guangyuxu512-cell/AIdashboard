@@ -68,8 +68,8 @@ function createGuardedRouter(pinia: ReturnType<typeof createPinia>) {
         component: { template: '<div />' },
         meta: { moduleCode: 'asset' },
       },
-      ...['product-selection'].map((code) => ({
-        path: '/product-selection',
+      ...['product-selection', 'product-library'].map((code) => ({
+        path: code === 'product-library' ? '/products' : '/product-selection',
         name: code,
         component: { template: '<div />' },
         meta: { moduleCode: code },
@@ -102,10 +102,11 @@ describe('parameter preset route authorization', () => {
     },
   )
 
-  it.each(['product-selection'])(
+  it.each(['product-selection', 'product-library'])(
     'guards direct access to %s with its own explicit module grant',
     async (code) => {
-      const path = '/product-selection'
+      const path =
+        code === 'product-library' ? '/products' : '/product-selection'
       for (const grants of [['shop', 'device'], [code]]) {
         const pinia = createPinia()
         useAuthStore(pinia).setDataSource(createSource(grants))

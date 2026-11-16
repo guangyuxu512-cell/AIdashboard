@@ -5,11 +5,11 @@ Device and application identities remain separate and are deliberately excluded.
 """
 
 MANAGEMENT_TAGS = {
-    "access", "access-management",
+    "access", "access-management", "ai-workbench", "ai-model-management",
     "shop-onboarding", "assets", "automation-app-configs",
     "automation-parameter-presets", "users", "shops", "devices",
     "notification-channels", "operating-dashboard", "product-selection",
-    "product-data", "credentials", "sessions",
+    "product-collection", "product-data", "credentials", "sessions",
     "tasks", "schedules",
 }
 

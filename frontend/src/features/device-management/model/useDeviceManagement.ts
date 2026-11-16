@@ -130,9 +130,7 @@ export function useDeviceManagement() {
         refreshTaskQuery.data.value ?? null,
       ),
       yingdaoInventory: context?.inventories[device.deviceId] ?? null,
-      localShopCount: context?.localShops[device.deviceId]?.available
-        ? context.localShops[device.deviceId]!.shops.length
-        : null,
+      boundShopCount: context?.bindingCounts[device.deviceId] ?? null,
       activeTask: activeTasks[device.deviceId] ?? null,
     }))
   })
@@ -193,8 +191,8 @@ export function useDeviceManagement() {
         (device) => device.currentExecution.taskId === runtimeTaskId.value,
       )?.deviceName ?? null,
   )
-  const detailLocalShops = computed(
-    () => managementContextQuery.data.value?.localShops[detailDeviceId.value ?? ''] ?? null,
+  const detailBoundShopCount = computed(
+    () => detailRow.value?.boundShopCount ?? null,
   )
   const recentExecutions = computed<DeviceRecentExecutionViewModel[]>(() => {
     const task = refreshTaskQuery.data.value
@@ -496,7 +494,7 @@ export function useDeviceManagement() {
     listError,
     detailDevice: computed(() => detailQuery.data.value ?? null),
     detailCurrentExecution,
-    detailLocalShops,
+    detailBoundShopCount,
     recentExecutions,
     detailLoading: detailQuery.isPending,
     detailError,

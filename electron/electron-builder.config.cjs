@@ -85,7 +85,7 @@ module.exports = {
     ],
     icon: path.resolve(
       __dirname,
-      'assets/icon-512.png',
+      '../mobile/public/icons/icon-512.png',
     ),
     executableName: 'SiyuAIControlCenter',
     requestedExecutionLevel: 'asInvoker',

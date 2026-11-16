@@ -93,7 +93,7 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
 ' d=json.loads(line)\n'
 ' if d["type"] == "init": r={"contractVersion":1,"installationId":iid}\n'
 ' elif d["type"] == "list_stored_shops": r={"installationId":iid,"shops":[{"localShopId":"a","platformShopId":"1","shopName":"demo","platform":"douyin","sessionStored":True}]}\n'
-' elif d["type"] == "read_stored_session": r={"localShopId":"a","platformShopId":"1","platform":"douyin","userAgent":"test","cookies":[{"name":"example","value":"synthetic-secret","domain":".jinritemai.com","path":"/"},{"name":"compass","value":"synthetic-compass","domain":"compass.jinritemai.com","path":"/"}]}\n'
+' elif d["type"] == "read_stored_session": r={"localShopId":"a","platformShopId":"1","platform":"douyin","userAgent":"test","cookies":[{"name":"example","value":"synthetic-secret","domain":".jinritemai.com","path":"/"}]}\n'
 ' else: raise ValueError("unexpected legacy browser command")\n'
 ' print(json.dumps({"ok":True,"result":r}),flush=True)\n'''.replace("'\n'", ""), encoding="utf-8")
     original = asyncio.create_subprocess_exec
@@ -114,7 +114,6 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
     assert "synthetic-encrypted-a" not in inventory.model_dump_json()
     session = asyncio.run(bridge.read_session("a", "1"))
     assert session.cookies[0].value.get_secret_value() == "synthetic-secret"
-    assert session.cookies[1].domain == "compass.jinritemai.com"
     assert "synthetic-secret" not in repr(session)
     with pytest.raises(RpaBridgeError, match="RPA_SHOP_IDENTITY_MISMATCH"):
         asyncio.run(bridge.read_session("b", "1"))

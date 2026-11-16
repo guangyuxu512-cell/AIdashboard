@@ -19,12 +19,12 @@ type Token = {
 type TokenEvent = { event_id: string; actor_user_id: string; action: string; created_at: string }
 
 const labels: Record<string, string> = {
-  access: '当前身份', 'human-auth': '登录身份', 'access-management': '用户与团队',
-  'shop-onboarding': '店铺接入', assets: '资产',
+  access: '当前身份', 'human-auth': '登录身份', 'access-management': '用户与团队', 'ai-workbench': 'AI 工作台',
+  'ai-model-management': 'AI 模型', 'shop-onboarding': '店铺接入', assets: '素材',
   'automation-app-configs': '自动化应用', 'automation-parameter-presets': '自动化参数',
   users: '用户', shops: '店铺', devices: '设备', 'notification-channels': '通知',
   'operating-dashboard': '经营看板', 'product-selection': '选品',
-  'product-data': '商品数据', credentials: '店铺凭证',
+  'product-collection': '商品采集', 'product-data': '商品数据', credentials: '店铺凭证',
   sessions: '店铺会话', tasks: '任务', schedules: '定时计划',
 }
 const names: Record<string, string> = {
@@ -32,7 +32,6 @@ const names: Record<string, string> = {
   'List Devices': '查看设备列表', 'Get Device': '查看设备详情', 'Create Device': '创建设备',
   'Update Device': '修改设备', 'Remove Device': '移除设备',
   'Get Device Business Skills': '查看设备业务技能', 'Get Device Provider Inventories': '查看设备运行环境',
-  'Get Device Local Shops': '查看设备本机店铺与会话状态',
   'Get Device Skill Capabilities': '查看设备能力', 'Get Worker Credential': '查看 Worker 凭据状态',
   'Issue Worker Credential': '签发 Worker 凭据', 'Rotate Worker Credential': '轮换 Worker 凭据',
   'Revoke Worker Credential': '撤销 Worker 凭据', 'List Tasks': '查看任务列表',
@@ -44,16 +43,33 @@ const names: Record<string, string> = {
   'Delete Schedule': '删除定时计划', 'List Shops': '查看店铺列表', 'Get Shop': '查看店铺详情',
   'Create Shop': '添加店铺', 'Update Shop': '修改店铺', 'Remove Shop': '移除店铺',
   'Get Shop Session Metadata': '查看店铺会话状态', 'Validate Shop Session': '验证店铺会话',
-  'Read Operating Dashboard': '查看经营看板',
+  'List Product Library Groups': '查看商品库分组', 'List Product Library Products': '查看商品库列表',
+  'Read Product Library Product': '查看商品详情', 'List Product Collection Requests': '查看采集任务',
+  'Read Product Collection Request': '查看采集任务详情', 'Read Operating Dashboard': '查看经营看板',
   'Delete Team': '删除团队', 'List Audit Logs': '查看操作日志', 'Get Current Module Access': '查看当前模块权限',
   'List Members': '查看成员列表', 'Get Member': '查看成员详情', 'List Teams': '查看团队列表',
   'Get Team Authorization': '查看团队授权', 'Update Member': '修改成员', 'Update Membership': '修改成员关系',
   'Update Team': '修改团队', 'Create Member': '创建成员', 'Create Membership': '添加成员关系',
   'Reset Member Password': '重置成员密码', 'Create Team': '创建团队', 'Archive Team': '归档团队',
   'Move Member To Team': '调整成员团队', 'Update Team Authorization': '修改团队授权',
-  'Delete Asset': '删除资产',
-  'List Assets': '查看资产列表', 'Read Asset Content': '读取资产内容', 'Read Asset Thumbnail': '读取资产缩略图',
-  'Upload Asset': '上传资产', 'List Yingdao Applications': '查看影刀应用', 'Get Config': '查看应用配置',
+  'List Ai Models': '查看 AI 模型列表', 'Get Ai Model': '查看 AI 模型详情', 'Update Ai Model': '修改 AI 模型',
+  'Create Ai Model': '新增 AI 模型', 'Set Default Ai Model': '设置默认 AI 模型',
+  'Cleanup Ai Asset': '删除 AI 素材', 'Delete Product Material Group': '删除商品素材组', 'Detach Asset': '移出组内素材',
+  'Delete Template Group': '删除模板组', 'Delete Prompt Template': '删除提示词模板',
+  'Read Ai Asset Content': '读取 AI 素材', 'Read Ai Asset Thumbnail': '查看 AI 素材缩略图',
+  'List Generation Jobs': '查看生成任务', 'Get Generation Job': '查看生成任务详情',
+  'List Available Ai Models': '查看可用 AI 模型', 'List Product Material Groups': '查看商品素材组',
+  'Get Product Material Group': '查看商品素材组详情', 'List Template Groups': '查看模板组',
+  'Get Template Group': '查看模板组详情', 'Update Product Material Group': '修改商品素材组',
+  'Update Template Group': '修改模板组', 'Update Prompt Template': '修改提示词模板',
+  'Upload Ai Asset': '上传 AI 素材', 'Submit Generation': '提交生成任务',
+  'Archive Instant Generation Item': '归档生成结果', 'Retry Failed Generation Items': '重试失败的生成任务',
+  'Create Product Material Group': '创建商品素材组', 'Attach Asset': '添加组内素材',
+  'Create Template Group': '创建模板组', 'Create Prompt Template': '创建提示词模板',
+  'Duplicate Prompt Template': '复制提示词模板', 'Replace Template Bindings': '更新模板绑定',
+  'Reorder Prompt Templates': '调整提示词模板顺序', 'Delete Asset': '删除素材',
+  'List Assets': '查看素材列表', 'Read Asset Content': '读取素材内容', 'Read Asset Thumbnail': '读取素材缩略图',
+  'Upload Asset': '上传素材', 'List Yingdao Applications': '查看影刀应用', 'Get Config': '查看应用配置',
   'Upsert Config': '保存应用配置', 'Delete Preset': '删除参数预设', 'List Presets': '查看应用参数预设',
   'Get Preset': '查看参数预设详情', 'List All Presets': '查看全部参数预设', 'Update Preset': '修改参数预设',
   'Create Preset': '创建参数预设', 'Copy Preset': '复制参数预设',
@@ -63,7 +79,11 @@ const names: Record<string, string> = {
   'Create Notification Channel': '添加通知渠道', 'Test Notification Channel': '测试通知渠道',
   'Get Operating Collection': '查看经营数据采集', 'Enqueue Operating Collection': '更新经营数据',
   'Recollect Operating Collection': '重新采集经营数据', 'Retry Operating Collection': '重试经营数据采集',
-  'List Product Data': '查看商品数据',
+  'Recapture Product Collection Item': '重新采集商品', 'Retry Product Collection Item': '重试商品采集',
+  'Create Product Collection Request': '创建商品采集任务', 'Cancel Product Collection Request': '取消商品采集任务',
+  'List Product Data': '查看商品数据', 'Read Product Data Collection Batch': '查看商品数据批次',
+  'List Product Data Collection Shops': '查看商品数据采集店铺', 'Read Product Data Collection': '查看商品数据采集',
+  'Collect Product Data Batch': '批量采集商品数据', 'Collect Product Data': '采集商品数据',
   'Read Basic Info': '查看商品基础信息', 'Read Selection Candidates': '查看选品候选',
   'Read Selection Capabilities': '查看选品能力', 'Read Selection Categories': '查看选品类目',
   'Read Selection Observation': '查看选品观察详情', 'Read Latest Basic Info': '查看最新基础信息',
@@ -133,8 +153,7 @@ function edit(token?: Token) {
   editingId.value = token?.token_id ?? null
   form.name = token?.name ?? ''
   form.teamIds = token?.team_ids?.slice() ?? []
-  const available = new Set(permissions.value.map((permission) => permission.id))
-  form.permissions = token?.permissions.filter((id) => available.has(id)) ?? []
+  form.permissions = token?.permissions.slice() ?? []
   form.expiresAt = token?.expires_at ? Date.parse(token.expires_at) : null
   form.enabled = token?.enabled ?? true
   showEdit.value = true

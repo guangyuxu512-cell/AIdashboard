@@ -269,7 +269,7 @@ class RpaLocalBridge:
             if session.local_shop_id != local_shop_id or session.platform_shop_id != platform_shop_id:
                 raise RpaBridgeError("RPA_SHOP_IDENTITY_MISMATCH")
             for cookie in session.cookies:
-                if cookie.domain.lstrip(".").lower() not in {"jinritemai.com", "fxg.jinritemai.com", "compass.jinritemai.com"}:
+                if cookie.domain.lstrip(".").lower() not in {"jinritemai.com", "fxg.jinritemai.com"}:
                     raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
                 if not cookie.path.startswith("/"):
                     raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
@@ -314,13 +314,6 @@ class RpaAutoBridge:
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         bridge = await asyncio.to_thread(self._bridge)
         return await bridge.read_session(local_shop_id, platform_shop_id)
-
-    async def session_revision(self, local_shop_id: str, platform_shop_id: str) -> str | None:
-        """Read the saved snapshot identity without decrypting or exporting it."""
-        revisions = await asyncio.to_thread(
-            _stored_session_revisions, str(self.data_directory / "shop-manager.db"),
-        )
-        return revisions.get((local_shop_id, platform_shop_id))
 
 
 class _BridgeProcess:

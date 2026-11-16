@@ -12,6 +12,10 @@ const selectionItems = [
     label: '候选池',
   },
   {
+    key: 'collection-tasks',
+    label: '采集任务',
+  },
+  {
     key: 'selection-strategy',
     label: '选品策略',
   },
@@ -25,11 +29,13 @@ const selectedItem = computed(
     selectionItems[0]!,
 )
 const panel = computed<
-  'candidate-pool' | 'selection-strategy'
+  'candidate-pool' | 'selection-strategy' | 'collection-tasks'
 >(() =>
-  selectedItem.value.key === 'selection-strategy'
-    ? 'selection-strategy'
-    : 'candidate-pool',
+  selectedItem.value.key === 'collection-tasks'
+    ? 'collection-tasks'
+    : selectedItem.value.key === 'selection-strategy'
+      ? 'selection-strategy'
+      : 'candidate-pool',
 )
 
 function selectTab(value: string) {

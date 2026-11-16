@@ -68,7 +68,7 @@ test('manages image assets with the compact management pattern', async ({
   expect(runtimeErrors).toEqual([])
 })
 
-test('hides standalone assets for a team member while retaining the asset route', async ({
+test('hides standalone assets for a team member while retaining route and AI materials', async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1366, height: 768 })
@@ -78,10 +78,10 @@ test('hides standalone assets for a team member while retaining the asset route'
   await page.getByLabel('内部登录账号').fill('operator')
   await page.getByLabel('密码').fill('safe-test-password')
   await page.getByRole('button', { name: '登录', exact: true }).click()
-  await expect(page).toHaveURL(/#\/devices$/)
+  await expect(page).toHaveURL(/#\/shops$/)
   const nav = page.getByRole('navigation', { name: '主导航', exact: true })
   await expect(nav.getByText('资料库', { exact: true })).toHaveCount(0)
-  await expect(nav.getByText('AI工作台', { exact: true })).toHaveCount(0)
+  await expect(nav.getByText('AI工作台', { exact: true })).toBeVisible()
   await page.screenshot({
     path: testInfo.outputPath('team-member-hidden-assets.png'),
     animations: 'disabled',
@@ -92,6 +92,14 @@ test('hides standalone assets for a team member while retaining the asset route'
   await page.reload()
   await expect(page.getByPlaceholder('搜索图片文件名')).toBeVisible()
   await expect(page.getByLabel('当前位置')).toContainText('资料库')
+  await page.goto('/#/ai-workbench/assets?visualMock=1')
+  await expect(
+    page
+      .getByRole('navigation', { name: 'AI 功能入口' })
+      .getByRole('button', { name: '素材库', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true')
+  await expect(page.getByRole('region', { name: '产品文件夹' })).toBeVisible()
+  await expect(nav.getByText('资料库', { exact: true })).toHaveCount(0)
 })
 
 test('hides standalone assets for the super account without changing authorization choices', async ({

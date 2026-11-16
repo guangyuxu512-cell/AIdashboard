@@ -129,7 +129,12 @@ describe('candidate details preserve the draft contract', () => {
     await flushPromises()
     expect(marker).toHaveBeenCalledExactlyOnceWith(row.merchant!.shopId)
     expect(wrapper.text()).toContain('已标记竞品店铺')
-    expect(wrapper.text()).not.toContain('采集资料')
+    expect(
+      wrapper
+        .findAllComponents(AppButton)
+        .find((button) => button.text() === '采集资料')!
+        .props('tone'),
+    ).toBe('primary')
     expect(
       wrapper
         .findAllComponents(AppButton)
@@ -169,6 +174,7 @@ describe('candidate details preserve the draft contract', () => {
       clicksRange: '0',
       soldUnitsRange: '0',
       videoCountRange: null,
+      collectionStatus: 'unknown' as const,
       sourceContext: {
         ...fixture.sourceContext,
         periodLabel: '',
@@ -399,7 +405,7 @@ describe('candidate detail current availability is independent of stored feedbac
       expect(feedback.text()).toContain(expected)
       expect(feedback.text()).toContain('当前环境暂停更新')
       const actions = wrapper.get('.candidate-detail__actions')
-      for (const label of ['更新基础信息']) {
+      for (const label of ['更新基础信息', '采集资料']) {
         const button = wrapper
           .findAllComponents(AppButton)
           .find((button) => button.text() === label)!

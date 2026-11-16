@@ -3,7 +3,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Header, Request, Response, status
-from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.integrations.douyin_signer.client import DouyinSignerClient
+from app.modules.sessions.application_api import bearer
 from app.modules.sessions.application_auth import ApplicationAuthenticationError, ApplicationAuthenticator, ApplicationPrincipal, ApplicationTransportError
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport
@@ -20,7 +21,6 @@ from app.modules.workers.service import WorkerPrincipal
 
 application_router = APIRouter(prefix="/internal/applications/v1", tags=["application-worker-precheck"])
 worker_router = APIRouter(prefix="/api/v1/worker", tags=["worker-precheck"])
-bearer = HTTPBearer(auto_error=False, scheme_name="ApplicationWorkerPrecheck")
 
 
 def _enabled(settings: Annotated[Settings, Depends(get_settings)]) -> None:
@@ -61,6 +61,14 @@ def submit_precheck(data: PrecheckSubmission, response: Response,
     return {"task_id": str(task.task_id), "status": task.status}
 
 
+@application_router.get("/worker-prechecks/shops", dependencies=[Depends(_enabled)])
+def get_worker_precheck_shops(response: Response,
+                              principal: Annotated[ApplicationPrincipal, Depends(require_precheck_application)],
+                              service: Annotated[WorkerPrecheckService, Depends(_service)]) -> list[dict]:
+    response.headers["Cache-Control"] = "no-store"
+    return service.available_shops(principal)
+
+
 @application_router.get("/worker-prechecks/{task_id}", dependencies=[Depends(_enabled)])
 def get_precheck(task_id: UUID, response: Response,
                  principal: Annotated[ApplicationPrincipal, Depends(require_precheck_application)],
@@ -71,7 +79,8 @@ def get_precheck(task_id: UUID, response: Response,
             "error_code": task.error_code, "error_message": task.error_message}
 
 
-@worker_router.put("/rpa-shop-inventory", status_code=status.HTTP_204_NO_CONTENT)
+@worker_router.put("/rpa-shop-inventory", status_code=status.HTTP_204_NO_CONTENT,
+                   dependencies=[Depends(_enabled)])
 def put_rpa_inventory(data: RpaInventoryReport,
                       principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
                       session: Annotated[Session, Depends(get_database_session)]) -> Response:
@@ -94,7 +103,8 @@ def get_delivery_context(task_id: UUID, response: Response,
                          auth: Annotated[ApplicationAuthenticator, Depends(_precheck_authenticator)],
                          protocol: Annotated[str | None, Header(alias="X-Precheck-Protocol")] = None) -> dict:
     response.headers["Cache-Control"] = "no-store"
-    return product_delivery_context(session, auth, principal.device_id, task_id, protocol_v2=protocol == "2")
+    return product_delivery_context(session, auth, principal.device_id, task_id,
+                                    protocol_v2=protocol in {"2", "3"}, protocol_v3=protocol == "3")
 
 
 @worker_router.post("/tasks/{task_id}/precheck-delivered", dependencies=[Depends(_enabled)])

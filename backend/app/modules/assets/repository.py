@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import ActorContext
 from app.modules.access.policy import DataScopePolicy
+from app.modules.ai_workbench.models import (
+    GenerationItem,
+    GenerationItemAsset,
+    MaterialGroupAsset,
+)
 from app.modules.assets.models import Asset
 from app.modules.tasks.models import Task, TaskAsset
 
@@ -147,7 +152,12 @@ class AssetRepository:
         )
 
     def is_referenced(self, asset_id: UUID) -> bool:
-        reference_columns = (TaskAsset.asset_id,)
+        reference_columns = (
+            TaskAsset.asset_id,
+            MaterialGroupAsset.asset_id,
+            GenerationItemAsset.asset_id,
+            GenerationItem.output_asset_id,
+        )
         return any(
             self.session.scalar(
                 select(column).where(column == asset_id).limit(1),

@@ -2,13 +2,36 @@
 
 Pydantic Schema / OpenAPI 为权威来源。
 
-执行层精简版本移除中控自有 AI 工作台、商品库、手机商品采集和对外店铺 Session 接口；相关历史契约仅供追溯。独立商品库继续通过 Worker 预检接口提交任务，设备使用本机店铺会话。资产、设备、任务、定时和选品底座保留；选品执行由部署开关控制。旧店铺记录暂用于既有定时任务兼容，不代表已改成 Worker 店铺映射。
+独立软件的受限店铺清单与 Session 契约见 `application-shop-session-v1.md`；该接口不依赖 Worker。
 
-## 商品数据历史只读查询
+## 商品数据手动采集与只读查询 V1
 
-`GET /api/v1/product-data` 按既有人员、店铺和团队权限查询已发布的历史商品指标；支持原有日期、筛选、排序与分页，读取不会请求平台。`coverage.collection_available` 恒为 false。
+实现契约见26号文档，Schema 为 `modules/product_data/schemas.py`。查询和采集资源均使用当前人员
+会话、shop 模块与实时 Shop 授权；多店提交是当前正式入口，原单店资源保留兼容：
 
-旧单店、多店采集及回执接口已移除，服务器不再启动商品数据采集执行器，也不再持有该业务的平台请求连接器。历史事实及其查询契约保留；未来如需采集，应由 Worker 在本机执行，不能恢复服务器直接请求。
+| 方法与路径 | 契约 |
+| --- | --- |
+| GET /api/v1/product-data | period=1d/7d/30d及精确start_date/end_date；可选shop_id、十进制product_id片段、product_name、sale_type/content_type固定1、ranges、page/page_size默认1/20、成对sort_field/sort_direction。ranges为最多4096字符的JSON数组，每项metric/min_value/max_value，数值用精确十进制字符串。全量SQL筛选/排序后分页，只读已发布代，不发平台请求。 |
+| GET /api/v1/product-data/collection-shops | 返回当前人员有权、启用、未删除且支持抖店商品采集的 Shop；只读数据库，不校验平台身份或触发采集。 |
+| POST /api/v1/product-data/collection-batches | Body 为 1–100 个互不重复 `shop_ids`、period、submission_key UUID，sale/content 固定 1。202 原子创建一个批次及每店一个 pending generation；全部权限和店铺状态先通过才写入。相同 Actor+key 只在 Team、店铺集合和完整口径一致时返回原批次。默认执行开关 false 时 503 且零写入。 |
+| GET /api/v1/product-data/collection-batches/{collection_batch_id} | 返回批次总数、pending/running/succeeded/failed 计数及稳定逐店回执。普通成员仅本人原 Team 且仍拥有批次内全部 Shop 授权时可读；只读进度，不新建或恢复任务。 |
+| POST /api/v1/product-data/collections | 旧单店兼容入口；内部包装为一店批次，仍返回该店 generation 回执，不直接在 HTTP 请求内执行平台 I/O。 |
+| GET /api/v1/product-data/collections/{generation_id} | 旧单店兼容回执；普通成员仅本人原 Team 且仍授权 Shop 可读，否则 404。 |
+
+列表沿Page并增加coverage(supported_shop_count/collected_shop_count/missing_shop_ids/collection_available/unit_unconfirmed_codes)。每行shop_product_id/generation_id/shop_id/shop_name/product_id/title/image_url/metrics/scope/retrieved_at；17个metrics含state、精确raw_value字符串或null、raw_unit、unit_verified。固定商品列表路径已核定金额unit3原值除100为元、比例unit4原值为分数（展示乘100%）、计数unit5不缩放；原值字段不改变单位。unit_verified表示当前尺度契约及unit匹配，不表示数据有值；当前17项契约unit_unconfirmed_codes为空，逐行未知/无效仍保持。五数量及四比例区间在SQL执行，比例边界是精确分数字符串，min含/max不含；17项有效指标可排序。未支持的分组、定制日期、sale/content及旧兼容指标不忽略或重绑。
+
+单店回执含 scope、status、stage、received_pages、可空 expected_total/received_total/
+raw_complete_rows/unit_complete_rows、pages_complete、failure_code、attempt_count、last_heartbeat_at、
+created_at/started_at/finished_at/published_at、lease_expired。批次状态是逐店 generation 的实时投影，
+不是第二套状态机。后台消费者只扫描已经显式提交的 durable pending／过期 running；没有每日计划、
+页面读取触发、无限重试或 TTL。过期 lease 可由一个新执行者恢复，attempt 递增，旧执行者的进度、
+Session 更新、失败和发布都必须被 lease fence 拒绝；失败不覆盖既有成功事实。
+
+单位核定不更改request_contract/metric_contract、scope/series哈希或既有快照。旧回执unit_complete_rows=0不回填，继续表示其采集当时的覆盖记录；新GET对同一原值的unit_verified可以为true，两者不矛盾。新采集只对17项state均available且单位匹配的行计显示完整。
+
+超出当前环境单次采集上限时，失败回执使用PRODUCT_DATA_COLLECTION_LIMIT_EXCEEDED和collection_coverage，不再借用PLATFORM_RESPONSE_INVALID。复用expected_total保留已解析且可表示为现有INTEGER的正整数总数；超出INTEGER范围时仍保存明确失败，总数保持null而不是0。总数与终态在同一live-lease CAS提交，不覆盖已有总数或记录被拒绝页为已接收，不发布部分事实。旧失败记录不回填或改码，同key仍只回读原回执；上限配置和后续执行授权独立。
+
+商品采集统一通过ShopSession公共就绪规则：未配置直接拒绝；captured或VALID但缺失/陈旧/未来/早于采集时间的验证记录，在准备阶段由HealthService至多执行一次权威身份验证；新鲜VALID复用缓存；invalid/refresh_required直接要求重新登录且不发身份或业务请求。expires_at只预警。身份验证后再绑定同一Shop、平台及Session版本，随后HTTP/Signer在DB事务外执行；不为每个业务页追加身份请求。响应后重新核权限、Shop身份、Session版本；真实Set-Cookie复用HealthService与版本CAS。只有明确AUTH_INVALID标记当前版本，网络、签名、解析及普通业务拒绝不改Session。PRODUCT_DATA_SESSION_VALIDATION_REQUIRED仅为历史失败回执兼容保留，当前消费者不再用它拦截陈旧/captured。执行失败只保存白名单码/固定阶段，不保存异常文本。后台崩溃不能宣称成功，租约到期可见。
 
 原则：
 
@@ -138,7 +161,7 @@ Pydantic Create、Update、Read Schema 是正式 API Contract。Shop Device Bind
 `shop_id / device_id / enabled` 与时间字段，不再包含 PRIMARY/BACKUP role。Frontend 的 GMV、
 Session/自动化状态、CPU/内存、Worker 版本、当前任务和展示文本不属于这些 Read Schema。
 
-Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上保留可空 `session_status` 兼容字段。0055 后中控不保存店铺 Session，该旧字段不代表 Worker 的本机登录状态；本机状态以设备的 `rpa-shop-inventory` 为准。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
+Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上增加可空 `session_status`：没有 ShopSession 时为 `null`，其余值直接来自正式 ShopSession Status，不由 Frontend 猜测。普通 List 与 Detail 默认排除 `deleted_at IS NOT NULL`；对已移除 Shop 的 GET、PATCH、Binding 与 Session 业务访问返回 `SHOP_NOT_FOUND`。`DELETE /api/v1/shops/{shop_id}` 返回 204，但数据库记录及认证事实仍保留。
 
 `GET /api/v1/shops` 的 `enabled / device_id / owner_user_id / platform / q` 与 `GET /api/v1/devices`
 的 `status / search` 都在服务端授权范围内先过滤，再执行稳定排序、分页和 `count`。Device `search`
@@ -156,9 +179,7 @@ Shop List 使用 `ShopListRead`，在 `ShopRead` 基础上保留可空 `session_
 
 ## Credential / Session Metadata Contract
 
-0055 起中控不再接收或保存店铺 Session；下列 Session 和入驻接口仅作历史契约记录，已不挂载。Credential 接口暂为旧定时兼容保留；当前设备店铺及会话状态由 Worker 上报，不以旧中控 Session 状态代替。
-
-阶段 3A 的历史接口：
+阶段 3A 增加：
 
 - `GET /api/v1/shops/{shop_id}/credential`：仅返回脱敏账号、配置/启用状态、验证码渠道和更新时间。
 - `POST /api/v1/credentials`、`PATCH /api/v1/credentials/{credential_id}`、`POST /api/v1/credentials/{credential_id}/disable`：写入与停用凭证。
@@ -441,8 +462,6 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 
 ## AI Workbench Backend Foundation V1 API
 
-此节为历史记录：AI Workbench 与 AI 模型接口已移除，不再提供以下路径；资产底座的上传、下载、删除和列表仍保留。
-
 统一前缀为 `/api/v1/ai-workbench`，全部为 Human API，并同时要求有效 `ActorContext` 与
 `ai-workbench` Module Access：
 
@@ -486,8 +505,6 @@ HTTP Upload 只负责接收输入并调用 Asset Service。Asset Service 使用 
 这两个接口只读数据库，不证明手动执行、成功空榜单或失败运行状态已实现；执行、类目API及Real适配仍为PARTIAL。
 
 ## Operating Dashboard Data V1 API
-
-当前状态：经营历史只读，`collection_available` 固定为 false；旧服务器执行器和日计划不启动，采集、重采与重试 POST 返回 `OPERATING_DASHBOARD_COLLECTION_UNAVAILABLE / 503`。下面对采集和重试流程的描述仅用于追溯旧版本，不代表当前能够执行；未来采集须由 Worker 完成。
 
 经营看板正式 Human API 前缀为 `/api/v1/operating-dashboard`，全部要求 Human Session、当前
 ActorContext 和既有 `shop` Module Access。该 Module Guard 只决定可进入看板；每个 Repository 查询和
@@ -584,13 +601,3 @@ Item 和 `session_recovery_version`。它只允许已有 DAILY/FAILED/retryable 
 普通更新、显式重采及 Item retry 共用冷却与同店同日失败链预算；成功结束失败链，新建 Job 不重置失败额度。
 完整范围普通更新不创建 Job/Item、不请求平台。昨日未到上海 09:00 时排队等待，更早历史日期不一起等待。
 首次手动范围不会写起算日，日计划仅昨日；接入、启用、启动和重新授权不创建历史补采，见后台调度规范。
-
-### Worker 本机店铺状态
-
-Worker 的 `rpa-shop-inventory` 可在已有店铺摘要中提供 `sessionStatus`（`valid` 或 `invalid`）与成对的
-`sessionCheckedAt`；只允许与本机已保存、身份及版本匹配的抖店快照关联。设备店铺清单按现有设备权限返回状态与
-观察时间，未确认或过期的成功结果不显示为当前有效。网络和平台未知错误不等同登录失效；商家身份验证成功不覆盖
-同一会话上已确认的类目预检失效，RPA 保存新的会话后重新判断。此状态上报不包含 Cookie 或 Session 内容。
-
-现行类目预检仍使用受限的服务器签名接口：Worker 为签名经 HTTPS 临时传递本店 Cookie，再由 Worker 本机请求平台；
-这与店铺状态上报是两条不同路径，不能表述为所有现有请求都不经过中控接触 Cookie。
