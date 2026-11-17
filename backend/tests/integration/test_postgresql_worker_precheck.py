@@ -45,7 +45,8 @@ def ready_precheck(postgresql_engine):
             "control_center_feat_worker_saved_session", "control_center_feat_worker_session_failover",
             "control_center_feat_worker_parallel_precheck", "control_center_feat_windows_execution_slim",
             "control_center_feat_worker_category_ops", "control_center_feat_worker_only_v1",
-            "control_center_feat_worker_only_v2", "control_center_feat_worker_schedule_resume_v1"}
+            "control_center_feat_worker_only_v2", "control_center_feat_worker_schedule_resume_v1",
+            "control_center_feat_worker_pure_signer_v1"}
     user_id, team_id, device_id, install_id = (uuid4() for _ in range(4))
     now = datetime.now(UTC)
     with Session(postgresql_engine) as session:
@@ -403,6 +404,30 @@ def test_signer_is_scoped_to_current_device_and_task(ready_precheck):
         with pytest.raises(PrecheckNotFound):
             sign_current_precheck(session, auth, signer, device_id, task.task_id, headers)
         assert len(signer.requests) == 1
+
+
+def test_parallel_pure_signing_keeps_each_authorized_session_separate(ready_precheck):
+    from urllib.parse import parse_qs, urlsplit
+    from app.integrations.douyin_signer.pure_client import PureDouyinSigner
+
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        task = WorkerPrecheckService(session, auth).submit(principal, submission())
+        task.status = "running"
+        task.lease_until = datetime.now(UTC) + timedelta(minutes=5)
+        session.commit()
+        task_id = task.task_id
+
+    def sign(index):
+        headers = PrecheckSignInput(cookie=f"session=synthetic; msToken=synthetic-{index}",
+                                    user_agent=f"synthetic-agent-{index}")
+        with Session(engine) as session:
+            result = sign_current_precheck(session, auth, PureDouyinSigner(), device_id, task_id, headers)
+        query = parse_qs(urlsplit(result["url"]).query)
+        return query.get("msToken") == [f"synthetic-{index}"] and bool(query.get("a_bogus"))
+
+    with ThreadPoolExecutor(max_workers=75) as pool:
+        assert all(pool.map(sign, range(75)))
 
 
 @pytest.mark.parametrize(("operation", "path", "method"), [
@@ -922,11 +947,12 @@ def test_migration_refuses_to_drop_nonempty_feature_records(ready_precheck, monk
             WorkerRpaShopInventory.device_id == device_id)) == device_id
 
 
+@pytest.mark.parametrize("pure", [False, True])
 @pytest.mark.parametrize(("delivery_mode", "operation"), [
     ("central", "schema"), ("product", "schema"), ("product", "tree"),
     ("product", "search"), ("product", "predict"),
 ])
-def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode, operation):
+def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_precheck, tmp_path, monkeypatch, delivery_mode, operation, pure):
     import asyncio
     import base64
     import hashlib
@@ -990,7 +1016,7 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
     application.include_router(task_router)
     application.include_router(worker_router)
     application.include_router(build_capability_package_router(artifacts))
-    settings = Settings(application_worker_precheck_enabled=True)
+    settings = Settings(application_worker_precheck_enabled=True, worker_precheck_pure_signer_enabled=pure)
     application.dependency_overrides[get_settings] = lambda: settings
     application.dependency_overrides[precheck_api.require_precheck_application] = lambda: principal
     application.dependency_overrides[precheck_api._precheck_authenticator] = lambda: auth
@@ -1013,10 +1039,24 @@ def test_synthetic_http_chain_uses_signed_capability_and_real_postgres(ready_pre
     platform_calls = []
     product_calls = []
     central_clients = []
+    signed_inputs = []
+    if pure:
+        from app.integrations.douyin_signer import pure_algorithm
+        generate = pure_algorithm.generate
+
+        def record_pure_input(query, user_agent, **kwargs):
+            signed_inputs.append((query, user_agent, kwargs["body"]))
+            return generate(query, user_agent, **kwargs)
+
+        monkeypatch.setattr(pure_algorithm, "generate", record_pure_input)
 
     def platform(request):
         platform_calls.append(request.url.path)
         assert request.headers["cookie"] == "session=synthetic-cookie"
+        assert request.url.params.get("a_bogus")
+        if pure:
+            unsigned_url = str(request.url.copy_remove_param("a_bogus"))
+            assert signed_inputs == [(unsigned_url.split("?", 1)[1], request.headers["user-agent"], request.content)]
         if operation == "schema":
             data = {"model": {"category_properties": {"items": [
                 {"id": "large", "options": [{"id": index, "name": "选项" * 8} for index in range(2500)]}]}}}

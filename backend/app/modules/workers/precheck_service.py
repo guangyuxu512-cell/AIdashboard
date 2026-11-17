@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.exceptions import AppError
 from app.integrations.douyin_signer.client import DouyinSignerClient
+from app.integrations.douyin_signer.pure_client import PureDouyinSigner
 from app.integrations.douyin_signer.exceptions import DouyinSignerError
 from app.integrations.douyin_signer.schemas import DouyinSignRequest
 from app.modules.devices.models import Device
@@ -539,7 +540,7 @@ def acknowledge_product_delivery(session: Session, device_id: UUID, task_id: UUI
 
 
 def sign_current_precheck(session: Session, authenticator: ApplicationAuthenticator,
-                          signer: DouyinSignerClient, device_id: UUID, task_id: UUID,
+                          signer: DouyinSignerClient | PureDouyinSigner, device_id: UUID, task_id: UUID,
                           data: PrecheckSignInput) -> dict[str, str]:
     """Sign only the frozen category task; no caller-selected host or path."""
     record = session.scalar(select(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.task_id == task_id))

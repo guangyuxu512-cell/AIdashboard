@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.integrations.douyin_signer.client import DouyinSignerClient
+from app.integrations.douyin_signer.pure_client import PureDouyinSigner
 from app.modules.sessions.application_auth import ApplicationAuthenticationError, ApplicationAuthenticator, ApplicationPrincipal, ApplicationTransportError
 from app.modules.workers.auth import get_worker_principal
 from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport
@@ -135,5 +136,6 @@ async def sign_precheck(task_id: UUID, request: Request, response: Response,
         raise PrecheckInvalidResult() from None
     response.headers["Cache-Control"] = "no-store"
     response.headers["Pragma"] = "no-cache"
-    return await run_in_threadpool(sign_current_precheck, session, auth, DouyinSignerClient(settings=settings),
+    signer = PureDouyinSigner() if settings.worker_precheck_pure_signer_enabled else DouyinSignerClient(settings=settings)
+    return await run_in_threadpool(sign_current_precheck, session, auth, signer,
                                    principal.device_id, task_id, data)
