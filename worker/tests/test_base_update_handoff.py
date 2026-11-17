@@ -78,6 +78,25 @@ def test_failed_trial_restores_previous_worker_and_blocks_repeated_bad_release(t
     assert updater.state()["rejected_digest"] == release.digest and not (directory / "accepted").exists()
 
 
+def test_trial_that_dies_during_final_validation_is_rolled_back(tmp_path, monkeypatch):
+    updater, release, nonce, directory = staged(tmp_path)
+    old = tmp_path / "old-worker.exe"
+    calls = []
+    trial = SimpleNamespace(pid=987, poll=lambda: None)
+    monkeypatch.setattr("app.base_update_handoff._open_parent", lambda *_: (old, 123))
+    monkeypatch.setattr("app.base_update_handoff._wait_until_exit", lambda *_: True)
+    monkeypatch.setattr("app.base_update_handoff._launch_core", lambda executable, **kw: (calls.append((executable, kw)) or trial))
+    original_accept = updater.accept
+    def accept_then_exit(candidate):
+        original_accept(candidate)
+        trial.poll = lambda: 1
+    monkeypatch.setattr(updater, "accept", accept_then_exit)
+    write_json_atomic(directory / "trial.ready", {"nonce": nonce, "pid": trial.pid, "version": release.version})
+    assert not apply_handoff(updater, nonce)
+    assert calls == [(release.executable, {"trial": nonce}), (old, {"disable_update": False})]
+    assert updater.state()["rejected_digest"] == release.digest and not (directory / "accepted").exists()
+
+
 def test_helper_never_stops_or_replaces_a_parent_that_has_not_exited(tmp_path, monkeypatch):
     updater, _, nonce, _ = staged(tmp_path)
     monkeypatch.setattr("app.base_update_handoff._open_parent", lambda *_: (tmp_path / "old.exe", 123))

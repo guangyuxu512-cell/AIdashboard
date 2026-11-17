@@ -157,6 +157,8 @@ def apply_handoff(updater: BaseUpdater, nonce: str) -> bool:
                 ready = json.loads((directory / "trial.ready").read_text(encoding="utf-8"))
                 if ready == {"nonce": nonce, "pid": trial.pid, "version": release.version}:
                     updater.accept(release)
+                    if trial.poll() is not None:
+                        break
                     (directory / "accepted").touch()
                     accepted = True
                     return True
@@ -197,7 +199,9 @@ async def confirm_trial(updater: BaseUpdater, worker, nonce: str) -> bool:
         await asyncio.sleep(2)
     else:
         return False
-    deadline = asyncio.get_running_loop().time() + 30
+    # Full integrity verification of a Windows package can take longer on a
+    # busy machine; never let the trial claim work while it is still checked.
+    deadline = asyncio.get_running_loop().time() + 120
     while asyncio.get_running_loop().time() < deadline:
         if (directory / "accepted").is_file():
             return True
