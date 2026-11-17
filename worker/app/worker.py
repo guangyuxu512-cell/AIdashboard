@@ -47,6 +47,7 @@ class Worker:
         image_preparer: TaskImagePreparer | None = None,
         capability_runtime = None,
         rpa_bridge = None,
+        base_updater = None,
     ) -> None:
         self.settings = settings
         self.client = client
@@ -58,6 +59,9 @@ class Worker:
         self.image_preparer = image_preparer
         self.capability_runtime = capability_runtime
         self.rpa_bridge = rpa_bridge
+        self.base_updater = base_updater
+        self._next_base_check = 0.0
+        self._base_update_pending = False
         self.shop_session_health = ShopSessionHealth(rpa_bridge) if rpa_bridge is not None else None
         self._shop_health_probe: asyncio.Task[None] | None = None
         self._last_rpa_inventory = None
@@ -105,9 +109,17 @@ class Worker:
                     if not prechecks:
                         # Capability files must not change under active tasks.
                         await self._refresh_capabilities_if_due()
+                        if self._base_update_pending:
+                            self._next_base_check = 0.0
+                        if await self._update_base_if_idle():
+                            stop_event.set()
+                            break
+                        self._base_update_pending = False
+                    else:
+                        await self._check_base_update_for_drain()
                     if not self.executor.can_claim():
                         task = None
-                    elif prechecks and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
+                    elif prechecks and not self._base_update_pending and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
                         task = await self.client.claim_precheck()
                     elif prechecks:
                         task = None
@@ -432,6 +444,50 @@ class Worker:
                 if previous != self.capability_runtime.descriptors():
                     self._invalidate_skill_snapshot()
             logger.warning("Capability update unavailable; retaining verified release when possible")
+
+    async def _update_base_if_idle(self) -> bool:
+        if self.base_updater is None or self._active_task_ids:
+            return False
+        now = asyncio.get_running_loop().time()
+        if now < self._next_base_check:
+            return False
+        self._next_base_check = now + self.settings.base_update_interval_seconds
+        try:
+            # Preserve task events as well as durable results before stopping.
+            if self.event_reporter is not None and len(self.event_reporter.buffer):
+                if not await self.event_reporter.flush_once() or len(self.event_reporter.buffer):
+                    return False
+            release = await self.base_updater.stage_when_idle(self.client, idle=True)
+            if release is None:
+                return False
+            from app.base_update_handoff import start_handoff
+            return await asyncio.to_thread(start_handoff, self.base_updater, release)
+        except asyncio.CancelledError:
+            raise
+        except WorkerApiError as error:
+            if error.status_code != 404:
+                logger.warning("Worker base update unavailable (HTTP %s); keeping current version", error.status_code)
+        except Exception as error:
+            from app.base_updates import BaseUpdateError
+            reason = str(error) if isinstance(error, BaseUpdateError) else type(error).__name__
+            logger.warning("Worker base update unavailable (%s); keeping current version", reason)
+        return False
+
+    async def _check_base_update_for_drain(self) -> None:
+        """Stop taking new work when an authenticated release is available."""
+        if self.base_updater is None or self._base_update_pending:
+            return
+        now = asyncio.get_running_loop().time()
+        if now < self._next_base_check:
+            return
+        self._next_base_check = now + self.settings.base_update_interval_seconds
+        try:
+            self._base_update_pending = await self.base_updater.update_available(self.client)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            # A network outage must not stop ordinary work.
+            self._base_update_pending = False
 
     async def _execute_task(self, task: WorkerTask) -> None:
         await self._send_immediate_heartbeat()

@@ -114,6 +114,30 @@ function Read-WithDefault([string]$Prompt, [string]$CurrentValue) {
     return $value
 }
 
+function Test-VerifiedActiveWorker([string]$Candidate) {
+    try {
+        $check = Start-Process -FilePath $workerExecutable -ArgumentList @('--check-active-worker', ('"{0}"' -f $Candidate)) -WindowStyle Hidden -Wait -PassThru
+        return $check.ExitCode -eq 0
+    }
+    catch { return $false }
+}
+
+function Resolve-WorkerExecutable {
+    try {
+        $releaseState = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $runtimeRoot 'base-releases\state.json') | ConvertFrom-Json
+        $digest = [string]$releaseState.active_digest
+        $sequence = [string]$releaseState.accepted_sequence
+        if ($digest -match '^[a-f0-9]{64}$' -and $sequence -match '^[1-9][0-9]*$') {
+            $candidate = Join-Path $runtimeRoot ('base-releases\releases\' + $digest.Substring(0,16) + '-' + $sequence + '\app\ecommerce-worker.exe')
+            if ((Test-Path -LiteralPath $candidate -PathType Leaf) -and (Test-VerifiedActiveWorker $candidate)) {
+                return $candidate
+            }
+        }
+    }
+    catch { }
+    return $workerExecutable
+}
+
 function Get-RunningWorkerProcess {
     if (-not (Test-Path -LiteralPath $statePath)) {
         return $null
@@ -123,11 +147,13 @@ function Get-RunningWorkerProcess {
         $process = Get-Process -Id ([int]$state.pid) -ErrorAction Stop
         $expectedStart = ([datetime]$state.started_at_utc).ToUniversalTime()
         $actualStart = $process.StartTime.ToUniversalTime()
+        $recordedPath = [System.IO.Path]::GetFullPath([string]$state.executable_path)
         $expectedPath = [System.IO.Path]::GetFullPath($workerExecutable)
         $actualPath = [System.IO.Path]::GetFullPath($process.Path)
         if (
             [math]::Abs(($expectedStart - $actualStart).TotalSeconds) -lt 1 -and
-            $expectedPath.Equals($actualPath, [StringComparison]::OrdinalIgnoreCase)
+            $recordedPath.Equals($actualPath, [StringComparison]::OrdinalIgnoreCase) -and
+            ($expectedPath.Equals($actualPath, [StringComparison]::OrdinalIgnoreCase) -or (Test-VerifiedActiveWorker $actualPath))
         ) {
             return $process
         }
@@ -233,7 +259,8 @@ function Start-Worker {
         Show-Status
         return
     }
-    if (-not (Test-Path -LiteralPath $workerExecutable -PathType Leaf)) {
+    $startExecutable = Resolve-WorkerExecutable
+    if (-not (Test-Path -LiteralPath $startExecutable -PathType Leaf)) {
         throw 'Packaged worker executable is missing.'
     }
 
@@ -261,9 +288,9 @@ function Start-Worker {
     }
     try {
         $process = Start-Process `
-            -FilePath $workerExecutable `
+            -FilePath $startExecutable `
             -ArgumentList '--worker-core' `
-            -WorkingDirectory (Split-Path -Parent $workerExecutable) `
+            -WorkingDirectory (Split-Path -Parent $startExecutable) `
             -WindowStyle Hidden `
             -RedirectStandardOutput (Join-Path $logRoot 'bootstrap.out.log') `
             -RedirectStandardError (Join-Path $logRoot 'bootstrap.err.log') `
@@ -282,7 +309,7 @@ function Start-Worker {
     $state = [ordered]@{
         pid = $process.Id
         started_at_utc = $process.StartTime.ToUniversalTime().ToString('o')
-        executable_path = [System.IO.Path]::GetFullPath($workerExecutable)
+        executable_path = [System.IO.Path]::GetFullPath($startExecutable)
         device_id = [string]$config.device_id
     }
     [System.IO.File]::WriteAllText(
