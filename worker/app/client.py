@@ -1,7 +1,9 @@
 from datetime import datetime
 import hashlib
 import json
+import os
 import re
+from pathlib import Path
 from time import monotonic
 from typing import Any
 from uuid import UUID
@@ -137,6 +139,44 @@ class WorkerApiClient:
                     raise WorkerApiError("CAPABILITY_PACKAGE_TOO_LARGE", "Capability package exceeds limit", 0)
                 payload.extend(chunk)
         return bytes(payload)
+
+    async def fetch_base_release_manifest(self) -> dict[str, str]:
+        content = bytearray()
+        async with self.client.stream("GET", "/api/v1/worker/base-releases/manifest", follow_redirects=False) as response:
+            if not response.is_success:
+                raise WorkerApiError("BASE_RELEASE_UNAVAILABLE", "Worker release unavailable", response.status_code)
+            async for chunk in response.aiter_bytes():
+                if len(content) + len(chunk) > 128 * 1024:
+                    raise WorkerApiError("BASE_RELEASE_INVALID", "Worker release manifest exceeds limit", 0)
+                content.extend(chunk)
+        value = json.loads(content)
+        if not isinstance(value, dict):
+            raise WorkerApiError("BASE_RELEASE_INVALID", "Worker release manifest is invalid", 0)
+        return value
+
+    async def download_base_release(self, digest: str, *, size: int, target: Path) -> None:
+        if (len(digest) != 64 or any(ch not in "0123456789abcdef" for ch in digest)
+                or not 0 < size <= 256 * 1024 * 1024):
+            raise WorkerApiError("BASE_RELEASE_INVALID", "Worker release metadata is invalid", 0)
+        actual, count = hashlib.sha256(), 0
+        try:
+            with target.open("xb") as output:
+                async with self.client.stream("GET", f"/api/v1/worker/base-releases/blobs/{digest}", follow_redirects=False) as response:
+                    if not response.is_success:
+                        raise WorkerApiError("BASE_RELEASE_UNAVAILABLE", "Worker release unavailable", response.status_code)
+                    async for chunk in response.aiter_bytes():
+                        count += len(chunk)
+                        if count > size:
+                            raise WorkerApiError("BASE_RELEASE_INVALID", "Worker release size is invalid", 0)
+                        actual.update(chunk)
+                        output.write(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+            if count != size or actual.hexdigest() != digest:
+                raise WorkerApiError("BASE_RELEASE_INVALID", "Worker release checksum is invalid", 0)
+        except BaseException:
+            target.unlink(missing_ok=True)
+            raise
 
     async def report_rpa_inventory(self, payload: dict[str, Any]) -> None:
         shops = payload.get("shops")

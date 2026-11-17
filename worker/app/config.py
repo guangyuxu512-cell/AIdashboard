@@ -33,6 +33,8 @@ class WorkerSettings(BaseSettings):
     runtime_root: Path = Path("runtime")
     capability_public_key_b64: str | None = None
     capability_update_interval_seconds: int = Field(default=300, ge=30, le=86400)
+    base_update_interval_seconds: int = Field(default=300, ge=30, le=86400)
+    base_auto_update_enabled: bool = True
     log_directory: Path = Path("logs")
     log_max_bytes: int = Field(
         default=5 * 1024 * 1024,

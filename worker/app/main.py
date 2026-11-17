@@ -1,4 +1,5 @@
 import asyncio
+import os
 import base64
 import logging
 import signal
@@ -30,6 +31,9 @@ from app.skills.registry import SkillRuntime
 from app.worker import Worker
 from app.task_images import TaskImagePreparer
 from app.rpa_session_bridge import RpaAutoBridge, default_rpa_data_directory
+from app.base_updates import BaseUpdater
+from app.base_update_handoff import TRIAL_ENV, confirm_trial
+from app.version import WORKER_VERSION
 
 
 async def run_worker(settings: WorkerSettings) -> None:
@@ -43,6 +47,10 @@ async def run_worker(settings: WorkerSettings) -> None:
     client = WorkerApiClient(settings)
     rpa_bridge = None
     capability_runtime = None
+    base_updater = None
+    base_public_key = packaged_capability_public_key()
+    if settings.base_auto_update_enabled and base_public_key is not None:
+        base_updater = BaseUpdater(settings.runtime_root.resolve() / "base-releases", base_public_key, WORKER_VERSION)
     if settings.capability_public_key_b64 is not None or packaged_capability_public_key() is not None:
         try:
             public_key = packaged_capability_public_key() or base64.b64decode(settings.capability_public_key_b64, validate=True)
@@ -97,7 +105,12 @@ async def run_worker(settings: WorkerSettings) -> None:
         image_preparer=TaskImagePreparer(settings.images_dir, client),
         capability_runtime=capability_runtime,
         rpa_bridge=rpa_bridge,
+        base_updater=base_updater,
     )
+    trial = os.environ.get(TRIAL_ENV)
+    if trial and (base_updater is None or not await confirm_trial(base_updater, worker, trial)):
+        await client.close()
+        return
     await worker.run(stop_event)
 
 
