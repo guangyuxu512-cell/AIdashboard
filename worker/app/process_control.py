@@ -82,7 +82,7 @@ class WorkerProcessController:
             ) as stderr,
         ):
             subprocess.Popen(
-                build_worker_core_command(),
+                build_worker_core_command(self.data_root),
                 cwd=str(_worker_working_directory()),
                 stdin=subprocess.DEVNULL,
                 stdout=stdout,
@@ -119,10 +119,41 @@ class WorkerProcessController:
         return False
 
 
-def build_worker_core_command() -> list[str]:
+def build_worker_core_command(data_root: Path | None = None) -> list[str]:
     if getattr(sys, "frozen", False):
+        # The status window may belong to the original installed version.
+        # Resolve only a locally reverified signed release, never a raw path.
+        try:
+            from app.base_updates import BaseUpdater
+            from app.release_trust import packaged_capability_public_key
+            from app.version import WORKER_VERSION
+            key = packaged_capability_public_key()
+            if key is not None:
+                updater = BaseUpdater((data_root or get_worker_data_root()) / "runtime" / "base-releases", key, WORKER_VERSION)
+                active = updater.active_release()
+                if active is not None:
+                    return [str(active.executable), "--worker-core"]
+        except Exception:
+            pass
         return [sys.executable, "--worker-core"]
     return [sys.executable, "-m", "app", "--worker-core"]
+
+
+def redirect_to_active_core() -> bool:
+    """Follow the verified release even when an older shortcut starts this binary."""
+    if (not getattr(sys, "frozen", False) or os.environ.get("WORKER_BASE_UPDATE_TRIAL")
+            or os.environ.get("WORKER_BASE_AUTO_UPDATE_ENABLED", "").lower() in {"0", "false", "no"}):
+        return False
+    command = build_worker_core_command()
+    if Path(command[0]).resolve() == Path(sys.executable).resolve():
+        return False
+    try:
+        subprocess.Popen(command, cwd=str(Path(command[0]).parent), stdin=subprocess.DEVNULL,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         creationflags=windows_no_window_creation_flags(), close_fds=True)
+        return True
+    except OSError:
+        return False
 
 
 def read_worker_process_state(path: Path) -> WorkerProcessInfo | None:
