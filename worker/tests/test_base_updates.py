@@ -11,6 +11,8 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 import pytest
 
 from app.base_updates import BaseUpdateError, BaseUpdater, verify_release
+from app.local_config import WorkerConfigService
+from uuid import uuid4
 
 
 def package(*, version="0.5.9", extra=(), public=None):
@@ -81,6 +83,24 @@ def test_existing_short_directory_must_match_full_signed_release(context):
     with pytest.raises(BaseUpdateError):
         asyncio.run(updater.stage_when_idle(source, idle=True))
     assert (collision / "sentinel").read_text() == "keep"
+
+
+def test_previous_worker_device_config_is_read_without_discarding_extra_fields(tmp_path):
+    class Protector:
+        def unprotect(self, value):
+            assert value == "synthetic-protected-value"
+            return "synthetic-device-identity"
+    device_id = uuid4()
+    path = tmp_path / "config.json"
+    old = {"server_url": "https://center.example.test", "device_id": str(device_id),
+           "device_token_protected": "synthetic-protected-value", "images_dir": str(tmp_path / "images"),
+           "params_json_path": str(tmp_path / "params.json"), "account_json_path": str(tmp_path / "account.json"),
+           "yingdao_install_root": "legacy-value"}
+    path.write_text(json.dumps(old), encoding="utf-8")
+    before = path.read_bytes()
+    loaded = WorkerConfigService(tmp_path, protector=Protector()).load()
+    assert loaded.device_id == device_id and loaded.device_token.get_secret_value() == "synthetic-device-identity"
+    assert path.read_bytes() == before
 
 
 def test_bad_signature_hash_version_and_rejected_release_do_not_replace_current(context):
