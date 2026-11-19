@@ -165,11 +165,11 @@ for origin in "$http_origin" "$https_origin"; do
     done
     test "$ready" = true
 
-    # The independent manager and API contract must not fall through to the PC SPA.
-    curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/token-manager/" -o "$test_root/token-manager.html"
-    grep -q '中控 Token 管理' "$test_root/token-manager.html"
+    # The former manager redirects to the independent unified page.
+    test "$(curl "${curl_options[@]}" "${trust[@]}" -D "$test_root/token-manager.headers" -o /dev/null -w '%{http_code}' "$origin/token-manager/")" = 302
+    tr -d '\r' < "$test_root/token-manager.headers" | grep -Fxi 'Location: /token-admin/#centre'
     test "$(curl "${curl_options[@]}" "${trust[@]}" --fail "$origin/openapi.json")" = '{"openapi": "transport-fixture"}'
-    test "$(curl "${curl_options[@]}" "${trust[@]}" -o /dev/null -w '%{http_code}' "$origin/token-manager/not-present")" = 404
+    test "$(curl "${curl_options[@]}" "${trust[@]}" -o /dev/null -w '%{http_code}' "$origin/token-manager/not-present")" = 302
 
     # Small, just above the old 1 MiB boundary, a reported failing size, and a full
     # 10 MiB file. The multipart envelope must also arrive intact at the receiver.
@@ -342,4 +342,4 @@ printf 'PASS: exact internal mobile v1 prefix returns backend JSON; URI/body/aut
 printf 'PASS: application Session path reaches the backend only through host TLS and overwrites a spoofed proto (transport fixture only)\n'
 printf 'PASS: ProductDataCenter image GET/HEAD uses the exact public HTTPS prefix; writes are denied and adjacent RPA paths stay frontend\n'
 printf 'PASS: authenticated precheck signing streams at both proxies, preserves path/headers and never logs request bodies\n'
-printf 'PASS: standalone Token manager and OpenAPI reach their intended frontend and backend through both proxies\n'
+printf 'PASS: unified Token manager redirect and OpenAPI route through both proxies\n'

@@ -50,13 +50,12 @@ server {
 
     location = /token-manager {
         absolute_redirect off;
-        return 308 /token-manager/;
+        return 302 "/token-admin/#centre";
     }
 
     location ^~ /token-manager/ {
-        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        try_files $uri $uri/ =404;
+        absolute_redirect off;
+        return 302 "/token-admin/#centre";
     }
 
     location = /token-admin {
@@ -69,13 +68,14 @@ server {
     # Resolve lazily so a temporary DNS outage cannot prevent Nginx starting.
     location ^~ /token-admin/_product/ {
         if ($uri !~ "^/token-admin/_product/api/v1/(tokens(/permissions|/[0-9a-f]{32}(/reveal)?)?|product-groups)$") { return 404; }
+        set $token_admin_product_host pdc.mysiyuai.top;
         rewrite ^/token-admin/_product(/api/v1/.*)$ $1 break;
         resolver 127.0.0.53 valid=300s ipv6=off;
-        set $token_admin_product_host pdc.mysiyuai.top;
         proxy_pass https://$token_admin_product_host$uri$is_args$args;
         proxy_ssl_server_name on;
         proxy_ssl_name pdc.mysiyuai.top;
         proxy_ssl_verify on;
+        proxy_ssl_verify_depth 5;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_set_header Host pdc.mysiyuai.top;
         proxy_set_header Authorization $http_authorization;
@@ -88,13 +88,8 @@ server {
     location ^~ /token-admin/_collector/ {
         if ($uri !~ "^/token-admin/_collector/collector-api/v1/admin/browsers(/[0-9a-f]{32}/submit-token(/reveal|/permissions)?)?$") { return 404; }
         rewrite ^/token-admin/_collector(/collector-api/.*)$ $1 break;
-        resolver 127.0.0.53 valid=300s ipv6=off;
-        set $token_admin_collector_host pdc.mysiyuai.top;
-        proxy_pass https://$token_admin_collector_host$uri$is_args$args;
-        proxy_ssl_server_name on;
-        proxy_ssl_name pdc.mysiyuai.top;
-        proxy_ssl_verify on;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        # The collector relay is bound to loopback on the same production host.
+        proxy_pass http://127.0.0.1:18327$uri$is_args$args;
         proxy_set_header Host pdc.mysiyuai.top;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Cookie "";
