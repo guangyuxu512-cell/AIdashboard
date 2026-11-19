@@ -214,11 +214,12 @@ def test_existing_worker_migration_guard_still_rejects_data(token_environment, m
         # The test uses this Feature's disposable DB, never the old Feature DB.
         monkeypatch.setattr(migration, "FEATURE_DATABASE", engine.url.database)
         with engine.connect() as connection:
+            original_revision = connection.scalar(text("select version_num from alembic_version"))
             with Operations.context(MigrationContext.configure(connection)):
                 with pytest.raises(RuntimeError, match="retain schema and audit data"):
                     migration.downgrade()
             connection.rollback()
-            assert connection.scalar(text("select version_num from alembic_version")) == "20261116_0055"
+            assert connection.scalar(text("select version_num from alembic_version")) == original_revision
     finally:
         with Session(engine) as session:
             session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == device_id))
@@ -236,8 +237,9 @@ def test_token_migration_will_not_discard_existing_credentials(token_environment
     migration = importlib.import_module("migrations.versions.20261113_0051_api_tokens")
     monkeypatch.setattr(migration, "FEATURE_DATABASE", engine.url.database)
     with engine.connect() as connection:
+        original_revision = connection.scalar(text("select version_num from alembic_version"))
         with Operations.context(MigrationContext.configure(connection)):
             with pytest.raises(RuntimeError, match="retain schema and audit records"):
                 migration.downgrade()
         connection.rollback()
-        assert connection.scalar(text("select version_num from alembic_version")) == "20261116_0055"
+        assert connection.scalar(text("select version_num from alembic_version")) == original_revision
