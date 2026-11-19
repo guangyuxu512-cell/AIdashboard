@@ -56,7 +56,7 @@ def token_environment(postgresql_engine):
         session.commit()
 
     app = create_app()
-    settings = Settings(runtime_environment="test", encryption_key=Fernet.generate_key().decode("ascii"))
+    settings = Settings(runtime_environment="test", encryption_key=Fernet.generate_key().decode("ascii"), api_token_recovery_key="test-only-recovery-key-0123456789abcdef")
     app.dependency_overrides[get_settings] = lambda: settings
     app.dependency_overrides[get_secret_cipher] = lambda: SecretCipher(settings.encryption_key)
 
@@ -73,6 +73,7 @@ def token_environment(postgresql_engine):
     client.close()
 
     with Session(postgresql_engine) as session:
+        session.execute(delete(AuditLog).where(AuditLog.actor_user_id == user_id))
         session.execute(delete(ApiTokenEvent).where(ApiTokenEvent.actor_user_id == user_id))
         session.execute(delete(ApiToken).where(ApiToken.owner_user_id == user_id))
         session.execute(delete(HumanSession).where(HumanSession.user_id == user_id))
@@ -143,6 +144,25 @@ def test_unknown_permission_and_global_operations_cannot_be_team_scoped(token_en
     assert client.post("/api/v1/api-tokens", json={"name": "bad", "permissions": ["GET /invented"]}).status_code == 422
     assert client.post("/api/v1/api-tokens", json={"name": "bad", "permissions": ["POST /api/v1/devices"], "team_ids": [str(team_a)]}).status_code == 422
     assert client.post("/api/v1/api-tokens", json={"name": "expired", "permissions": ["GET /api/v1/tasks"], "expires_at": "2020-01-01T00:00:00Z"}).status_code == 422
+
+
+def test_recoverable_token_can_be_revealed_only_by_human_administrator(token_environment):
+    client, engine, (user_id, team_a, _, _, _) = token_environment
+    old = client.post("/api/v1/api-tokens", json={"name": "old", "permissions": ["GET /api/v1/tasks"], "team_ids": [str(team_a)]}).json()
+    assert client.post(f"/api/v1/api-tokens/{old['token']['token_id']}/reveal").status_code == 409
+    new = client.post("/api/v1/api-tokens", json={"name": "new", "permissions": ["GET /api/v1/tasks"], "team_ids": [str(team_a)], "recoverable": True}).json()
+    token_id, value = new["token"]["token_id"], new["value"]
+    for _ in range(2):
+        result = client.post(f"/api/v1/api-tokens/{token_id}/reveal")
+        assert result.status_code == 200 and result.json()["value"] == value
+        assert result.headers["cache-control"] == "no-store"
+    assert value not in client.get("/api/v1/api-tokens").text
+    assert client.post(f"/api/v1/api-tokens/{token_id}/reveal", headers={"Authorization": f"Bearer {value}"}).status_code == 403
+    with Session(engine) as session:
+        assert session.get(ApiToken, UUID(token_id)).token_hash != value
+        assert session.scalar(select(func.count()).select_from(AuditLog).where(AuditLog.actor_user_id == user_id, AuditLog.action == "api_token.reveal", AuditLog.target_id == UUID(token_id))) == 2
+    assert client.delete(f"/api/v1/api-tokens/{token_id}").status_code == 204
+    assert client.post(f"/api/v1/api-tokens/{token_id}/reveal").status_code == 404
 
 
 def test_team_token_device_reads_respect_existing_device_grants(token_environment):

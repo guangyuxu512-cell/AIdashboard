@@ -23,3 +23,15 @@ class ApiTokenNotFoundError(AppError):
     code = "API_TOKEN_NOT_FOUND"
     message = "Token 不存在"
     status_code = 404
+
+
+class ApiTokenRecoveryUnavailableError(AppError):
+    code = "API_TOKEN_RECOVERY_UNAVAILABLE"
+    message = "Token 查看密钥尚未配置"
+    status_code = 503
+
+
+class ApiTokenNotRecoverableError(AppError):
+    code = "API_TOKEN_NOT_RECOVERABLE"
+    message = "该 Token 无法从当前服务恢复，请使用原有保存位置"
+    status_code = 409

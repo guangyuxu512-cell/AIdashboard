@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import secrets
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -10,10 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.modules.access.contracts import HumanPrincipal
 from app.modules.access.repository import TeamRepository
-from app.modules.api_tokens.exceptions import ApiTokenInputError, ApiTokenInvalidError, ApiTokenNotFoundError
+from app.modules.api_tokens.exceptions import (ApiTokenInputError, ApiTokenInvalidError,
+    ApiTokenNotFoundError, ApiTokenNotRecoverableError, ApiTokenRecoveryUnavailableError)
 from app.modules.api_tokens.models import ApiToken, ApiTokenEvent
 from app.modules.api_tokens.repository import ApiTokenRepository
+from app.modules.audit.models import AuditLog
 from app.modules.users.repository import UserRepository
+from app.shared.identifiers import generate_id
 
 TOKEN_PREFIX = "ccai_"
 
@@ -59,20 +64,42 @@ class ApiTokenService:
             action=action, token_id=record.token_id, name=record.name,
         ))
 
-    def issue(self, *, actor, request_id: str, name: str, permissions: list[str], team_ids: list[UUID] | None, enabled: bool, expires_at: datetime | None, catalog: list[dict]) -> IssuedToken:
+    @staticmethod
+    def _recoverable_value(token_id: UUID, recovery_key: str | None) -> str:
+        if recovery_key is None or len(recovery_key.encode("utf-8")) < 32:
+            raise ApiTokenRecoveryUnavailableError()
+        digest = hmac.digest(recovery_key.encode("utf-8"), b"center-api-token-v1\0" + token_id.bytes, "sha256")
+        return TOKEN_PREFIX + base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+
+    def issue(self, *, actor, request_id: str, name: str, permissions: list[str], team_ids: list[UUID] | None, enabled: bool, expires_at: datetime | None, catalog: list[dict], recoverable: bool = False, recovery_key: str | None = None) -> IssuedToken:
         name = name.strip()
         if not name or len(name) > 100:
             raise ApiTokenInputError()
         permissions, team_values = self._validate(permissions, team_ids, expires_at, catalog)
         self._validate_teams(team_ids)
-        raw = TOKEN_PREFIX + secrets.token_urlsafe(48)
-        record = ApiToken(owner_user_id=actor.user_id, name=name, token_hash=self._hash(raw), permissions=permissions, team_ids=team_values, enabled=enabled, expires_at=expires_at)
+        token_id = generate_id()
+        raw = self._recoverable_value(token_id, recovery_key) if recoverable else TOKEN_PREFIX + secrets.token_urlsafe(48)
+        record = ApiToken(token_id=token_id, owner_user_id=actor.user_id, name=name, token_hash=self._hash(raw), permissions=permissions, team_ids=team_values, enabled=enabled, expires_at=expires_at)
         self.repository.add(record)
         self.session.flush()
         self._audit(actor, request_id, "create", record)
         self.session.commit()
         self.session.refresh(record)
         return IssuedToken(record, raw)
+
+    def reveal(self, token_id: UUID, *, actor, request_id: str, recovery_key: str | None) -> str:
+        record = self.repository.get(token_id)
+        if record is None or record.revoked_at is not None:
+            raise ApiTokenNotFoundError()
+        raw = self._recoverable_value(token_id, recovery_key)
+        if not hmac.compare_digest(self._hash(raw), record.token_hash):
+            raise ApiTokenNotRecoverableError()
+        # The existing token-event table only allows create/update/revoke.
+        # Record disclosure in the existing administrative audit log instead.
+        self.session.add(AuditLog(request_id=request_id[:128], actor_user_id=actor.user_id,
+            action="api_token.reveal", target_type="api_token", target_id=token_id))
+        self.session.commit()
+        return raw
 
     def list(self) -> list[ApiToken]:
         return self.repository.list()
