@@ -20,6 +20,8 @@ RUN pnpm --filter @control-center/frontend build
 
 FROM nginx:1.27-alpine
 
+RUN apk add --no-cache ca-certificates
+
 COPY frontend/deploy/default.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /workspace/frontend/dist /usr/share/nginx/html
 

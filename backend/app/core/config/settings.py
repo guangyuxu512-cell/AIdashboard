@@ -18,6 +18,8 @@ class Settings(BaseSettings):
 
     database_url: PostgresDsn | None = None
     encryption_key: SecretStr | None = None
+    # Independent persistent key for voluntarily recoverable API tokens.
+    api_token_recovery_key: SecretStr | None = None
     runtime_environment: Literal["development", "test", "production"] = "development"
     cors_allowed_origins: list[str] = Field(default_factory=list)
     human_session_ttl_seconds: int = Field(
