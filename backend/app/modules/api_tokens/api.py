@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.core.logging.request import get_request_id
 from app.modules.access.auth import get_human_principal
@@ -11,7 +12,7 @@ from app.modules.access.contracts import ActorContext, HumanPrincipal
 from app.modules.access.dependencies import get_super_account
 from app.modules.access.exceptions import AccessAdministrationForbiddenError
 from app.modules.api_tokens.catalog import permissions_catalog
-from app.modules.api_tokens.schemas import ApiTokenChange, ApiTokenEnabled, ApiTokenEventRead, ApiTokenIssued, ApiTokenRead, PermissionRead
+from app.modules.api_tokens.schemas import ApiTokenChange, ApiTokenCreate, ApiTokenEnabled, ApiTokenEventRead, ApiTokenIssued, ApiTokenRead, ApiTokenRevealed, PermissionRead
 from app.modules.api_tokens.service import ApiTokenService
 
 router = APIRouter(prefix="/api/v1/api-tokens", tags=["api-tokens"])
@@ -45,10 +46,19 @@ def list_tokens(response: Response, _actor: Annotated[ActorContext, Depends(requ
 
 
 @router.post("", response_model=ApiTokenIssued, status_code=status.HTTP_201_CREATED)
-def create_token(command: ApiTokenChange, request: Request, response: Response, actor: Annotated[ActorContext, Depends(require_human_administrator)], service: Annotated[ApiTokenService, Depends(get_service)]) -> ApiTokenIssued:
-    issued = service.issue(actor=actor, request_id=get_request_id(request), catalog=permissions_catalog(request.app), **command.model_dump())
+def create_token(command: ApiTokenCreate, request: Request, response: Response, actor: Annotated[ActorContext, Depends(require_human_administrator)], service: Annotated[ApiTokenService, Depends(get_service)], settings: Annotated[Settings, Depends(get_settings)]) -> ApiTokenIssued:
+    key = settings.api_token_recovery_key.get_secret_value() if settings.api_token_recovery_key else None
+    issued = service.issue(actor=actor, request_id=get_request_id(request), catalog=permissions_catalog(request.app), recovery_key=key, **command.model_dump())
     response.headers["Cache-Control"] = "no-store"
     return ApiTokenIssued(token=ApiTokenRead.model_validate(issued.record), value=issued.raw_token)
+
+
+@router.post("/{token_id}/reveal", response_model=ApiTokenRevealed)
+def reveal_token(token_id: UUID, request: Request, response: Response, actor: Annotated[ActorContext, Depends(require_human_administrator)], service: Annotated[ApiTokenService, Depends(get_service)], settings: Annotated[Settings, Depends(get_settings)]) -> ApiTokenRevealed:
+    key = settings.api_token_recovery_key.get_secret_value() if settings.api_token_recovery_key else None
+    raw = service.reveal(token_id, actor=actor, request_id=get_request_id(request), recovery_key=key)
+    response.headers["Cache-Control"] = "no-store"
+    return ApiTokenRevealed(value=raw)
 
 
 @router.put("/{token_id}", response_model=ApiTokenRead)

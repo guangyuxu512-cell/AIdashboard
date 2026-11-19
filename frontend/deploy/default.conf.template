@@ -59,6 +59,59 @@ server {
         try_files $uri $uri/ =404;
     }
 
+    location = /token-admin {
+        absolute_redirect off;
+        return 308 /token-admin/;
+    }
+
+    # Only Token administration and scope lookup are forwarded. The caller's
+    # Bearer is never replaced with a service credential; cookies are stripped.
+    # Resolve lazily so a temporary DNS outage cannot prevent Nginx starting.
+    location ^~ /token-admin/_product/ {
+        if ($uri !~ "^/token-admin/_product/api/v1/(tokens(/permissions|/[0-9a-f]{32}(/reveal)?)?|product-groups)$") { return 404; }
+        rewrite ^/token-admin/_product(/api/v1/.*)$ $1 break;
+        resolver 127.0.0.53 valid=300s ipv6=off;
+        set $token_admin_product_host pdc.mysiyuai.top;
+        proxy_pass https://$token_admin_product_host$uri$is_args$args;
+        proxy_ssl_server_name on;
+        proxy_ssl_name pdc.mysiyuai.top;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host pdc.mysiyuai.top;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Cookie "";
+        proxy_hide_header Set-Cookie;
+        proxy_buffering off;
+        access_log off;
+    }
+
+    location ^~ /token-admin/_collector/ {
+        if ($uri !~ "^/token-admin/_collector/collector-api/v1/admin/browsers(/[0-9a-f]{32}/submit-token(/reveal|/permissions)?)?$") { return 404; }
+        rewrite ^/token-admin/_collector(/collector-api/.*)$ $1 break;
+        resolver 127.0.0.53 valid=300s ipv6=off;
+        set $token_admin_collector_host pdc.mysiyuai.top;
+        proxy_pass https://$token_admin_collector_host$uri$is_args$args;
+        proxy_ssl_server_name on;
+        proxy_ssl_name pdc.mysiyuai.top;
+        proxy_ssl_verify on;
+        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        proxy_set_header Host pdc.mysiyuai.top;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Cookie "";
+        proxy_hide_header Set-Cookie;
+        proxy_buffering off;
+        access_log off;
+    }
+
+    # Deployed separately from the private Token-Manager-Web release artifact.
+    location ^~ /token-admin/ {
+        root /var/lib/control-center-static;
+        add_header Cache-Control "no-store, no-cache, must-revalidate" always;
+        add_header X-Content-Type-Options "nosniff" always;
+        add_header X-Frame-Options "DENY" always;
+        try_files $uri $uri/ =404;
+    }
+
     location = /index.html {
         add_header Cache-Control "no-store, no-cache, must-revalidate" always;
         try_files $uri =404;

@@ -12,6 +12,10 @@ class ApiTokenChange(BaseModel):
     expires_at: datetime | None = None
 
 
+class ApiTokenCreate(ApiTokenChange):
+    recoverable: bool = False
+
+
 class ApiTokenRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -45,6 +49,10 @@ class ApiTokenEventRead(BaseModel):
 
 class ApiTokenIssued(BaseModel):
     token: ApiTokenRead
+    value: str = Field(repr=False)
+
+
+class ApiTokenRevealed(BaseModel):
     value: str = Field(repr=False)
 
 

@@ -27,6 +27,12 @@ for _ in $(seq 1 30); do
     sleep 1
 done
 test -s "$test_root/index.html"
+install -d "$test_root/store/public/token-admin"
+printf 'independent token admin release\n' > "$test_root/store/public/token-admin/index.html"
+test "$(curl -sS "$origin/token-admin/")" = 'independent token admin release'
+test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/_product/api/v1/products")" = 404
+test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/_collector/collector-api/v1/tasks")" = 404
+test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/missing.js")" = 404
 curl -fsSI "$origin/" | tr -d '\r' | grep -Fi 'Cache-Control: no-store'
 while IFS= read -r -d '' asset; do
     relative="${asset#"$test_root/store/public/"}"
