@@ -86,7 +86,7 @@ server {
     }
 
     location ^~ /token-admin/_collector/ {
-        if ($uri !~ "^/token-admin/_collector/collector-api/v1/admin/browsers(/[0-9a-f]{32}/submit-token(/reveal)?)?$") { return 404; }
+        if ($uri !~ "^/token-admin/_collector/collector-api/v1/admin/browsers(/[0-9a-f]{32}/submit-token(/reveal|/permissions)?)?$") { return 404; }
         rewrite ^/token-admin/_collector(/collector-api/.*)$ $1 break;
         resolver 127.0.0.53 valid=300s ipv6=off;
         set $token_admin_collector_host pdc.mysiyuai.top;
