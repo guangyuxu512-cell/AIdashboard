@@ -75,6 +75,7 @@ server {
         proxy_ssl_server_name on;
         proxy_ssl_name pdc.mysiyuai.top;
         proxy_ssl_verify on;
+        proxy_ssl_verify_depth 5;
         proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
         proxy_set_header Host pdc.mysiyuai.top;
         proxy_set_header Authorization $http_authorization;
@@ -86,14 +87,9 @@ server {
 
     location ^~ /token-admin/_collector/ {
         if ($uri !~ "^/token-admin/_collector/collector-api/v1/admin/browsers(/[0-9a-f]{32}/submit-token(/reveal|/permissions)?)?$") { return 404; }
-        set $token_admin_collector_host pdc.mysiyuai.top;
         rewrite ^/token-admin/_collector(/collector-api/.*)$ $1 break;
-        resolver 127.0.0.53 valid=300s ipv6=off;
-        proxy_pass https://$token_admin_collector_host$uri$is_args$args;
-        proxy_ssl_server_name on;
-        proxy_ssl_name pdc.mysiyuai.top;
-        proxy_ssl_verify on;
-        proxy_ssl_trusted_certificate /etc/ssl/certs/ca-certificates.crt;
+        # The collector relay is bound to loopback on the same production host.
+        proxy_pass http://127.0.0.1:18327$uri$is_args$args;
         proxy_set_header Host pdc.mysiyuai.top;
         proxy_set_header Authorization $http_authorization;
         proxy_set_header Cookie "";

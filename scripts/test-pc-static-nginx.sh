@@ -20,9 +20,8 @@ pc_assets_import "$test_root/store" f6253bc7fb1ca9cef76219e9ff6915d22b0ea3b8 "$l
 # destination and transport are replaced for this isolated local fixture.
 sed \
     -e 's|set \$token_admin_product_host pdc.mysiyuai.top;|set $token_admin_product_host 127.0.0.1:18081;|' \
-    -e 's|set \$token_admin_collector_host pdc.mysiyuai.top;|set $token_admin_collector_host 127.0.0.1:18081;|' \
     -e 's|proxy_pass https://\$token_admin_product_host|proxy_pass http://$token_admin_product_host|' \
-    -e 's|proxy_pass https://\$token_admin_collector_host|proxy_pass http://$token_admin_collector_host|' \
+    -e 's|proxy_pass http://127.0.0.1:18327|proxy_pass http://127.0.0.1:18081|' \
     "$repository_root/frontend/deploy/default.conf.template" > "$test_root/proxy.template"
 container="$(docker run -d --read-only -p 127.0.0.1::18080 \
     --tmpfs /etc/nginx/conf.d --tmpfs /var/cache/nginx --tmpfs /var/run --tmpfs /tmp \
