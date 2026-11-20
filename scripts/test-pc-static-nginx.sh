@@ -22,6 +22,7 @@ sed \
     -e 's|set \$token_admin_product_host pdc.mysiyuai.top;|set $token_admin_product_host 127.0.0.1:18081;|' \
     -e 's|proxy_pass https://\$token_admin_product_host|proxy_pass http://$token_admin_product_host|' \
     -e 's|proxy_pass http://127.0.0.1:18327|proxy_pass http://127.0.0.1:18081|' \
+    -e 's|proxy_pass http://127.0.0.1:18521|proxy_pass http://127.0.0.1:18081|' \
     "$repository_root/frontend/deploy/default.conf.template" > "$test_root/proxy.template"
 container="$(docker run -d --read-only -p 127.0.0.1::18080 \
     --tmpfs /etc/nginx/conf.d --tmpfs /var/cache/nginx --tmpfs /var/run --tmpfs /tmp \
@@ -67,6 +68,17 @@ test "$(curl -fsS -X POST -H 'Authorization: Bearer fixture' -H 'Cookie: private
     'POST|/collector-api/v1/admin/browsers/0123456789abcdef0123456789abcdef/submit-token/reveal||Bearer fixture|'
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/_product/api/v1/products")" = 404
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/_collector/collector-api/v1/tasks")" = 404
+test "$(curl -fsS -H 'Authorization: Bearer fixture' -H 'Cookie: private=discard' "$origin/token-admin/_operations/api/v1/tokens?fixture=1")" = \
+    'GET|/api/v1/tokens|fixture=1|Bearer fixture|'
+test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/_operations/api/v1/candidates")" = 404
+test "$(curl -fsS -H 'Authorization: Bearer fixture' -H 'Cookie: private=discard' "$origin/operations/api/v1/strategies")" = \
+    'GET|/api/v1/strategies||Bearer fixture|'
+test "$(curl -fsS -X POST -H 'Authorization: Bearer fixture' "$origin/operations/internal/worker/v1/selection-results/one")" = \
+    'POST|/internal/worker/v1/selection-results/one||Bearer fixture|'
+install -d "$test_root/store/public/operations"
+printf 'independent operations release\n' > "$test_root/store/public/operations/index.html"
+test "$(curl -sS "$origin/operations/")" = 'independent operations release'
+test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/operations/missing.js")" = 404
 test "$(curl -sS -o /dev/null -w '%{http_code}' "$origin/token-admin/missing.js")" = 404
 curl -fsSI "$origin/" | tr -d '\r' | grep -Fi 'Cache-Control: no-store'
 while IFS= read -r -d '' asset; do
