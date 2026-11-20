@@ -54,6 +54,7 @@ class DeviceLocalShopRead(BaseModel):
     shop_name: str
     platform: str
     session_status: Literal["valid", "invalid", "reauthorization_required", "unknown"]
+    compass_session_verified: bool | None = None
     status_observed_at: datetime | None = None
 
 
