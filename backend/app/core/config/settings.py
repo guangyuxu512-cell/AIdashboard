@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     # Explicit rollout switch; false preserves the existing signer for rollback.
     worker_precheck_pure_signer_enabled: bool = False
     worker_capability_package_dir: Path | None = None
+    # Destination is configured centrally; devices never accept a task-supplied URL.
+    operations_selection_origin: str | None = None
     worker_reconcile_interval_seconds: int = Field(default=10, ge=1, le=60)
     task_event_retention_days: int = Field(default=90, ge=1, le=3650)
     task_event_retention_sweep_interval_seconds: int = Field(

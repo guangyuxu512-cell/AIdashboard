@@ -1,4 +1,5 @@
 import json
+import hashlib
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -6,6 +7,7 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import Settings, get_settings
@@ -81,6 +83,11 @@ def _supports_local_shop_context(worker_version: str | None) -> bool:
     return tuple(int(part) for part in match.groups()) >= (0, 5, 7)
 
 
+def _supports_operations_delivery(worker_version: str | None) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", worker_version or "")
+    return bool(match and tuple(int(part) for part in match.groups()) >= (0, 5, 9))
+
+
 class TaskService:
     def __init__(
         self,
@@ -99,13 +106,41 @@ class TaskService:
         )
 
     def create(self, data: TaskCreate, actor: ActorContext) -> Task:
+        team_id = actor.require_team_id()
+        request_hash = None
+        if data.skill_id == 'douyin.compass_selection':
+            try:
+                correlation = str(UUID(data.input['correlation_id']))
+                if correlation != data.input['correlation_id']:
+                    raise ValueError('noncanonical correlation')
+            except (KeyError, TypeError, ValueError, AttributeError):
+                raise TaskInputInvalidError('选品任务关联标识无效') from None
+            try:
+                request_hash = hashlib.sha256(json.dumps(data.model_dump(mode='json'), ensure_ascii=False,
+                    sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')).hexdigest()
+            except (ValueError, TypeError):
+                raise TaskInputInvalidError('选品任务参数无效') from None
+            self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(
+                'operations-selection:' + correlation, 0))))
+            existing = self.session.scalar(select(Task).where(
+                Task.skill_id == data.skill_id, Task.input_json['correlation_id'].astext == correlation))
+            if existing is not None:
+                if (existing.team_id != team_id or existing.created_by_user_id != actor.user_id
+                        or existing.input_json.get('_operations_request_hash') != request_hash):
+                    raise TaskStateConflictError()
+                self.team_authorization_service.require_execution_resources(
+                    team_id=team_id, device_id=data.target_device_id)
+                self.session.commit()
+                return existing
         task = self._create_pending(
             data,
             require_worker_online=True,
-            team_id=actor.require_team_id(),
+            team_id=team_id,
             created_by_user_id=actor.user_id,
             actor=actor,
         )
+        if request_hash is not None:
+            task.input_json = {**task.input_json, '_operations_request_hash': request_hash}
         self.session.commit()
         self.session.refresh(task)
         return task
@@ -211,6 +246,15 @@ class TaskService:
             runtime = self.repository.get_device_runtime(data.target_device_id)
             if runtime is None or runtime.connection_status != "online":
                 raise TaskWorkerOfflineError()
+        if data.skill_id == "douyin.compass_selection":
+            runtime = self.repository.get_device_runtime(data.target_device_id)
+            if runtime is None or not _supports_operations_delivery(runtime.worker_version):
+                raise TaskInputInvalidError("该设备的 Worker 尚不支持选品结果回传")
+            if (len(local_shops) != 1 or local_shops[0].get("platform") != "douyin"
+                    or not local_shops[0].get("platform_shop_id")):
+                raise TaskInputInvalidError("选品需要选择一家具备平台身份的本机店铺")
+            if not self.settings.operations_selection_origin:
+                raise TaskInputInvalidError("运营中心结果接收服务未配置")
         capability = self.repository.get_skill_capability(
             data.target_device_id,
             data.skill_id,
@@ -561,6 +605,7 @@ class TaskService:
             lease_until=lease_until,
             precheck_only=precheck_only,
             local_context_supported=_supports_local_shop_context(getattr(runtime, "worker_version", None)),
+            operations_delivery_supported=_supports_operations_delivery(getattr(runtime, "worker_version", None)),
         )
 
     def renew(

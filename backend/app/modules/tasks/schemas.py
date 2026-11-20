@@ -126,7 +126,7 @@ class WorkerTaskRead(BaseModel):
     lease_until: datetime
     local_shops: list[WorkerLocalShopRead] = Field(default_factory=list)
     assets: list[WorkerTaskAssetRead] = Field(default_factory=list)
-    result_delivery: Literal["central", "product"] = "central"
+    result_delivery: Literal["central", "product", "operations"] = "central"
 
 
 class TaskLeaseRead(BaseModel):
@@ -256,7 +256,8 @@ def task_to_read(task: Task) -> TaskRead:
         skill_id=task.skill_id,
         execution_display_name=task.execution_display_name,
         status=task.status,
-        input=task.input_json,
+        input=({key: value for key, value in task.input_json.items() if key != '_operations_request_hash'}
+               if task.skill_id == 'douyin.compass_selection' else task.input_json),
         result=task.result_json,
         error_code=task.error_code,
         error_message=task.error_message,

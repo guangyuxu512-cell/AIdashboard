@@ -6,6 +6,7 @@ import re
 from pathlib import Path
 from time import monotonic
 from typing import Any
+from urllib.parse import urlsplit
 from uuid import UUID
 
 import httpx
@@ -26,12 +27,25 @@ class WorkerApiError(RuntimeError):
         self.status_code = status_code
 
 
+def _selection_terminal_payload(*, status: str, result: dict[str, Any] | None,
+                                error_code: str | None, error_message: str | None) -> bytes:
+    return json.dumps({'status': status, 'result': result, 'error_code': error_code,
+                       'error_message': error_message}, ensure_ascii=False,
+                      sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')
+
+
+def _selection_ack_code(status: str, error_code: str | None) -> str | None:
+    return ((error_code if error_code and re.fullmatch(r'[A-Z][A-Z0-9_]{2,63}', error_code)
+             else 'SELECTION_FAILED') if status == 'failed' else None)
+
+
 class WorkerApiClient:
     def __init__(
         self,
         settings: WorkerSettings,
         client: httpx.AsyncClient | None = None,
         product_client: httpx.AsyncClient | None = None,
+        operations_client: httpx.AsyncClient | None = None,
     ) -> None:
         self.settings = settings
         self._inventory_health_retry_at = 0.0
@@ -47,6 +61,7 @@ class WorkerApiClient:
             },
         )
         self._owns_product_client = product_client is None
+        self.operations_client = operations_client
         product_origin = str(settings.product_precheck_origin).rstrip("/") if settings.product_precheck_origin else None
         if product_origin is None and str(settings.server_url).rstrip("/") in {
             "https://119.29.188.118",  # Existing installations keep their stored address.
@@ -261,6 +276,67 @@ class WorkerApiClient:
         if not isinstance(receipt, dict) or receipt.get("task_id") != str(task_id) or not isinstance(receipt.get("accepted"), bool):
             raise WorkerApiError("PRODUCT_DELIVERY_INVALID", "商品库回执无效", 0)
         return digest
+
+    async def deliver_operations_selection(
+        self, task_id: UUID, *, status: str, result: dict[str, Any] | None,
+        error_code: str | None, error_message: str | None,
+    ) -> str:
+        if self.settings.server_url.scheme != 'https':
+            raise WorkerApiError('SELECTION_TLS_REQUIRED', '选品回传需要安全连接', 0)
+        context_response = await self.client.get(f"/api/v1/worker/tasks/{task_id}/selection-delivery-context")
+        self._raise_for_error(context_response)
+        try:
+            context = context_response.json()
+            origin = context['origin']
+            parsed = urlsplit(origin)
+            if (context.get('task_id') != str(task_id) or context.get('device_id') != str(self.settings.device_id)
+                    or parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
+                    or parsed.query or parsed.fragment or parsed.port not in (None, 443)
+                    or re.fullmatch(r'(?:/[A-Za-z0-9_-]+)*/?', parsed.path) is None):
+                raise ValueError('invalid destination')
+        except (ValueError, TypeError, KeyError):
+            raise WorkerApiError('SELECTION_DELIVERY_INVALID', '运营中心回传地址无效', 0) from None
+        payload = _selection_terminal_payload(status=status, result=result, error_code=error_code,
+                                              error_message=error_message)
+        digest = hashlib.sha256(payload).hexdigest()
+        url = origin.rstrip('/') + f'/internal/worker/v1/selection-results/{task_id}'
+        headers = {'Content-Type': 'application/json',
+                   'Authorization': f'Bearer {self.settings.device_token.get_secret_value()}',
+                   'X-Device-ID': str(self.settings.device_id)}
+        if self.operations_client is not None:
+            response = await self.operations_client.post(url, content=payload, headers=headers, follow_redirects=False)
+        else:
+            async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds, follow_redirects=False) as client:
+                response = await client.post(url, content=payload, headers=headers)
+        if not response.is_success:
+            raise WorkerApiError('SELECTION_DELIVERY_FAILED', '运营中心未接收选品结果', response.status_code)
+        try:
+            receipt = response.json()
+        except ValueError:
+            raise WorkerApiError('SELECTION_DELIVERY_INVALID', '运营中心回执无效', 0) from None
+        if (not isinstance(receipt, dict) or receipt.get('task_id') != str(task_id)
+                or receipt.get('accepted') is not True or receipt.get('payload_sha256') != digest):
+            raise WorkerApiError('SELECTION_DELIVERY_INVALID', '运营中心回执无效', 0)
+        return digest
+
+    async def acknowledge_operations_selection(self, task_id: UUID, *, status: str,
+                                               payload_sha256: str, error_code: str | None) -> None:
+        safe_code = _selection_ack_code(status, error_code)
+        response = await self.client.post(f'/api/v1/worker/tasks/{task_id}/selection-delivered',
+                                          json={'status': status, 'payload_sha256': payload_sha256,
+                                                'error_code': safe_code})
+        self._raise_for_error(response)
+
+    async def mark_operations_selection_pending(
+        self, task_id: UUID, *, status: str, result: dict[str, Any] | None,
+        error_code: str | None, error_message: str | None,
+    ) -> None:
+        payload = _selection_terminal_payload(status=status, result=result, error_code=error_code,
+                                              error_message=error_message)
+        response = await self.client.post(f'/api/v1/worker/tasks/{task_id}/selection-delivery-pending',
+            json={'status': status, 'payload_sha256': hashlib.sha256(payload).hexdigest(),
+                  'error_code': _selection_ack_code(status, error_code)})
+        self._raise_for_error(response)
 
     async def acknowledge_product_precheck(self, task_id: UUID, *, status: str,
                                            payload_sha256: str, error_code: str | None) -> None:
