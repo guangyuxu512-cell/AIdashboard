@@ -118,6 +118,8 @@ def create_app() -> FastAPI:
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
+    from app.modules.schedules.operations_api import router as operations_schedule_router
+    application.include_router(operations_schedule_router)
     application.include_router(workers_router)
     application.include_router(build_capability_package_router(get_settings().worker_capability_package_dir))
     application.include_router(build_base_update_router(get_settings().worker_capability_package_dir))

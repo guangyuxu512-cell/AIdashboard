@@ -42,6 +42,7 @@ from app.modules.product_data.models import (
     ShopProductDataMetricSnapshot,
 )
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
+from app.modules.schedules.operations_models import OperationsSchedule, OperationsScheduleRun
 from app.modules.shops.models import Shop
 from app.modules.tasks.models import Task, TaskAsset, TaskEvent, TaskShop
 from app.modules.users.models import User
@@ -80,6 +81,8 @@ _MODELS = (
     Schedule,
     ScheduleRun,
     ScheduleShop,
+    OperationsSchedule,
+    OperationsScheduleRun,
     Shop,
     ShopOperatingDailyMetric,
     Task,
