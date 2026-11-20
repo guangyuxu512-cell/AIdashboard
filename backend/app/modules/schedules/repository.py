@@ -248,43 +248,6 @@ class ScheduleRepository:
             latest_task_status=row.task_status,
         )
 
-    def selection_plan(self, strategy_id: UUID, *, lock: bool = False) -> Schedule | None:
-        statement = select(Schedule).where(Schedule.target_kind == "server_selection", Schedule.selection_strategy_id == strategy_id, Schedule.deleted_at.is_(None))
-        if lock:
-            statement = statement.with_for_update(of=Schedule).execution_options(populate_existing=True)
-        return self.session.scalar(statement)
-
-    def next_selection_due(self, *, now: datetime) -> Schedule | None:
-        from app.modules.product_selection.models import ProductSelectionStrategy as Strategy
-        return self.session.scalar(select(Schedule).join(Strategy, Strategy.strategy_id == Schedule.selection_strategy_id).where(
-            Schedule.target_kind == "server_selection", Schedule.enabled.is_(True), Schedule.deleted_at.is_(None),
-            Schedule.next_run_at <= now, Strategy.enabled.is_(True),
-            Schedule.team_id == Strategy.team_id, Schedule.created_by_user_id == Strategy.created_by_user_id,
-        ).order_by(Schedule.next_run_at, Schedule.schedule_id).limit(1))
-
-    def selection_plans(self, strategy_ids: list[UUID]):
-        from app.modules.product_selection.models import ProductSelectionStrategy as Strategy
-        if not strategy_ids: return {}
-        statement = select(Schedule).join(Strategy, Strategy.strategy_id == Schedule.selection_strategy_id).where(
-            Schedule.target_kind == "server_selection", Schedule.deleted_at.is_(None),
-            Schedule.selection_strategy_id.in_(strategy_ids), Schedule.team_id == Strategy.team_id,
-            Schedule.created_by_user_id == Strategy.created_by_user_id,
-        )
-        return {row.selection_strategy_id: row for row in self.session.scalars(statement)}
-
-    def latest_selection_triggers(self, strategy_ids: list[UUID]):
-        from app.modules.product_selection.models import ProductSelectionStrategy as Strategy
-        if not strategy_ids: return {}
-        ranked = select(ScheduleRun.run_id, Schedule.selection_strategy_id.label("sid"), func.row_number().over(
-            partition_by=Schedule.selection_strategy_id, order_by=(ScheduleRun.created_at.desc(), ScheduleRun.run_id.desc()),
-        ).label("rn")).join(Schedule, Schedule.schedule_id == ScheduleRun.schedule_id).join(
-            Strategy, Strategy.strategy_id == Schedule.selection_strategy_id,
-        ).where(Schedule.target_kind == "server_selection", Schedule.selection_strategy_id.in_(strategy_ids),
-            Schedule.team_id == Strategy.team_id, Schedule.created_by_user_id == Strategy.created_by_user_id).subquery()
-        return {sid: row for sid, row in self.session.execute(select(ranked.c.sid, ScheduleRun).join(
-            ScheduleRun, ScheduleRun.run_id == ranked.c.run_id,
-        ).where(ranked.c.rn == 1))}
-
     def list_runs(
         self,
         schedule_id: UUID,

@@ -1,5 +1,12 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-21 中控旧选品退役（0058 active）
+
+- `20261120_0057` 已进入 Green dev 并实际应用于 Integration 与生产，槽位 released。本 Feature 使用 `20261121_0058`，down revision 为 `20261120_0057`。
+- Feature 在本机隔离 PostgreSQL `55496` 使用独立 `control_center_feat_retire_selection`；升级前后的旧选品、通用 Worker 定时、运营中心定时与权限隔离已用合成记录验证。生产执行前必须取得可读取的备份。
+- 范围仅为移除中控旧选品表及其专用定时关系；用户已确认旧选品记录不迁移。通用 Worker 定时、运营中心定时、商品库及其预检必须保留。
+- Feature 使用隔离测试库；真实启用运营中心并完成验证后，才可进入 Gate 2 和生产迁移。正式迁移前必须有可读备份；旧数据通过备份恢复，不以重建空表冒充回滚。
+
 ## 2026-11-20 运营中心选品定时（0057 active）
 
 - Integration 已只读核对为单一 `20261116_0056`；Green dev `7d870cb5cf6c2da77ea9be7001e1b120cd9c6374` 的 GitHub CI `44602641442` 成功，0056 Slot 核销为 released。

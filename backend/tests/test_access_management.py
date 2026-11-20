@@ -60,17 +60,17 @@ from app.modules.users.models import User
 TEST_PASSWORD = "correct-horse-battery"
 
 
-def test_product_module_authorization_contract_accepts_registered_values_only() -> None:
+def test_module_authorization_contract_excludes_retired_product_modules() -> None:
     payload = TeamAuthorizationUpdate.model_validate(
-        {"module_codes": ["product-selection"]}
+        {"module_codes": ["task"]}
     )
-    assert payload.module_codes == [ModuleCode.PRODUCT_SELECTION]
-    for values in (["product-center"], ["product-library"], ["product-selection", "product-selection"]):
+    assert payload.module_codes == [ModuleCode.TASK]
+    for values in (["product-center"], ["product-library"], ["product-selection"], ["task", "task"]):
         with pytest.raises(ValidationError):
             TeamAuthorizationUpdate.model_validate({"module_codes": values})
 
 
-def test_product_modules_require_explicit_team_grants_and_revocation_takes_effect(
+def test_task_module_requires_explicit_team_grant_and_revocation_takes_effect(
     database: tuple[sessionmaker[Session], PasswordService],
 ) -> None:
     factory, password_service = database
@@ -80,17 +80,17 @@ def test_product_modules_require_explicit_team_grants_and_revocation_takes_effec
         member = service.create_member(create_member_input(team.team_id))
         actor = actor_for(member.user_id, team.team_id, member.memberships[0].membership_id)
         modules = ModuleAccessService(session)
-        for code in (ModuleCode.PRODUCT_SELECTION,):
+        for code in (ModuleCode.TASK,):
             with pytest.raises(ModuleAccessDeniedError):
                 modules.require_module_access(actor, code)
         service.update_team_authorization(
             team.team_id,
-            TeamAuthorizationUpdate(module_codes=[ModuleCode.PRODUCT_SELECTION]),
+            TeamAuthorizationUpdate(module_codes=[ModuleCode.TASK]),
         )
-        modules.require_module_access(actor, ModuleCode.PRODUCT_SELECTION)
+        modules.require_module_access(actor, ModuleCode.TASK)
         service.update_team_authorization(team.team_id, TeamAuthorizationUpdate(module_codes=[]))
         with pytest.raises(ModuleAccessDeniedError):
-            modules.require_module_access(actor, ModuleCode.PRODUCT_SELECTION)
+            modules.require_module_access(actor, ModuleCode.TASK)
 
 
 def test_retired_library_grants_do_not_break_other_team_permissions(

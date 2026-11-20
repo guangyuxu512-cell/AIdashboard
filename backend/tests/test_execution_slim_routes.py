@@ -22,6 +22,7 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
             f"/api/v1/product-data/collection-batches/{identifier}",
             f"/api/v1/shops/{identifier}/session",
             f"/api/v1/shops/{identifier}/platform-identity",
+            "/api/v1/product-selection/capabilities",
         ):
             assert client.get(path).status_code == 404
         for path in (
@@ -45,13 +46,13 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
             "/api/v1/worker/rpa-shop-inventory",
             "/api/v1/tasks",
             "/api/v1/schedules",
-            "/api/v1/product-selection/capabilities",
             "/api/v1/product-data",
             "/internal/applications/v1/worker-prechecks",
         ):
             assert path in paths
         assert not any(path.startswith("/api/v1/ai-workbench/") for path in paths)
         assert not any(path.startswith("/api/v1/ai-models") for path in paths)
+        assert not any(path.startswith("/api/v1/product-selection/") for path in paths)
         permissions = {entry["id"] for entry in permissions_catalog(app)}
         assert "GET /api/v1/product-data" in permissions
         assert not any(" /api/v1/product-data/collection" in entry for entry in permissions)

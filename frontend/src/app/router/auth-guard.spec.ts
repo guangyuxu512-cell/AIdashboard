@@ -63,12 +63,6 @@ function createGuardedRouter(pinia: ReturnType<typeof createPinia>) {
         component: { template: '<div />' },
         meta: { moduleCode: 'asset' },
       },
-      ...['product-selection'].map((code) => ({
-        path: '/product-selection',
-        name: code,
-        component: { template: '<div />' },
-        meta: { moduleCode: code },
-      })),
     ],
   })
   installAuthGuard(router, pinia)
@@ -97,26 +91,10 @@ describe('route authorization', () => {
     },
   )
 
-  it.each(['product-selection'])(
-    'guards direct access to %s with its own explicit module grant',
-    async (code) => {
-      const path = '/product-selection'
-      for (const grants of [['shop', 'device'], [code]]) {
-        const pinia = createPinia()
-        useAuthStore(pinia).setDataSource(createSource(grants))
-        const router = createGuardedRouter(pinia)
-        await router.push(path)
-        await router.isReady()
-        expect(router.currentRoute.value.name).toBe(
-          grants.includes(code) ? code : 'permission-denied',
-        )
-      }
-    },
-  )
-
   it('does not register retired central shop or Yingdao preset routes', () => {
     const names = appRouter.getRoutes().map((route) => route.name)
     expect(names).not.toContain('shops')
     expect(names).not.toContain('parameter-presets')
+    expect(names).not.toContain('product-selection')
   })
 })

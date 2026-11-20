@@ -192,7 +192,6 @@ function createMockHumanAuthDataSource(): HumanAuthDataSource {
           'task',
           'schedule',
           'settings',
-          ...(isSuperAccount ? ['product-selection'] : []),
         ],
         isSuperAccount,
         isAccessAdministrator: isSuperAccount,

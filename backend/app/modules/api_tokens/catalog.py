@@ -7,7 +7,7 @@ Device and application identities remain separate and are deliberately excluded.
 MANAGEMENT_TAGS = {
     "access", "access-management",
     "assets", "users", "devices",
-    "notification-channels", "operating-dashboard", "product-selection",
+    "notification-channels", "operating-dashboard",
     "product-data",
     "tasks", "schedules",
 }
