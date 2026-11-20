@@ -22,10 +22,17 @@ pytestmark = pytest.mark.integration
 
 @pytest.fixture
 def state(postgresql_engine):
-    team, other_team, user, strategy = uuid4(), uuid4(), uuid4(), uuid4()
+    team, other_team, strategy = uuid4(), uuid4(), uuid4()
+    created_user = False
     with Session(postgresql_engine) as session:
-        session.add_all([Team(team_id=team, name='ops fixture'), Team(team_id=other_team, name='other fixture'),
-                         User(user_id=user, display_name='ops fixture', is_super_account=True)])
+        existing = session.scalar(select(User).where(User.is_super_account.is_(True)))
+        if existing is not None and not existing.enabled:
+            pytest.skip('existing integration super account is disabled')
+        user = existing.user_id if existing else uuid4()
+        session.add_all([Team(team_id=team, name='ops fixture'), Team(team_id=other_team, name='other fixture')])
+        if existing is None:
+            session.add(User(user_id=user, display_name='ops fixture', is_super_account=True))
+            created_user = True
         session.commit()
     actor = ActorContext(user, 'ops fixture', team, None, 'super_account', DataScope.ALL, True)
     yield postgresql_engine, actor, other_team, strategy
@@ -33,7 +40,8 @@ def state(postgresql_engine):
         ids = session.scalars(select(OperationsSchedule.schedule_id).where(OperationsSchedule.team_id.in_([team, other_team]))).all()
         session.execute(delete(OperationsScheduleRun).where(OperationsScheduleRun.schedule_id.in_(ids)))
         session.execute(delete(OperationsSchedule).where(OperationsSchedule.team_id.in_([team, other_team])))
-        session.execute(delete(User).where(User.user_id == user))
+        if created_user:
+            session.execute(delete(User).where(User.user_id == user))
         session.execute(delete(Team).where(Team.team_id.in_([team, other_team])))
         session.commit()
 
