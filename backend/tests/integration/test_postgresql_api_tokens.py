@@ -28,6 +28,7 @@ def token_environment(postgresql_engine):
     with postgresql_engine.connect() as connection:
         assert connection.scalar(text("select current_database()")) in {
             "control_center_feat_ai_token_management", "control_center_feat_windows_execution_slim",
+            "control_center_feat_retire_selection",
         }
     user_id, team_a, team_b, device_a, device_b, task_a, task_b = [uuid4() for _ in range(7)]
     password = "integration-only-test-password"

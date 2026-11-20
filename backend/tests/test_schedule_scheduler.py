@@ -83,7 +83,7 @@ def test_worker_scheduler_can_be_enabled_without_reviving_retired_collection(mon
         settings = get_settings()
         assert settings.worker_schedule_execution_enabled is True
         assert settings.product_data_collection_execution_enabled is False
-        assert settings.product_selection_execution_enabled is False
-        assert settings.product_selection_schedule_enabled is False
+        assert not hasattr(settings, 'product_selection_execution_enabled')
+        assert not hasattr(settings, 'product_selection_schedule_enabled')
     finally:
         get_settings.cache_clear()

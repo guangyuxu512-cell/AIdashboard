@@ -64,7 +64,7 @@ const options = [
     value: 'two',
   },
 ]
-const photo = '/src/features/product-selection/fixtures/photos/product-1.webp'
+const photo = '/src/features/product-data/fixtures/photos/product-1.webp'
 const rows = [
   {
     id: '90000000000000000012345678901234567890',

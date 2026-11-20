@@ -83,9 +83,7 @@ describe('Human Auth Data Source', () => {
       isAccessAdministrator: true,
     })
 
-    expect((await source.getCurrentModuleAccess()).moduleCodes).toEqual(
-      expect.arrayContaining(['product-selection']),
-    )
+    expect((await source.getCurrentModuleAccess()).moduleCodes).not.toContain('product-selection')
 
     await source.login({
       loginName: 'operator',

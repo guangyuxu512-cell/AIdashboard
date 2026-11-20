@@ -98,20 +98,6 @@ class Settings(BaseSettings):
     douyin_signer_api_key: SecretStr | None = None
     douyin_signer_timeout_seconds: float = Field(default=15.0, ge=1.0, le=60.0)
     douyin_compass_collection_concurrency: int = Field(default=5, ge=1, le=20)
-    # Manual platform execution; saved strategy configuration does not trigger I/O.
-    product_selection_execution_enabled: bool = False
-    # Compatible read-only rollback keeps strategy/run/fact readers available.
-    product_selection_strategy_management_enabled: bool = True
-    product_selection_schedule_enabled: bool = False
-    product_selection_concurrency: int = Field(default=3, ge=1, le=20)
-
-    @field_validator("product_selection_concurrency", mode="before")
-    @classmethod
-    def reject_boolean_selection_capacity(cls, value):
-        if isinstance(value, bool):
-            raise ValueError("Selection capacity must be a positive integer")
-        return value
-    product_selection_run_lease_seconds: int = Field(default=120, ge=30, le=600)
     # Disabled by default so Feature/Integration environments never begin
     # platform collection merely because the Backend process is running.
     # Production enablement remains a separate Release-Gate decision.
@@ -222,12 +208,7 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     settings = Settings()
-    # Selection is deliberately paused until a Worker implementation exists.
-    # A stale environment flag must not revive server-side execution.
     settings.product_data_collection_execution_enabled = False
-    settings.product_selection_execution_enabled = False
-    settings.product_selection_schedule_enabled = False
-    settings.product_selection_strategy_management_enabled = False
     settings.operating_dashboard_collection_execution_enabled = False
     settings.operating_dashboard_daily_collection_enabled = False
     return settings

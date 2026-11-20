@@ -18,7 +18,7 @@ import {
 import { productDisplayMetricId } from '../model/display-fields'
 
 const photos = Object.values(
-  import.meta.glob('../../product-selection/fixtures/photos/*.webp', {
+  import.meta.glob('../fixtures/photos/*.webp', {
     eager: true,
     query: '?url',
     import: 'default',

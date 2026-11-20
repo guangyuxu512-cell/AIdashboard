@@ -20,8 +20,6 @@ from app.modules.human_auth.api import router as human_auth_router
 from app.modules.notifications.api import router as notifications_router
 from app.modules.operating_dashboard.api import router as operating_dashboard_router
 from app.modules.product_data.api import router as product_data_router
-from app.modules.product_selection.api import router as product_selection_router
-from app.modules.product_selection.run_executor import execute_selection_runs_forever
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
 from app.modules.tasks.api import router as tasks_router
@@ -50,11 +48,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if settings.worker_schedule_execution_enabled
         else None
     )
-    selection_run_task = (
-        asyncio.create_task(execute_selection_runs_forever())
-        if settings.product_selection_execution_enabled
-        else None
-    )
     try:
         yield
     finally:
@@ -63,8 +56,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         retention_task.cancel()
         if schedule_task is not None:
             schedule_task.cancel()
-        if selection_run_task is not None:
-            selection_run_task.cancel()
         with suppress(asyncio.CancelledError):
             await reconcile_task
         with suppress(asyncio.CancelledError):
@@ -74,9 +65,6 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         if schedule_task is not None:
             with suppress(asyncio.CancelledError):
                 await schedule_task
-        if selection_run_task is not None:
-            with suppress(asyncio.CancelledError):
-                await selection_run_task
 
 
 def create_app() -> FastAPI:
@@ -114,7 +102,6 @@ def create_app() -> FastAPI:
     application.include_router(devices_router)
     application.include_router(notifications_router)
     application.include_router(operating_dashboard_router)
-    application.include_router(product_selection_router)
     application.include_router(product_data_router)
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)

@@ -35,7 +35,6 @@ for (const [theme, label] of [
     )
     for (const [name, url] of [
       ['shops', '/#/shops'],
-      ['strategies', '/#/product-selection'],
       ['operating', '/#/operating-dashboard'],
     ]) {
       await page.goto(url!)

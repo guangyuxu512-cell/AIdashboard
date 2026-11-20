@@ -437,7 +437,6 @@ class AccessManagementRepository:
         from app.modules.automation_apps.models import AutomationParameterPreset
         from app.modules.audit.models import AuditLog
         from app.modules.devices.models import Device
-        from app.modules.product_selection.models import ProductSelectionCandidate, ProductSelectionRun, ProductSelectionStrategy
         from app.modules.schedules.models import Schedule
         from app.modules.tasks.models import Task
 
@@ -451,9 +450,6 @@ class AccessManagementRepository:
             (AutomationParameterPreset, AutomationParameterPreset.team_id),
             (Schedule, Schedule.team_id),
             (Task, Task.team_id),
-            (ProductSelectionCandidate, ProductSelectionCandidate.team_id),
-            (ProductSelectionRun, ProductSelectionRun.team_id),
-            (ProductSelectionStrategy, ProductSelectionStrategy.team_id),
             (AuditLog, AuditLog.team_id),
         )
         return any(

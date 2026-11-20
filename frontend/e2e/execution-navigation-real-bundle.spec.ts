@@ -36,7 +36,6 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
             'schedule',
             'shop',
             'asset',
-            'product-selection',
             'settings',
           ],
           is_super_account: true,
@@ -72,6 +71,7 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
     '/ai-workbench/assets',
     '/settings/ai-models',
     '/products',
+    '/product-selection',
   ]) {
     await page.goto(`/#${oldPath}`)
     await expect(page).toHaveURL(/#\/devices$/)
@@ -80,24 +80,8 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
     await expect(nav.getByText('AI 工作台', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('AI 素材', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('商品库', { exact: true })).toHaveCount(0)
+    await expect(nav.getByText('选品库', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('自动化中心', { exact: true })).toBeVisible()
   }
 
-  await page.goto('/#/product-selection?tab=collection-tasks')
-  const selectionBar = page.getByRole('navigation', {
-    name: '选品库切换',
-    exact: true,
-  })
-  await expect(
-    selectionBar.getByRole('button', { name: '候选池', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true')
-  await expect(
-    selectionBar.getByRole('button', { name: '选品策略', exact: true }),
-  ).toBeVisible()
-  await expect(
-    selectionBar.getByRole('button', { name: '采集任务', exact: true }),
-  ).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: '批量采集资料', exact: true }),
-  ).toHaveCount(0)
 })

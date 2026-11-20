@@ -6,7 +6,6 @@ const foundationModule = requireModuleDefinition('foundation')
 const assetModule = requireModuleDefinition('asset')
 const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
 const productDataModule = requireModuleDefinition('product-data')
-const productSelectionModule = requireModuleDefinition('product-selection')
 const deviceModule = requireModuleDefinition('device')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
@@ -49,12 +48,6 @@ const router = createRouter({
       name: productDataModule.routeName,
       component: () => import('@/pages/product-data/ProductDataPage.vue'),
       meta: { moduleCode: productDataModule.moduleCode },
-    },
-    {
-      path: productSelectionModule.routePath,
-      name: productSelectionModule.routeName,
-      component: () => import('@/pages/products/ProductSelectionPage.vue'),
-      meta: { moduleCode: productSelectionModule.moduleCode },
     },
     {
       path: deviceModule.routePath,
