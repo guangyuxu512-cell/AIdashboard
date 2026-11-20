@@ -13,12 +13,14 @@ describe('execution-layer navigation', () => {
   it('removes retired AI and product-library modules and hides shop management', () => {
     expect(getModuleDefinition('ai-workbench')).toBeUndefined()
     expect(getModuleDefinition('product-library')).toBeUndefined()
+    expect(getModuleDefinition('product-selection')).toBeUndefined()
     expect(getModuleDefinition('shop')).toMatchObject({ navigationVisible: false })
     const visible = getNavigationModules().map((module) => module.moduleCode)
     expect(visible).not.toContain('shop')
     expect(visible).not.toContain('ai-workbench')
     expect(visible).not.toContain('product-library')
-    expect(visible).toEqual(expect.arrayContaining(['device', 'task', 'schedule', 'product-selection']))
+    expect(visible).not.toContain('product-selection')
+    expect(visible).toEqual(expect.arrayContaining(['device', 'task', 'schedule']))
   })
 
   it('retains device, task and schedule navigation without retired presets', () => {
@@ -30,14 +32,7 @@ describe('execution-layer navigation', () => {
     expect(getModuleDefinition('parameter-preset')).toBeUndefined()
   })
 
-  it('retains selection and the operating dashboard under their existing grants', () => {
-    const selection = getNavigationEntries(MODULE_REGISTRY, {
-      allowedModuleCodes: new Set(['product-selection']),
-    })
-    expect(selection).toMatchObject([{
-      type: 'group', groupCode: 'product-center',
-      children: [{ moduleCode: 'product-selection' }],
-    }])
+  it('retains the operating dashboard under its existing grant', () => {
     expect(getModuleAccessCode(getModuleDefinition('operating-dashboard')!)).toBe('shop')
     expect(getNavigationModules(MODULE_REGISTRY, {
       allowedModuleCodes: new Set(['shop']),

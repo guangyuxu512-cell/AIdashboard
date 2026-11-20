@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 from app.core.config import get_settings
 from app.core.database import get_session_factory
 from app.modules.schedules.service import ScheduleService
-from app.modules.schedules.selection_service import SelectionScheduleService
 from app.modules.schedules.operations_service import send_pending, stage_due
 
 
@@ -18,13 +17,10 @@ def trigger_due_schedules_once(*, now: datetime | None = None) -> int:
         return 0
     session_factory = get_session_factory()
     triggered = 0
-    server_enabled = getattr(settings, "product_selection_schedule_enabled", False) and getattr(settings, "product_selection_execution_enabled", False)
     operations_enabled = getattr(settings, 'operations_schedule_execution_enabled', False)
     while triggered < settings.schedule_trigger_batch_size:
         progressed = False
-        # One existing coordinator alternates targets. A disabled/busy server
-        # row cannot hide or block the PC query; no second scanner is created.
-        targets = (('operations',) if operations_enabled else ()) + (("server_selection",) if server_enabled else ()) + ('pc',)
+        targets = (('operations',) if operations_enabled else ()) + ('pc',)
         for target in targets:
             if triggered >= settings.schedule_trigger_batch_size: break
             if target == 'operations':
@@ -37,10 +33,7 @@ def trigger_due_schedules_once(*, now: datetime | None = None) -> int:
                     progressed = True
                 continue
             with session_factory() as session:
-                if target == 'server_selection':
-                    result = SelectionScheduleService(session, settings=settings).trigger_next_due(now=now)
-                else:
-                    result = ScheduleService(session).trigger_next_due(now=now)
+                result = ScheduleService(session).trigger_next_due(now=now)
             if result is None: continue
             logger.info("Schedule trigger processed", extra={
                 "schedule_id":str(result.schedule_id),"scheduled_for":result.scheduled_for.isoformat(),

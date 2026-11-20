@@ -5,8 +5,6 @@ import {
   Images,
   ListChecks,
   Monitor,
-  Package,
-  Library,
   Settings,
   Workflow,
 } from '@lucide/vue'
@@ -14,7 +12,7 @@ import type { Component } from 'vue'
 
 export type ModuleNavigationGroup = 'development' | 'management'
 export type ModuleNavigationParent =
-  'automation' | 'data-center' | 'product-center'
+  'automation' | 'data-center'
 
 export interface ModuleDefinition<Code extends string = string> {
   moduleCode: Code
@@ -62,12 +60,6 @@ export const NAVIGATION_GROUP_REGISTRY = [
     groupName: '数据中心',
     icon: ChartLine,
     order: 28,
-  },
-  {
-    groupCode: 'product-center',
-    groupName: '商品中心',
-    icon: Package,
-    order: 29,
   },
   {
     groupCode: 'automation',
@@ -148,19 +140,6 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 28.5,
-  },
-  {
-    moduleCode: 'product-selection',
-    accessModuleCode: null,
-    moduleName: '选品库',
-    navigationGroup: 'management',
-    navigationParent: 'product-center',
-    routeName: 'product-selection',
-    routePath: '/product-selection',
-    icon: Library,
-    enabled: true,
-    permissionCode: null,
-    order: 29,
   },
   {
     moduleCode: 'device',

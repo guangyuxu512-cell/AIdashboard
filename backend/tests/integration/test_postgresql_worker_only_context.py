@@ -168,9 +168,7 @@ def test_enabled_worker_scheduler_dispatches_once_without_old_plans(worker_conte
     monkeypatch.setenv('BACKEND_PRODUCT_SELECTION_SCHEDULE_ENABLED', 'true')
     get_settings.cache_clear()
     monkeypatch.setattr(scheduler, 'get_session_factory', lambda: sessionmaker(bind=engine))
-    def reject_selection(*args, **kwargs):
-        pytest.fail('paused selection must never be scanned')
-    monkeypatch.setattr(scheduler, 'SelectionScheduleService', reject_selection)
+    assert not hasattr(scheduler, 'SelectionScheduleService')
     try:
         assert scheduler.trigger_due_schedules_once(now=due - timedelta(seconds=1)) == 0
         assert scheduler.trigger_due_schedules_once(now=due) == 1

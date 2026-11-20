@@ -21,7 +21,7 @@ type TokenEvent = { event_id: string; actor_user_id: string; action: string; cre
 const labels: Record<string, string> = {
   access: '当前身份', 'human-auth': '登录身份', 'access-management': '用户与团队',
   assets: '资产', users: '用户', devices: '设备', 'notification-channels': '通知',
-  'operating-dashboard': '经营看板', 'product-selection': '选品',
+  'operating-dashboard': '经营看板',
   'product-data': '商品数据', tasks: '任务', schedules: '定时计划',
 }
 const names: Record<string, string> = {

@@ -7,7 +7,6 @@ class ModuleCode(StrEnum):
 
     SHOP = "shop"
     ASSET = "asset"
-    PRODUCT_SELECTION = "product-selection"
     DEVICE = "device"
     TASK = "task"
     SCHEDULE = "schedule"

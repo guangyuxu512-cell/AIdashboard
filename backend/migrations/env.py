@@ -28,12 +28,6 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
-from app.modules.product_selection.models import (
-    ProductSelectionCandidate,
-    ProductSelectionObservation,
-    ProductSelectionRun,
-    ProductSelectionStrategy,
-)
 from app.modules.product_data.models import (
     ShopProductDataCollectionBatch,
     ShopProductDataProduct,
@@ -61,10 +55,6 @@ _MODELS = (
     AutomationParameterPreset,
     Asset,
     AuditLog,
-    ProductSelectionCandidate,
-    ProductSelectionObservation,
-    ProductSelectionRun,
-    ProductSelectionStrategy,
     ShopProductDataCollectionBatch,
     ShopProductDataProduct,
     ShopProductDataSeries,
