@@ -59,6 +59,17 @@ def get_schedule(session: Session, actor: ActorContext, strategy_id: UUID) -> di
     return schedule_read(row)
 
 
+def list_schedule_runs(session: Session, actor: ActorContext, strategy_id: UUID) -> list[dict]:
+    team_id = actor.require_team_id()
+    rows = session.scalars(select(OperationsScheduleRun).join(OperationsSchedule,
+        OperationsSchedule.schedule_id == OperationsScheduleRun.schedule_id).where(
+        OperationsSchedule.team_id == team_id, OperationsSchedule.strategy_id == strategy_id)
+        .order_by(OperationsScheduleRun.scheduled_for.desc(), OperationsScheduleRun.run_id.desc()).limit(30)).all()
+    return [{'run_id': str(row.run_id), 'scheduled_for': row.scheduled_for.isoformat(),
+        'state': row.state, 'attempts': row.attempts, 'error_code': row.error_code,
+        'operations_run_id': str(row.operations_run_id) if row.operations_run_id else None} for row in rows]
+
+
 def put_schedule(session: Session, actor: ActorContext, strategy_id: UUID,
                  data: OperationsScheduleInput, *, now: datetime | None = None) -> dict:
     team_id, at = actor.require_team_id(), now or datetime.now(UTC)
