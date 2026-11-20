@@ -9,6 +9,7 @@ from uuid import UUID
 
 import httpx
 
+from app.compass_signer import generate as generate_compass_signature
 from app.rpa_session_bridge import LocalSession, RpaLocalBridge
 
 
@@ -41,6 +42,17 @@ class CapabilityHost:
             from app.rpa_session_bridge import RpaBridgeError
             raise RpaBridgeError("RPA_NOT_READY")
         return await self._rpa.read_session(local_shop_id, platform_shop_id)
+
+    @staticmethod
+    def sign_compass(query: str, user_agent: str) -> str:
+        """Sign the exact local query; no shop Cookie is sent to the server."""
+        if (not isinstance(query, str) or not query or len(query) > 8192 or not query.isascii()
+                or not isinstance(user_agent, str) or not user_agent or len(user_agent) > 2048
+                or any(char in user_agent for char in '\r\n\0')):
+            raise ValueError('invalid signing context')
+        # The retired Compass signer used these defaults for this endpoint.
+        # Platform acceptance still requires a real Worker verification.
+        return generate_compass_signature(query, user_agent, aid=6383, page_id=6241)
 
     @staticmethod
     def cookie_header(session: LocalSession) -> str:

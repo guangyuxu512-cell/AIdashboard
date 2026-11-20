@@ -34,6 +34,7 @@ from app.modules.workers.capability_package_api import build_capability_package_
 from app.modules.workers.base_update_api import build_base_update_router
 from app.modules.workers.precheck_api import application_router as application_worker_precheck_router
 from app.modules.workers.precheck_api import worker_router as worker_precheck_router
+from app.modules.workers.selection_delivery_api import router as worker_selection_delivery_router
 from app.modules.workers.reconcile import reconcile_offline_devices_forever
 
 
@@ -118,10 +119,13 @@ def create_app() -> FastAPI:
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
+    from app.modules.schedules.operations_api import router as operations_schedule_router
+    application.include_router(operations_schedule_router)
     application.include_router(workers_router)
     application.include_router(build_capability_package_router(get_settings().worker_capability_package_dir))
     application.include_router(build_base_update_router(get_settings().worker_capability_package_dir))
     application.include_router(worker_precheck_router)
+    application.include_router(worker_selection_delivery_router)
     application.include_router(worker_tasks_router)
     install_openapi_security(application, settings.human_session_cookie_name)
     return application

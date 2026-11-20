@@ -10,9 +10,12 @@ from sqlalchemy.orm import Session
 from app.modules.access.models import Team
 from app.modules.devices.models import Device
 from app.modules.tasks.models import Task
+from app.modules.tasks.repository import TaskRepository
 from app.modules.tasks.service import TaskService
 from app.modules.users.models import User
 from app.modules.workers.service import WorkerPrincipal
+from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement
+from app.modules.workers.selection_delivery import acknowledge_delivery, mark_delivery_pending
 
 
 pytestmark = pytest.mark.integration
@@ -143,3 +146,36 @@ def test_ordinary_task_waits_for_active_prechecks_without_starvation(devices):
         session.get(Task, normal).status = "success"
         session.commit()
     assert claim(engine, device_id, precheck_only=False).task_id == later
+
+
+def test_offline_operations_delivery_does_not_block_product_precheck(devices):
+    engine, team_id, user_id, ids = devices
+    device_id, now = ids[0], datetime.now(UTC)
+    with Session(engine) as session:
+        current = Task(task_id=uuid4(), team_id=team_id, created_by_user_id=user_id,
+            target_device_id=device_id, skill_id='douyin.compass_selection', execution_display_name='fixture',
+            status='running', input_json={'correlation_id': str(uuid4()), 'operation': 'categories',
+                '_worker_local_shops': [{'local_shop_id': 'local-a', 'platform': 'douyin', 'platform_shop_id': '123'}]},
+            lease_until=now + timedelta(minutes=2), created_at=now)
+        session.add(current)
+        session.flush()
+        current_id = current.task_id
+        enqueue(session, team_id, user_id, device_id, None, now + timedelta(seconds=1),
+                skill='douyin.compass_selection')
+        precheck_id = enqueue(session, team_id, user_id, device_id, f'shop-{team_id}', now + timedelta(seconds=2))
+        session.commit()
+    with Session(engine) as session:
+        assert TaskRepository(session).claim_next(device_id=device_id, now=now,
+            lease_until=now + timedelta(minutes=1), precheck_only=True) is None
+        session.rollback()
+    ack = PrecheckDeliveryAcknowledgement(status='success', payload_sha256='a' * 64)
+    with Session(engine) as session:
+        mark_delivery_pending(session, device_id, current_id, ack)
+    with Session(engine) as session:
+        task = TaskRepository(session).claim_next(device_id=device_id, now=now,
+            lease_until=now + timedelta(minutes=1), precheck_only=True)
+        assert task is not None and task.task_id == precheck_id
+        session.commit()
+    with Session(engine) as session:
+        acknowledge_delivery(session, device_id, current_id, ack)
+        assert session.get(Task, current_id).status == 'success'

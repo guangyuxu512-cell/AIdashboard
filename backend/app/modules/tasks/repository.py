@@ -391,6 +391,7 @@ class TaskRepository:
         lease_until: datetime,
         precheck_only: bool = False,
         local_context_supported: bool = True,
+        operations_delivery_supported: bool = True,
     ) -> Task | None:
         # Ordinary RPA tasks remain exclusive. Prechecks may use five shops per
         # device and three slots per shop. Serialize this device's short claim
@@ -427,6 +428,8 @@ class TaskRepository:
         eligible = [~Task.skill_id.like("yingdao.%"), ~Task.shop_links.any()]
         if not local_context_supported:
             eligible.append(~Task.input_json.has_key(LOCAL_SHOPS_KEY))
+        if not operations_delivery_supported:
+            eligible.append(Task.skill_id != 'douyin.compass_selection')
         predicates = [
             Task.target_device_id == device_id,
             Task.status == TaskStatus.PENDING.value,
@@ -439,12 +442,25 @@ class TaskRepository:
                 predicates.append(shop_column.in_(list(device_counts)))
             # A continuous stream of prechecks must not starve an older RPA
             # task. Drain current slots when an ordinary task reaches the head.
+            barrier_predicates = [
+                Task.target_device_id == device_id,
+                Task.status == TaskStatus.PENDING.value,
+                Task.skill_id != PRECHECK_KIND,
+                *eligible,
+            ]
+            if precheck_only and self.session.scalar(select(Task.task_id).where(
+                    Task.target_device_id == device_id,
+                    Task.skill_id == 'douyin.compass_selection',
+                    Task.status == TaskStatus.LOST.value,
+                    Task.error_code == 'SELECTION_DELIVERY_PENDING',
+            ).limit(1)) is not None:
+                # A Worker with a durable selection result cannot run another
+                # selection until delivery recovers. Do not let such a queued
+                # selection prevent independent product prechecks from running.
+                barrier_predicates.append(Task.skill_id != 'douyin.compass_selection')
             barrier = self.session.execute(
                 select(Task.created_at, Task.task_id).where(
-                    Task.target_device_id == device_id,
-                    Task.status == TaskStatus.PENDING.value,
-                    Task.skill_id != PRECHECK_KIND,
-                    *eligible,
+                    *barrier_predicates,
                 ).order_by(Task.created_at.asc(), Task.task_id.asc()).limit(1),
             ).first()
             if barrier is not None:

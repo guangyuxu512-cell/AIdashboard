@@ -104,7 +104,24 @@ class Worker:
                             except Exception as error:
                                 logger.warning("Worker precheck task failed: %s", error)
                     if not await self._deliver_pending_terminals():
-                        await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
+                        # An unavailable operations center must not block the
+                        # existing product precheck queue on this device.
+                        try:
+                            pending = self.result_outbox.pending()
+                            only_operations = bool(pending) and all(item.result_delivery == 'operations' for item in pending)
+                        except OutboxError:
+                            only_operations = False
+                        if only_operations and self.executor.can_claim() and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
+                            task = await self.client.claim_precheck()
+                            if task is not None:
+                                self._active_task_ids.add(task.task_id)
+                                await self._cancel_shop_health_probe()
+                                prechecks.add(asyncio.create_task(self._execute_claimed_task(task)))
+                                continue
+                        if prechecks:
+                            await self._wait_for_prechecks_or_stop(prechecks, stop_event)
+                        else:
+                            await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
                         continue
                     if not prechecks:
                         # Capability files must not change under active tasks.
@@ -606,6 +623,7 @@ class Worker:
         except OutboxError:
             logger.error("Worker terminal outbox requires local attention")
             return False
+        operations_pending = False
         for delivery in pending:
             try:
                 if delivery.skill_id.startswith("yingdao."):
@@ -629,6 +647,15 @@ class Worker:
                             result=delivery.result, error_code=delivery.error_code,
                             error_message=delivery.error_message,
                         )
+                elif delivery.skill_id == 'douyin.compass_selection' and delivery.result_delivery == 'operations':
+                    digest = await self.client.deliver_operations_selection(
+                        delivery.task_id, status=delivery.status, result=delivery.result,
+                        error_code=delivery.error_code, error_message=delivery.error_message,
+                    )
+                    await self.client.acknowledge_operations_selection(
+                        delivery.task_id, status=delivery.status, payload_sha256=digest,
+                        error_code=delivery.error_code,
+                    )
                 elif delivery.status == "success":
                     await self.client.complete(delivery.task_id, delivery.result or {})
                 else:
@@ -637,6 +664,10 @@ class Worker:
                         error_message=delivery.error_message or "Skill execution failed",
                     )
             except WorkerApiError as error:
+                if delivery.result_delivery == 'operations':
+                    operations_pending = True
+                    await self._mark_operations_delivery_pending(delivery)
+                    continue
                 if error.status_code in {400, 403, 404, 409, 422}:
                     try:
                         self.result_outbox.reject(delivery)
@@ -648,9 +679,24 @@ class Worker:
                     continue
                 return False
             except (OSError, httpx.HTTPError):
+                if delivery.result_delivery == 'operations':
+                    operations_pending = True
+                    await self._mark_operations_delivery_pending(delivery)
+                    continue
                 return False
             self.result_outbox.acknowledge(delivery)
-        return True
+        return not operations_pending
+
+    async def _mark_operations_delivery_pending(self, delivery: TerminalDelivery) -> None:
+        try:
+            await self.client.mark_operations_selection_pending(
+                delivery.task_id, status=delivery.status, result=delivery.result,
+                error_code=delivery.error_code, error_message=delivery.error_message,
+            )
+        except (WorkerApiError, OSError, httpx.HTTPError):
+            # The durable local result remains in the outbox even if the
+            # central service itself is temporarily unavailable.
+            pass
 
     async def _prepare_and_execute(self, task: WorkerTask) -> ExecutionResult:
         if self.capability_runtime is not None and (
