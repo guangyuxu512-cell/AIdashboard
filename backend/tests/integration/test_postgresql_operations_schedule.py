@@ -103,7 +103,6 @@ def test_concurrent_scanners_stage_only_one_occurrence(state):
 
 def test_existing_scheduler_triggers_operations_at_the_due_time(state, monkeypatch):
     from app.modules.schedules import scheduler
-    from app.modules.schedules.models import Schedule
 
     engine, actor, _other, strategy = state
     now = datetime(2026, 11, 20, 1, 0, tzinfo=UTC)
@@ -117,11 +116,15 @@ def test_existing_scheduler_triggers_operations_at_the_due_time(state, monkeypat
     monkeypatch.setattr(scheduler, 'get_settings', lambda: settings)
     monkeypatch.setattr(scheduler, 'get_session_factory', lambda: lambda: Session(engine))
     monkeypatch.setattr(scheduler, 'send_pending', lambda session, settings, now=None: real_send(session, settings, now=now, transport=transport))
+    class NoLegacyDispatch:
+        def __init__(self, _session): pass
+        def trigger_next_due(self, *, now=None): return None
+    # Existing Integration schedules are user data; the test must not run them.
+    monkeypatch.setattr(scheduler, 'ScheduleService', NoLegacyDispatch)
     assert scheduler.trigger_due_schedules_once(now=now + timedelta(minutes=59)) == 0
     assert scheduler.trigger_due_schedules_once(now=now + timedelta(hours=1)) == 1
     assert scheduler.trigger_due_schedules_once(now=now + timedelta(hours=1)) == 0
     with Session(engine) as session:
         run = session.scalars(select(OperationsScheduleRun)).one()
         assert run.state == 'sent' and run.operations_run_id == result_id
-        assert session.scalars(select(Schedule)).all() == []
     assert len(calls) == 1
