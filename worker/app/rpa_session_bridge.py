@@ -130,6 +130,7 @@ class LocalShop(BaseModel):
     browser_open: bool | None = Field(alias="browserOpen", default=None)
     session_stored: bool = Field(alias="sessionStored", default=False)
     session_revision: str | None = Field(alias="sessionRevision", default=None, pattern=r"^[0-9a-f]{64}$")
+    compass_session_verified: bool | None = Field(alias="compassSessionVerified", default=None, strict=True)
 
 
 class LocalShopInventory(BaseModel):
@@ -252,11 +253,27 @@ class RpaLocalBridge:
             if len({shop.local_shop_id for shop in inventory.shops}) != len(inventory.shops):
                 raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
             revisions = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
-            return inventory.model_copy(update={"shops": [
-                shop.model_copy(update={"session_revision": revisions.get((shop.local_shop_id, shop.platform_shop_id))})
-                if shop.session_stored and shop.platform_shop_id else shop
-                for shop in inventory.shops
-            ]})
+            verified = {}
+            for shop in inventory.shops:
+                key = (shop.local_shop_id, shop.platform_shop_id)
+                if not shop.session_stored or not shop.platform_shop_id or key not in revisions:
+                    continue
+                try:
+                    status = await bridge.call({"type": "compass_status", "localShopId": shop.local_shop_id,
+                                                "expectedPlatformShopId": shop.platform_shop_id})
+                    if set(status) == {"verified"} and type(status["verified"]) is bool:
+                        verified[key] = status["verified"]
+                except RpaBridgeError as error:
+                    if error.code == "INVALID_REQUEST":
+                        break  # Older RPA helpers remain usable for merchant prechecks.
+            latest = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
+            shops = []
+            for shop in inventory.shops:
+                key = (shop.local_shop_id, shop.platform_shop_id)
+                revision = revisions.get(key)
+                shops.append(shop.model_copy(update={"session_revision": revision,
+                    "compass_session_verified": verified.get(key) if revision and latest.get(key) == revision else None}))
+            return inventory.model_copy(update={"shops": shops})
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         async with self._connection() as bridge:

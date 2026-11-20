@@ -95,7 +95,7 @@ def test_new_worker_keeps_inventory_compatible_with_old_backend(tmp_path, monkey
         def handler(request):
             import json
             body = json.loads(request.content)
-            extended = "sessionStatus" in body["shops"][0]
+            extended = "sessionStatus" in body["shops"][0] or "compassSessionVerified" in body["shops"][0]
             requests.append(extended)
             return httpx.Response(422 if extended and not supports_status[0] else 204)
 
@@ -103,7 +103,8 @@ def test_new_worker_keeps_inventory_compatible_with_old_backend(tmp_path, monkey
                                   device_token="synthetic", runtime_root=tmp_path)
         payload = {"available": True, "installation_id": str(uuid4()), "shops": [
             {"localShopId": "a", "platformShopId": "1", "shopName": "A", "platform": "douyin",
-             "sessionStatus": "valid", "sessionCheckedAt": datetime.now(UTC).isoformat()},
+             "sessionStatus": "valid", "sessionCheckedAt": datetime.now(UTC).isoformat(),
+             "compassSessionVerified": True},
         ]}
         async with httpx.AsyncClient(base_url="https://test.invalid", transport=httpx.MockTransport(handler)) as http:
             client = WorkerApiClient(settings, client=http)
@@ -115,5 +116,6 @@ def test_new_worker_keeps_inventory_compatible_with_old_backend(tmp_path, monkey
             await client.report_rpa_inventory(payload)
             assert requests[-1] is True
             assert payload["shops"][0]["sessionStatus"] == "valid"
+            assert payload["shops"][0]["compassSessionVerified"] is True
 
     asyncio.run(scenario())

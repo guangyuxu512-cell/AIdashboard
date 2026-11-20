@@ -78,7 +78,8 @@ def test_automatic_discovery_requires_signed_release_digest(tmp_path):
     assert bridge.discovery.installation_id
 
 
-def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
+@pytest.mark.parametrize("supports_compass", [True, False])
+def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch, supports_compass):
     _, data_dir, trust, info = fixture_installation(tmp_path)
     database = Path(info.database_path)
     database.unlink()
@@ -93,6 +94,9 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
 ' d=json.loads(line)\n'
 ' if d["type"] == "init": r={"contractVersion":1,"installationId":iid}\n'
 ' elif d["type"] == "list_stored_shops": r={"installationId":iid,"shops":[{"localShopId":"a","platformShopId":"1","shopName":"demo","platform":"douyin","sessionStored":True}]}\n'
+' elif d["type"] == "compass_status":\n'
+'  if sys.argv[2] == "False": print(json.dumps({"ok":False,"errorCode":"INVALID_REQUEST"}),flush=True); continue\n'
+'  r={"verified":True}\n'
 ' elif d["type"] == "read_stored_session": r={"localShopId":"a","platformShopId":"1","platform":"douyin","userAgent":"test","cookies":[{"name":"example","value":"synthetic-secret","domain":".jinritemai.com","path":"/"},{"name":"compass","value":"synthetic-compass","domain":"compass.jinritemai.com","path":"/"}]}\n'
 ' else: raise ValueError("unexpected legacy browser command")\n'
 ' print(json.dumps({"ok":True,"result":r}),flush=True)\n'''.replace("'\n'", ""), encoding="utf-8")
@@ -103,15 +107,23 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch):
         assert args[0].endswith("listing-worker.exe")
         assert args[1] == "--worker-session-stdio"
         assert kwargs.get("creationflags") == windows_no_window_creation_flags()
-        return await original(sys.executable, str(script), str(info.installation_id), **kwargs)
+        return await original(sys.executable, str(script), str(info.installation_id), str(supports_compass), **kwargs)
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", fake_spawn)
     bridge = RpaLocalBridge(info, data_dir, trust)
     inventory = asyncio.run(bridge.list_shops())
     assert inventory.shops[0].local_shop_id == "a"
     assert inventory.shops[0].session_stored is True
+    assert inventory.shops[0].compass_session_verified is (True if supports_compass else None)
     assert len(inventory.shops[0].session_revision) == 64
     assert "synthetic-encrypted-a" not in inventory.model_dump_json()
+    if supports_compass:
+        first = {('a', '1'): 'a' * 64}
+        second = {('a', '1'): 'b' * 64}
+        snapshots = iter([first, second])
+        monkeypatch.setattr('app.rpa_session_bridge._stored_session_revisions', lambda _path: next(snapshots))
+        changed = asyncio.run(bridge.list_shops())
+        assert changed.shops[0].compass_session_verified is None
     session = asyncio.run(bridge.read_session("a", "1"))
     assert session.cookies[0].value.get_secret_value() == "synthetic-secret"
     assert session.cookies[1].domain == "compass.jinritemai.com"

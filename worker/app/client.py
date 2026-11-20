@@ -196,11 +196,11 @@ class WorkerApiClient:
     async def report_rpa_inventory(self, payload: dict[str, Any]) -> None:
         shops = payload.get("shops")
         extended = isinstance(shops, list) and any(
-            isinstance(shop, dict) and ("sessionStatus" in shop or "sessionCheckedAt" in shop)
+            isinstance(shop, dict) and any(key in shop for key in ("sessionStatus", "sessionCheckedAt", "compassSessionVerified"))
             for shop in shops
         )
         legacy = ({**payload, "shops": [
-            {key: value for key, value in shop.items() if key not in ("sessionStatus", "sessionCheckedAt")}
+            {key: value for key, value in shop.items() if key not in ("sessionStatus", "sessionCheckedAt", "compassSessionVerified")}
             if isinstance(shop, dict) else shop for shop in shops
         ]} if extended else payload)
         use_extended = extended and monotonic() >= self._inventory_health_retry_at

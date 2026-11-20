@@ -27,7 +27,7 @@ def test_local_inventory_uses_only_matching_worker_observations():
         last_discovered_at=now,
         shops=[
             {"localShopId": "local-a", "platformShopId": "100", "shopName": "A",
-             "platform": "douyin", "sessionStored": True, "sessionRevision": "new"},
+             "platform": "douyin", "sessionStored": True, "sessionRevision": "new", "compassSessionVerified": True},
             {"localShopId": "local-b", "platformShopId": "200", "shopName": "B",
              "platform": "douyin", "sessionStored": True, "sessionRevision": "same"},
             {"localShopId": "local-c", "platformShopId": "300", "shopName": "C",
@@ -49,6 +49,7 @@ def test_local_inventory_uses_only_matching_worker_observations():
     assert [item.session_status for item in result.shops] == [
         "unknown", "invalid", "reauthorization_required", "unknown",
     ]
+    assert [item.compass_session_verified for item in result.shops] == [True, None, None, None]
     assert "sessionRevision" not in result.model_dump_json()
 
 
@@ -139,6 +140,9 @@ def test_worker_observation_must_match_a_saved_snapshot():
               "sessionStored": True, "sessionRevision": "a" * 64,
               "sessionStatus": "valid", "sessionCheckedAt": datetime.now(UTC).isoformat()}
     assert LocalShopSummary.model_validate(values).session_status == "valid"
+    assert LocalShopSummary.model_validate({**values, "compassSessionVerified": True}).compass_session_verified is True
+    with pytest.raises(ValueError):
+        LocalShopSummary.model_validate({**values, "sessionRevision": None, "compassSessionVerified": True})
     for invalid in ({**values, "sessionRevision": None}, {**values, "sessionStored": False},
                     {**values, "sessionCheckedAt": None}, {**values, "platform": "pdd"},
                     {**values, "cookie": "synthetic"}):
