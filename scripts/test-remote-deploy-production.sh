@@ -19,7 +19,7 @@ grep -Fqx '        proxy_pass ${PRODUCT_LIBRARY_IMAGE_UPSTREAM};' "$host_nginx_t
 grep -Fqx '        proxy_set_header Authorization "";' "$host_nginx_template"
 grep -Fqx '        proxy_set_header Cookie "";' "$host_nginx_template"
 grep -Fqx '        proxy_hide_header Set-Cookie;' "$host_nginx_template"
-grep -Fq 'PRODUCT_LIBRARY_IMAGE_UPSTREAM="http://100.91.242.119:3612"' "$deployment_script"
+grep -Fq 'PRODUCT_LIBRARY_IMAGE_UPSTREAM="http://100.91.242.119:25490"' "$deployment_script"
 grep -Fq '$BACKEND_BIND_PORT $FRONTEND_BIND_PORT $PRODUCT_LIBRARY_IMAGE_UPSTREAM' "$deployment_script"
 
 cleanup_test_root() {
