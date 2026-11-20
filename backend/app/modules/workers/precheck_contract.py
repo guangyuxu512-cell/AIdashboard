@@ -97,6 +97,7 @@ class LocalShopSummary(BaseModel):
     browser_open: bool | None = Field(default=None, alias="browserOpen")
     session_stored: bool = Field(default=False, alias="sessionStored")
     session_revision: str | None = Field(default=None, alias="sessionRevision", pattern=r"^[0-9a-f]{64}$")
+    compass_session_verified: bool | None = Field(default=None, alias="compassSessionVerified", strict=True)
     session_status: Literal["valid", "invalid"] | None = Field(default=None, alias="sessionStatus")
     session_checked_at: AwareDatetime | None = Field(default=None, alias="sessionCheckedAt")
 
@@ -109,6 +110,10 @@ class LocalShopSummary(BaseModel):
             or self.platform != "douyin"
         ):
             raise ValueError("session observation requires the saved shop snapshot")
+        if self.compass_session_verified is True and (
+            not self.session_stored or not self.session_revision or not self.platform_shop_id or self.platform != "douyin"
+        ):
+            raise ValueError("compass verification requires the saved shop snapshot")
         return self
 
 

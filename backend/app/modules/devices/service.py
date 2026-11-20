@@ -129,6 +129,7 @@ class DeviceService:
             shops.append(DeviceLocalShopRead(
                 local_shop_id=local_id, platform_shop_id=platform_id,
                 shop_name=name, platform=platform, session_status=state,
+                compass_session_verified=shop.get("compassSessionVerified") if type(shop.get("compassSessionVerified")) is bool else None,
                 status_observed_at=observed_at,
             ))
         available = bool(
