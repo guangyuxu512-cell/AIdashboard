@@ -1,5 +1,11 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-20 运营中心选品定时（0057 active）
+
+- Integration 已只读核对为单一 `20261116_0056`；Green dev `7d870cb5cf6c2da77ea9be7001e1b120cd9c6374` 的 GitHub CI `44602641442` 成功，0056 Slot 核销为 released。
+- 唯一 active Slot 分配给 `feat/operations-selection-schedule-v1`：`20261120_0057`，down `20261116_0056`。仅保存运营中心策略的定时定义和触发回执，复用现有中控定时扫描循环，不保存 Session 或服务凭据，也不启用旧选品、影刀或历史定时。
+- Feature 使用本机隔离 PostgreSQL 的 `control_center_feat_ops_selection_schedule`；应用角色不能创建库、角色或拥有超级权限。共享环境和生产升级前须进行备份及 Gate 2；回滚关闭新触发并保留历史回执。
+
 ## 2026-11-16 Worker 本机店铺与纯 Web（0056 active）
 
 - `20261116_0055` 已应用于生产；Integration 已在可读备份后升级为单一 `20261116_0056`。`feat/worker-only-shop-context-v1` 使用 `0056`，down revision 为 `20261116_0055`；Feature 使用独立的 `control_center_feat_worker_only_v1` / `control_center_feat_worker_only_v2`。

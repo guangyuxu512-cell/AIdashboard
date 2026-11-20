@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.core.database import get_session_factory
 from app.modules.schedules.service import ScheduleService
 from app.modules.schedules.selection_service import SelectionScheduleService
+from app.modules.schedules.operations_service import send_pending, stage_due
 
 
 logger = logging.getLogger(__name__)
@@ -18,12 +19,23 @@ def trigger_due_schedules_once(*, now: datetime | None = None) -> int:
     session_factory = get_session_factory()
     triggered = 0
     server_enabled = getattr(settings, "product_selection_schedule_enabled", False) and getattr(settings, "product_selection_execution_enabled", False)
+    operations_enabled = getattr(settings, 'operations_schedule_execution_enabled', False)
     while triggered < settings.schedule_trigger_batch_size:
         progressed = False
         # One existing coordinator alternates targets. A disabled/busy server
         # row cannot hide or block the PC query; no second scanner is created.
-        for target in (("server_selection", "pc") if server_enabled else ("pc",)):
+        targets = (('operations',) if operations_enabled else ()) + (("server_selection",) if server_enabled else ()) + ('pc',)
+        for target in targets:
             if triggered >= settings.schedule_trigger_batch_size: break
+            if target == 'operations':
+                with session_factory() as session:
+                    staged = stage_due(session, now=now)
+                with session_factory() as session:
+                    sent = send_pending(session, settings, now=now)
+                if staged or sent:
+                    triggered += 1
+                    progressed = True
+                continue
             with session_factory() as session:
                 if target == 'server_selection':
                     result = SelectionScheduleService(session, settings=settings).trigger_next_due(now=now)

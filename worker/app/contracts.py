@@ -43,7 +43,7 @@ class WorkerTask(BaseModel):
     lease_until: datetime
     local_shops: list[LocalShopContext] = Field(default_factory=list)
     assets: list[TaskAsset] = Field(default_factory=list)
-    result_delivery: Literal["central", "product"] = "central"
+    result_delivery: Literal["central", "product", "operations"] = "central"
 
 
 class SkillCapabilitySnapshot(BaseModel):

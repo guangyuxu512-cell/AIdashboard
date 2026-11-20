@@ -83,7 +83,7 @@ def _claim_worker_task(
     direct_product = task.skill_id == "douyin.category_schema" and task.input_json.get("_result_delivery") == "product"
     from app.modules.workers.shop_context import LOCAL_SHOPS_KEY
     task_input = ({key: value for key, value in task.input_json.items() if not key.startswith("_")}
-                  if task.skill_id == "douyin.category_schema" else
+                  if task.skill_id in {"douyin.category_schema", "douyin.compass_selection"} else
                   {key: value for key, value in task.input_json.items() if key != LOCAL_SHOPS_KEY})
     if task.skill_id == "douyin.category_schema" and session_snapshot_expired(service.session, task):
         task_input["skip_expired_session"] = True
@@ -91,7 +91,8 @@ def _claim_worker_task(
         task_id=task.task_id,
         skill_id=task.skill_id,
         input=task_input,
-        result_delivery="product" if direct_product else "central",
+        result_delivery=("product" if direct_product else
+                         "operations" if task.skill_id == "douyin.compass_selection" else "central"),
         lease_until=task.lease_until,
         local_shops=claimed.local_shops,
         assets=[
