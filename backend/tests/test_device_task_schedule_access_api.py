@@ -28,7 +28,8 @@ def _request(application: object, path: str) -> Response:
 
 @pytest.mark.parametrize(
     "path",
-    ["/api/v1/devices", "/api/v1/tasks", "/api/v1/schedules"],
+    ["/api/v1/devices", "/api/v1/tasks", "/api/v1/schedules",
+     "/api/v1/operations-selection-schedules/00000000-0000-0000-0000-000000000001"],
 )
 def test_human_resource_apis_require_a_human_session(path: str) -> None:
     response = _request(create_app(), path)
@@ -43,6 +44,7 @@ def test_human_resource_apis_require_a_human_session(path: str) -> None:
         (get_device_authorized_actor, "/api/v1/devices"),
         (get_task_authorized_actor, "/api/v1/tasks"),
         (get_schedule_authorized_actor, "/api/v1/schedules"),
+        (get_schedule_authorized_actor, "/api/v1/operations-selection-schedules/00000000-0000-0000-0000-000000000001"),
     ],
 )
 def test_human_resource_apis_reject_missing_module_access(

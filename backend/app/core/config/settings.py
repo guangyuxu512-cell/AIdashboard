@@ -66,6 +66,9 @@ class Settings(BaseSettings):
     )
     task_event_retention_batch_size: int = Field(default=100, ge=1, le=1000)
     worker_schedule_execution_enabled: bool = False
+    operations_schedule_execution_enabled: bool = False
+    operations_schedule_origin: str | None = None
+    operations_schedule_token: SecretStr | None = None
     schedule_scan_interval_seconds: int = Field(default=10, ge=1, le=300)
     schedule_trigger_batch_size: int = Field(default=50, ge=1, le=500)
     # Explicit manual Product Data execution only. The consumer scans only

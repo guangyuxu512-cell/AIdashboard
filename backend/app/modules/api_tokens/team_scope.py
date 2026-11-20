@@ -17,6 +17,8 @@ TEAM_SCOPED_OPERATIONS = frozenset({
     'GET /api/v1/devices/{device_id}/skill-capabilities',
     'GET /api/v1/devices/{device_id}/worker-credential',
     'GET /api/v1/operating-dashboard',
+    'GET /api/v1/operations-selection-schedules/{strategy_id}',
+    'GET /api/v1/operations-selection-schedules/{strategy_id}/runs',
     'GET /api/v1/operating-dashboard/collections/{collection_job_id}',
     'GET /api/v1/product-data',
     'GET /api/v1/product-selection/basic-info-runs/{run_id}',
@@ -51,4 +53,5 @@ TEAM_SCOPED_OPERATIONS = frozenset({
     'POST /api/v1/tasks',
     'POST /api/v1/tasks/runtime-events/purge-expired',
     'PUT /api/v1/product-selection/strategies/{strategy_id}',
+    'PUT /api/v1/operations-selection-schedules/{strategy_id}',
 })
