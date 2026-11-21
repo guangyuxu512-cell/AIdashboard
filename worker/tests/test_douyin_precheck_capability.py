@@ -61,6 +61,50 @@ def test_success_normalizes_numeric_code_and_keeps_only_safe_fields(platform_cod
     assert host.platform_calls == 1
 
 
+def test_material_template_options_and_matching_picture_rule_are_sanitized():
+    # Metadata shape observed in the platform's 1000010274 page schema. The
+    # returned picture values and unrelated fields are deliberately excluded.
+    class PictureHost(Host):
+        async def post_schema(self, signed, cookie, user_agent, params):
+            return 200, {"code": 0, "data": {"model": {
+                "category_properties": {"items": [{"id": "785", "label": "面料材质",
+                    "additions": {"ui_type": "multi_value_measure", "diy_type": 1,
+                        "measure_templates": [{"template_id": 873, "value_modules": [{
+                            "module_id": 1854, "input_type": "enum_diy", "value_options": [
+                                {"label": "棉", "value": "棉", "private": "synthetic-secret"},
+                                {"label": "木棉", "value": "木棉"},
+                            ]}]}]}}]},
+                "category_property_pic": {"available": True, "items": [{
+                    "id": "785", "label": "水洗标/吊牌图", "label_tips": "上传图片可智能识别并预填材质信息",
+                    "required": False, "hidden": False, "available": True,
+                    "value": {"urls": ["synthetic-secret"]}, "events": {"secret": "synthetic-secret"}}]}}}}
+
+    result = asyncio.run(capability.execute(PictureHost(0), task()))
+    assert result.status is ExecutionStatus.SUCCESS
+    field = result.result["items"][0]
+    options = field["additions"]["measure_templates"][0]["value_modules"][0]["value_options"]
+    assert options == [{"label": "棉", "value": "棉"}, {"label": "木棉", "value": "木棉"}]
+    assert field["property_picture"] == {"id": "785", "label": "水洗标/吊牌图", "required": False,
+                                         "label_tips": "上传图片可智能识别并预填材质信息"}
+    assert "synthetic-secret" not in repr(result)
+
+
+def test_picture_rule_requires_an_unambiguous_visible_platform_field():
+    items = [{"id": "785"}, {"id": "other"}]
+    field = {"id": "785", "label": "水洗标", "required": False}
+    capability._picture_rules({"category_property_pic": {"items": [field]}}, items)
+    assert "property_picture" in items[0] and "property_picture" not in items[1]
+    for group in (
+        {"hidden": True, "items": [field]},
+        {"items": [{**field, "hidden": True}]},
+        {"items": [{"id": "785", "label": "水洗标"}]},
+        {"items": [field, field]},
+    ):
+        result = [{"id": "785"}]
+        capability._picture_rules({"category_property_pic": group}, result)
+        assert "property_picture" not in result[0]
+
+
 @pytest.mark.parametrize(("platform_code", "expected"), [(True, None), ("00", "00"), ("E_600.2-A", "E_600.2-A")])
 def test_business_rejection_preserves_safe_code(platform_code, expected):
     result = asyncio.run(capability.execute(Host(platform_code), task()))
