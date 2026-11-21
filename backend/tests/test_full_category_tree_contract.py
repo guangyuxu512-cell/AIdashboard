@@ -26,6 +26,16 @@ def test_full_tree_is_explicit_and_tree_only():
         PrecheckInput.model_validate({**base, "operation": "tree", "full_category_tree": "true"})
 
 
+def test_schema_metadata_is_explicit_and_schema_only():
+    base = {"category_id": "1000010274", "title": "商品"}
+    assert PrecheckInput.model_validate(base).require_schema_metadata is False
+    assert PrecheckInput.model_validate({**base, "require_schema_metadata": True}).require_schema_metadata is True
+    with pytest.raises(ValidationError):
+        PrecheckInput.model_validate({**base, "operation": "tree", "require_schema_metadata": True})
+    with pytest.raises(ValidationError):
+        PrecheckInput.model_validate({**base, "require_schema_metadata": "true"})
+
+
 @pytest.mark.parametrize(("version", "expected"), [("2.0.0", None), ("2.0.1", "1"), (None, None)])
 def test_signing_cannot_downgrade_a_full_tree_request(version, expected):
     class Session:

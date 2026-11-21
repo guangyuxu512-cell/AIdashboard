@@ -518,6 +518,50 @@ def test_full_tree_requires_new_capability_without_changing_legacy_tree(ready_pr
                                   PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
 
 
+def test_schema_metadata_requires_new_capability_without_breaking_legacy_precheck(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+
+    class Signer:
+        def sign(self, request):
+            return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
+
+    def request(name, enhanced=False):
+        return PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+            "context": {"product_id": name, "revision": 1, "attempt": 1},
+            "input": {"category_id": "1000010274", "title": "商品",
+                      **({"require_schema_metadata": True} if enhanced else {})}})
+
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.0"
+        session.commit()
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, request("schema-old-required", True))
+        session.rollback()
+        legacy = service.submit(principal, request("schema-old-legacy"))
+        legacy.status, legacy.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        signed = sign_current_precheck(session, auth, Signer(), device_id, legacy.task_id,
+                                      PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        assert "/product/tproduct/getSchema" in signed["url"]
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.1"
+        session.commit()
+        current = service.submit(principal, request("schema-new-required", True))
+        assert current.input_json["_require_schema_metadata"] is True
+        current.status, current.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        signed = sign_current_precheck(session, auth, Signer(), device_id, current.task_id,
+                                      PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        assert "/product/tproduct/getSchema" in signed["url"]
+        capability.skill_version = "2.0.0"
+        session.commit()
+        with pytest.raises(PrecheckUnavailable):
+            sign_current_precheck(session, auth, Signer(), device_id, current.task_id,
+                                  PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+
+
 def test_safe_string_business_code_survives_failure_and_replay(ready_precheck):
     engine, principal, auth, device_id = ready_precheck
     with Session(engine) as session:

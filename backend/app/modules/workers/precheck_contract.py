@@ -46,6 +46,7 @@ class PrecheckInput(BaseModel):
     title: str = Field(min_length=1, max_length=10000)
     operation: Literal["schema", "tree", "search", "predict"] = "schema"
     full_category_tree: bool = Field(default=False, strict=True)
+    require_schema_metadata: bool = Field(default=False, strict=True)
     image_url: str | None = Field(default=None, max_length=10000)
     shop_id: UUID | None = None
 
@@ -53,6 +54,8 @@ class PrecheckInput(BaseModel):
     def validate_operation(self) -> PrecheckInput:
         if self.full_category_tree and self.operation != "tree":
             raise ValueError("full category tree requires tree operation")
+        if self.require_schema_metadata and self.operation != "schema":
+            raise ValueError("schema metadata requires schema operation")
         if self.operation in {"search", "predict"} and not self.title.strip():
             raise ValueError("invalid title")
         if self.operation == "schema" and len(self.title) > 500:
