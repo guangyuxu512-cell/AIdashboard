@@ -22,7 +22,7 @@ from app.modules.sessions.application_auth import ApplicationAuthenticationError
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
-from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, validate_terminal_result
+from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, supports_full_category_tree, validate_terminal_result
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 from app.modules.workers.session_health import merge_session_observations, worker_session_observation
 
@@ -312,7 +312,8 @@ class WorkerPrecheckService:
         choices = []
         for device, inventory, worker_version, skill_version in rows:
             if (not supports_saved_shop_sessions(worker_version)
-                    or (data.input.operation != "schema" and not supports_category_lookup(skill_version))):
+                    or (data.input.operation != "schema" and not supports_category_lookup(skill_version))
+                    or (data.input.full_category_tree and not supports_full_category_tree(skill_version))):
                 continue
             for shop in inventory.shops:
                 local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
@@ -359,6 +360,7 @@ class WorkerPrecheckService:
             input_json={"category_id": data.input.category_id, "title": data.input.title,
                         "local_shop_id": local_id, "platform_shop_id": platform_id,
                         **({"operation": data.input.operation} if data.input.operation != "schema" else {}),
+                        **({"_full_category_tree": True} if data.input.full_category_tree else {}),
                         **({"image_url": data.input.image_url} if data.input.image_url is not None else {}),
                         **({"_session_revision": session_revision} if session_revision else {}),
                         "_precheck_context": {"client_id": grant.client_id,
@@ -539,6 +541,16 @@ def acknowledge_product_delivery(session: Session, device_id: UUID, task_id: UUI
     return task
 
 
+def _tree_display_all(session: Session, device_id: UUID, task: Task) -> str:
+    """A full-tree request may never silently fall back to a partial tree."""
+    if task.input_json.get("_full_category_tree") is not True:
+        return "0"
+    capability = session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND))
+    if capability is None or not supports_full_category_tree(capability.skill_version):
+        raise PrecheckUnavailable()
+    return "1"
+
+
 def sign_current_precheck(session: Session, authenticator: ApplicationAuthenticator,
                           signer: DouyinSignerClient | PureDouyinSigner, device_id: UUID, task_id: UUID,
                           data: PrecheckSignInput) -> dict[str, str]:
@@ -587,7 +599,7 @@ def sign_current_precheck(session: Session, authenticator: ApplicationAuthentica
                    "is_auction_or_mass": False, "appid": 1, "_bid": "ffa_goods", "_lid": "209821037550"}
     elif operation == "tree":
         path, method, payload = "/product/tproduct/categoryOptionsN", "GET", None
-        params.update({"cid": task.input_json["category_id"], "display_all": "0"})
+        params.update({"cid": task.input_json["category_id"], "display_all": _tree_display_all(session, device_id, task)})
     else:
         path, method, payload = "/product/tproduct/searchCategoryN", "GET", None
         params.update({"key": task.input_json["title"], "search_type": "1"})

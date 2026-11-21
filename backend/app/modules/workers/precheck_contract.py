@@ -15,6 +15,7 @@ PRECHECK_KIND = "douyin.category_schema"
 ITEMS_LIMIT = 4 * 1024 * 1024
 RESULT_LIMIT = ITEMS_LIMIT + 16 * 1024
 CATEGORY_LOOKUP_CAPABILITY_VERSION = (2, 0, 0)
+FULL_CATEGORY_TREE_CAPABILITY_VERSION = (2, 0, 1)
 
 
 def mapped_shop_id(platform_shop_id: str) -> UUID:
@@ -25,6 +26,11 @@ def mapped_shop_id(platform_shop_id: str) -> UUID:
 def supports_category_lookup(version: str) -> bool:
     match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
     return bool(match and tuple(int(value) for value in match.groups()) >= CATEGORY_LOOKUP_CAPABILITY_VERSION)
+
+
+def supports_full_category_tree(version: str) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    return bool(match and tuple(int(value) for value in match.groups()) >= FULL_CATEGORY_TREE_CAPABILITY_VERSION)
 
 
 class PrecheckContext(BaseModel):
@@ -39,11 +45,14 @@ class PrecheckInput(BaseModel):
     category_id: str = Field(pattern=r"^[0-9]{1,32}$")
     title: str = Field(min_length=1, max_length=10000)
     operation: Literal["schema", "tree", "search", "predict"] = "schema"
+    full_category_tree: bool = Field(default=False, strict=True)
     image_url: str | None = Field(default=None, max_length=10000)
     shop_id: UUID | None = None
 
     @model_validator(mode="after")
     def validate_operation(self) -> PrecheckInput:
+        if self.full_category_tree and self.operation != "tree":
+            raise ValueError("full category tree requires tree operation")
         if self.operation in {"search", "predict"} and not self.title.strip():
             raise ValueError("invalid title")
         if self.operation == "schema" and len(self.title) > 500:

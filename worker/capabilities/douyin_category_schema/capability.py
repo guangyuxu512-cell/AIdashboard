@@ -168,7 +168,7 @@ async def _post_lookup(host, signed, cookie, user_agent, params):
                 or parsed.path != path or len(values) != len(query)
                 or set(values) - allowed or not values.get("a_bogus")):
             raise ValueError("invalid signed target")
-        if operation == "tree" and (values.get("cid") != params["category_id"] or values.get("display_all") != "0"):
+        if operation == "tree" and (values.get("cid") != params["category_id"] or values.get("display_all") not in {"0", "1"}):
             raise ValueError("category mismatch")
         if operation == "search" and (values.get("key") != params["title"] or values.get("search_type") != "1"):
             raise ValueError("search mismatch")
@@ -264,7 +264,7 @@ def _lookup_data(operation, data):
     if operation == "tree":
         if not isinstance(data, list) or len(data) > 10000:
             raise ValueError("invalid category tree")
-        keys = {"id", "name", "is_leaf", "parent_cid", "enable"}
+        keys = {"id", "name", "is_leaf", "parent_cid", "enable", "industry_status"}
         if not all(isinstance(item, dict) for item in data):
             raise ValueError("invalid category tree")
         return [{key: _safe_scalar(item[key]) for key in keys & item.keys()} for item in data]

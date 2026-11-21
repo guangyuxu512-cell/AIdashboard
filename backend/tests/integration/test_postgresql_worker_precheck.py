@@ -471,6 +471,53 @@ def test_category_operations_require_updated_capability_and_freeze_the_target(re
         assert context["operation"] == operation
 
 
+def test_full_tree_requires_new_capability_without_changing_legacy_tree(ready_precheck):
+    from urllib.parse import parse_qs, urlsplit
+
+    engine, principal, auth, device_id = ready_precheck
+
+    class Signer:
+        def sign(self, request):
+            return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
+
+    def request(name, full=False):
+        return PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+            "context": {"product_id": name, "revision": 1, "attempt": 1},
+            "input": {"category_id": "1000005081", "title": "商品", "operation": "tree",
+                      "shop_id": str(mapped_shop_id("123")), **({"full_category_tree": True} if full else {})}})
+
+    def sign(session, task):
+        task.status, task.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        value = sign_current_precheck(session, auth, Signer(), device_id, task.task_id,
+                                      PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        return parse_qs(urlsplit(value["url"]).query)["display_all"]
+
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.0"
+        session.commit()
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, request("full-old", True))
+        session.rollback()
+        old = service.submit(principal, request("legacy-old"))
+        assert sign(session, old) == ["0"]
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.1"
+        session.commit()
+        current = service.submit(principal, request("full-new", True))
+        assert current.input_json["_full_category_tree"] is True
+        assert sign(session, current) == ["1"]
+        legacy = service.submit(principal, request("legacy-new"))
+        assert sign(session, legacy) == ["0"]
+        capability.skill_version = "2.0.0"
+        session.commit()
+        with pytest.raises(PrecheckUnavailable):
+            sign_current_precheck(session, auth, Signer(), device_id, current.task_id,
+                                  PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+
+
 def test_safe_string_business_code_survives_failure_and_replay(ready_precheck):
     engine, principal, auth, device_id = ready_precheck
     with Session(engine) as session:
