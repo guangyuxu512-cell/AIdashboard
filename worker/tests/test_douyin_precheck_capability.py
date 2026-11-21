@@ -61,6 +61,50 @@ def test_success_normalizes_numeric_code_and_keeps_only_safe_fields(platform_cod
     assert host.platform_calls == 1
 
 
+def test_material_template_options_and_matching_picture_rule_are_sanitized():
+    # Metadata shape observed in the platform's 1000010274 page schema. The
+    # returned picture values and unrelated fields are deliberately excluded.
+    class PictureHost(Host):
+        async def post_schema(self, signed, cookie, user_agent, params):
+            return 200, {"code": 0, "data": {"model": {
+                "category_properties": {"items": [{"id": "785", "label": "面料材质",
+                    "additions": {"ui_type": "multi_value_measure", "diy_type": 1,
+                        "measure_templates": [{"template_id": 873, "value_modules": [{
+                            "module_id": 1854, "input_type": "enum_diy", "value_options": [
+                                {"label": "棉", "value": "棉", "private": "synthetic-secret"},
+                                {"label": "木棉", "value": "木棉"},
+                            ]}]}]}}]},
+                "category_property_pic": {"available": True, "items": [{
+                    "id": "785", "label": "水洗标/吊牌图", "label_tips": "上传图片可智能识别并预填材质信息",
+                    "required": False, "hidden": False, "available": True,
+                    "value": {"urls": ["synthetic-secret"]}, "events": {"secret": "synthetic-secret"}}]}}}}
+
+    result = asyncio.run(capability.execute(PictureHost(0), task()))
+    assert result.status is ExecutionStatus.SUCCESS
+    field = result.result["items"][0]
+    options = field["additions"]["measure_templates"][0]["value_modules"][0]["value_options"]
+    assert options == [{"label": "棉", "value": "棉"}, {"label": "木棉", "value": "木棉"}]
+    assert field["property_picture"] == {"id": "785", "label": "水洗标/吊牌图", "required": False,
+                                         "label_tips": "上传图片可智能识别并预填材质信息"}
+    assert "synthetic-secret" not in repr(result)
+
+
+def test_picture_rule_requires_an_unambiguous_visible_platform_field():
+    items = [{"id": "785"}, {"id": "other"}]
+    field = {"id": "785", "label": "水洗标", "required": False}
+    capability._picture_rules({"category_property_pic": {"items": [field]}}, items)
+    assert "property_picture" in items[0] and "property_picture" not in items[1]
+    for group in (
+        {"hidden": True, "items": [field]},
+        {"items": [{**field, "hidden": True}]},
+        {"items": [{"id": "785", "label": "水洗标"}]},
+        {"items": [field, field]},
+    ):
+        result = [{"id": "785"}]
+        capability._picture_rules({"category_property_pic": group}, result)
+        assert "property_picture" not in result[0]
+
+
 @pytest.mark.parametrize(("platform_code", "expected"), [(True, None), ("00", "00"), ("E_600.2-A", "E_600.2-A")])
 def test_business_rejection_preserves_safe_code(platform_code, expected):
     result = asyncio.run(capability.execute(Host(platform_code), task()))
@@ -188,6 +232,35 @@ def test_category_lookup_rejects_a_wrong_target_without_request():
     signed = {"url": "https://untrusted.invalid/product/tproduct/predictCategoryN?a_bogus=x", "body": "{}"}
     with pytest.raises(RuntimeError, match="PRECHECK_TRANSPORT_FAILED"):
         asyncio.run(capability._post_lookup(host, signed, "synthetic-cookie", "agent", {"operation": "predict"}))
+
+
+@pytest.mark.parametrize("display_all", ["0", "1"])
+def test_category_tree_accepts_both_signed_scopes_without_losing_platform_status(display_all):
+    calls = []
+    host = Host(0)
+    host._transport = httpx.MockTransport(lambda request: (calls.append(request), httpx.Response(200, json={
+        "code": 0, "data": [{"id": "1000011128", "name": "热水袋", "is_leaf": True,
+                              "parent_cid": "1000005081", "enable": 1, "industry_status": 2,
+                              "secret": "synthetic-secret"}]}))[1])
+    signed = {"url": "https://fxg.jinritemai.com/product/tproduct/categoryOptionsN?"
+                     f"cid=1000005081&display_all={display_all}&a_bogus=synthetic", "body": ""}
+    status, payload = asyncio.run(capability._post_lookup(
+        host, signed, "synthetic-cookie", "agent", {"operation": "tree", "category_id": "1000005081"}))
+    assert status == 200 and len(calls) == 1
+    assert capability._lookup_data("tree", payload["data"]) == [{
+        "id": "1000011128", "name": "热水袋", "is_leaf": True, "parent_cid": "1000005081",
+        "enable": 1, "industry_status": 2}]
+
+
+@pytest.mark.parametrize("query", ["display_all=2", "display_all=0&display_all=1", "display_all=1&cid=99"])
+def test_category_tree_rejects_invalid_scope_or_duplicate_query(query):
+    host = Host(0)
+    host._transport = httpx.MockTransport(lambda request: pytest.fail("unexpected request"))
+    signed = {"url": "https://fxg.jinritemai.com/product/tproduct/categoryOptionsN?"
+                     f"cid=1000005081&{query}&a_bogus=synthetic", "body": ""}
+    with pytest.raises(RuntimeError, match="PRECHECK_TRANSPORT_FAILED"):
+        asyncio.run(capability._post_lookup(host, signed, "synthetic-cookie", "agent",
+                                           {"operation": "tree", "category_id": "1000005081"}))
 
 
 def test_search_keeps_only_explicit_category_ids_and_never_returns_raw_fields():
