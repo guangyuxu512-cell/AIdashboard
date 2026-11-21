@@ -1,10 +1,11 @@
 from types import SimpleNamespace
 from uuid import uuid4
+from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
 
-from app.modules.workers.precheck_contract import PrecheckInput, supports_full_category_tree
+from app.modules.workers.precheck_contract import PrecheckInput, supports_full_category_tree, validate_terminal_result
 from app.modules.workers.precheck_service import PrecheckUnavailable, _tree_display_all
 
 
@@ -51,3 +52,38 @@ def test_signing_cannot_downgrade_a_full_tree_request(version, expected):
             _tree_display_all(session, device, full)
     else:
         assert _tree_display_all(session, device, full) == expected
+
+
+def test_central_result_accepts_only_safe_material_and_picture_rules():
+    device = uuid4()
+    expected = {"category_id": "1000010274", "local_shop_id": "local", "platform_shop_id": "123"}
+    result = {"kind": "douyin.category_schema", **expected, "device_id": str(device),
+              "http_status": 200, "platform_code": 0, "items": [{"id": "785", "label": "面料材质",
+                  "additions": {"measure_templates": [{"value_modules": [{"value_options": [
+                      {"label": "棉", "value": "棉"}]}]}]},
+                  "property_picture": {"id": "785", "label": "水洗标/吊牌图", "required": False,
+                                       "label_tips": "上传图片可识别材质"}}]}
+    validate_terminal_result(result, success=True, expected=expected, device_id=device)
+    for mutate in ("picture_value", "wrong_picture_id", "option_secret"):
+        invalid = deepcopy(result)
+        item = invalid["items"][0]
+        if mutate == "picture_value":
+            item["property_picture"]["value"] = "synthetic-secret"
+        elif mutate == "wrong_picture_id":
+            item["property_picture"]["id"] = "other"
+        else:
+            item["additions"]["measure_templates"][0]["value_modules"][0]["value_options"][0]["cookie"] = "synthetic-secret"
+        with pytest.raises(ValueError):
+            validate_terminal_result(invalid, success=True, expected=expected, device_id=device)
+
+
+def test_central_tree_result_preserves_platform_status_but_rejects_extra_fields():
+    device = uuid4()
+    expected = {"category_id": "1000005081", "local_shop_id": "local", "platform_shop_id": "123", "operation": "tree"}
+    result = {"kind": "douyin.category_schema", **expected, "device_id": str(device), "http_status": 200,
+              "platform_code": 0, "data": [{"id": "1000011128", "name": "热水袋", "is_leaf": True,
+                                              "parent_cid": "1000005081", "enable": 1, "industry_status": 2}]}
+    validate_terminal_result(result, success=True, expected=expected, device_id=device)
+    result["data"][0]["cookie"] = "synthetic-secret"
+    with pytest.raises(ValueError):
+        validate_terminal_result(result, success=True, expected=expected, device_id=device)

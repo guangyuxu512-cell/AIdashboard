@@ -168,14 +168,15 @@ class PrecheckSignInput(BaseModel):
         return self
 
 
-_ITEM = {"id", "label", "name", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create"}
+_ITEM = {"id", "label", "name", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create", "property_picture"}
 _OPTION = {"value_name", "label", "name", "text", "value_id", "value", "id"}
 _ADDITIONS = {"ui_type", "diy_type", "measure_templates"}
 _TEMPLATE = {"template_id", "display_name", "value_modules"}
-_MODULE = {"module_id", "input_type", "validate_rule", "unit_linkage", "unit_options", "prefix", "suffix", "value_required", "required_tips", "module_shading_words"}
+_MODULE = {"module_id", "input_type", "validate_rule", "unit_linkage", "unit_options", "value_options", "prefix", "suffix", "value_required", "required_tips", "module_shading_words"}
 _VALIDATION = {"data_type", "unit_rules", "min", "max", "precision"}
 _UNIT = {"label", "value"}
 _RULE = {"type", "value"}
+_PICTURE = {"id", "label", "required", "label_tips"}
 
 
 def _scalar(value: Any) -> None:
@@ -189,15 +190,22 @@ def _scalar(value: Any) -> None:
 def _object(value: Any, kind: str) -> None:
     allowed = {"item": _ITEM, "option": _OPTION, "additions": _ADDITIONS,
                "template": _TEMPLATE, "module": _MODULE, "validation": _VALIDATION,
-               "unit": _UNIT, "rule": _RULE}[kind]
+               "unit": _UNIT, "rule": _RULE, "picture": _PICTURE}[kind]
     if not isinstance(value, dict) or set(value) - allowed:
         raise ValueError("unexpected schema field")
     nested_objects = {("item", "additions"): "additions", ("module", "validate_rule"): "validation"}
     nested_lists = {("item", "options"): "option", ("item", "rules"): "rule",
                     ("additions", "measure_templates"): "template", ("template", "value_modules"): "module",
-                    ("module", "unit_options"): "unit"}
+                    ("module", "unit_options"): "unit", ("module", "value_options"): "option"}
     for key, child in value.items():
-        if (kind, key) in nested_objects and isinstance(child, dict):
+        if (kind, key) == ("item", "property_picture"):
+            if (not isinstance(child, dict) or set(child) != _PICTURE
+                    or not isinstance(child["id"], str) or child["id"] != str(value.get("id", ""))
+                    or not isinstance(child["label"], str) or not child["label"].strip()
+                    or type(child["required"]) is not bool or not isinstance(child["label_tips"], str)):
+                raise ValueError("invalid property picture rule")
+            _object(child, "picture")
+        elif (kind, key) in nested_objects and isinstance(child, dict):
             _object(child, nested_objects[(kind, key)])
         elif (kind, key) in nested_lists and isinstance(child, list):
             for entry in child:
@@ -217,7 +225,7 @@ def validate_category_lookup_data(operation: str, data: Any) -> None:
         if not isinstance(data, list) or len(data) > 10000:
             raise ValueError("invalid category tree")
         for item in data:
-            if not isinstance(item, dict) or set(item) - {"id", "name", "is_leaf", "parent_cid", "enable"}:
+            if not isinstance(item, dict) or set(item) - {"id", "name", "is_leaf", "parent_cid", "enable", "industry_status"}:
                 raise ValueError("invalid category tree")
             for value in item.values():
                 _scalar(value)
