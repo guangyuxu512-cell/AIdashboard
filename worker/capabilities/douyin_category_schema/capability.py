@@ -25,7 +25,7 @@ _ITEM = {"id", "label", "name", "required", "options", "hidden", "available", "a
 _OPTION = {"value_name", "label", "name", "text", "value_id", "value", "id"}
 _ADDITIONS = {"ui_type", "diy_type", "measure_templates"}
 _TEMPLATE = {"template_id", "display_name", "value_modules"}
-_MODULE = {"module_id", "input_type", "validate_rule", "unit_linkage", "unit_options", "prefix", "suffix", "value_required", "required_tips", "module_shading_words"}
+_MODULE = {"module_id", "input_type", "validate_rule", "unit_linkage", "unit_options", "value_options", "prefix", "suffix", "value_required", "required_tips", "module_shading_words"}
 _VALIDATION = {"data_type", "unit_rules", "min", "max", "precision"}
 _UNIT = {"label", "value"}
 _RULE = {"type", "value"}
@@ -53,7 +53,7 @@ def _project(value, kind):
     nested_objects = {("item", "additions"): "additions", ("module", "validate_rule"): "validation"}
     nested_lists = {("item", "options"): "option", ("item", "rules"): "rule",
                     ("additions", "measure_templates"): "template", ("template", "value_modules"): "module",
-                    ("module", "unit_options"): "unit"}
+                    ("module", "unit_options"): "unit", ("module", "value_options"): "option"}
     output = {}
     for key in allowed & value.keys():
         child = value[key]
@@ -70,6 +70,37 @@ def _project(value, kind):
         else:
             output[key] = _safe_scalar(child)
     return output
+
+
+def _picture_rules(model, items):
+    """Attach visible platform image-field definitions, never image values."""
+    group = model.get("category_property_pic")
+    if (not isinstance(group, dict) or group.get("hidden") is True
+            or group.get("available") is False or not isinstance(group.get("items"), list)):
+        return
+    by_id = {}
+    duplicates = set()
+    for picture in group["items"]:
+        if not isinstance(picture, dict):
+            continue
+        identity = picture.get("id")
+        if isinstance(identity, bool) or not isinstance(identity, (str, int)) or not str(identity).strip():
+            continue
+        identity = str(identity)
+        if identity in by_id:
+            duplicates.add(identity)
+            continue
+        label, required = picture.get("label"), picture.get("required")
+        if (picture.get("hidden") is True or picture.get("available") is False
+                or not isinstance(label, str) or not label.strip() or type(required) is not bool):
+            continue
+        tip = picture.get("label_tips")
+        by_id[identity] = {"id": identity, "label": label, "required": required,
+                           "label_tips": tip if isinstance(tip, str) else ""}
+    for item in items:
+        identity = str(item.get("id", ""))
+        if identity in by_id and identity not in duplicates:
+            item["property_picture"] = by_id[identity]
 
 
 def _platform_code(value):
@@ -137,7 +168,7 @@ async def _post_lookup(host, signed, cookie, user_agent, params):
                 or parsed.path != path or len(values) != len(query)
                 or set(values) - allowed or not values.get("a_bogus")):
             raise ValueError("invalid signed target")
-        if operation == "tree" and (values.get("cid") != params["category_id"] or values.get("display_all") != "0"):
+        if operation == "tree" and (values.get("cid") != params["category_id"] or values.get("display_all") not in {"0", "1"}):
             raise ValueError("category mismatch")
         if operation == "search" and (values.get("key") != params["title"] or values.get("search_type") != "1"):
             raise ValueError("search mismatch")
@@ -233,7 +264,7 @@ def _lookup_data(operation, data):
     if operation == "tree":
         if not isinstance(data, list) or len(data) > 10000:
             raise ValueError("invalid category tree")
-        keys = {"id", "name", "is_leaf", "parent_cid", "enable"}
+        keys = {"id", "name", "is_leaf", "parent_cid", "enable", "industry_status"}
         if not all(isinstance(item, dict) for item in data):
             raise ValueError("invalid category tree")
         return [{key: _safe_scalar(item[key]) for key in keys & item.keys()} for item in data]
@@ -305,8 +336,9 @@ async def execute(host, task):
     items = group.get("items") if isinstance(group, dict) else None
     if not isinstance(items, list):
         return _failure(identity, "result", "PLATFORM_SCHEMA_MISSING", status, code)
-    result = {**identity, "http_status": status, "platform_code": code,
-              "items": [entry for item in items if (entry := _project(item, "item")) is not None]}
+    projected_items = [entry for item in items if (entry := _project(item, "item")) is not None]
+    _picture_rules(model, projected_items)
+    result = {**identity, "http_status": status, "platform_code": code, "items": projected_items}
     try:
         items_size = len(json.dumps(result["items"], ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
         result_size = len(json.dumps(result, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8"))
