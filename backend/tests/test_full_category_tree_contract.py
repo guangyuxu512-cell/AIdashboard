@@ -5,8 +5,8 @@ from copy import deepcopy
 import pytest
 from pydantic import ValidationError
 
-from app.modules.workers.precheck_contract import PrecheckInput, supports_full_category_tree, validate_terminal_result
-from app.modules.workers.precheck_service import PrecheckUnavailable, _tree_display_all
+from app.modules.workers.precheck_contract import PrecheckInput, supports_full_category_tree, supports_schema_hints, validate_terminal_result
+from app.modules.workers.precheck_service import PrecheckUnavailable, _require_current_category_capability, _tree_display_all
 
 
 @pytest.mark.parametrize(("version", "supported"), [
@@ -35,6 +35,47 @@ def test_schema_metadata_is_explicit_and_schema_only():
         PrecheckInput.model_validate({**base, "operation": "tree", "require_schema_metadata": True})
     with pytest.raises(ValidationError):
         PrecheckInput.model_validate({**base, "require_schema_metadata": "true"})
+
+
+@pytest.mark.parametrize(("version", "supported"), [
+    ("2.0.0", False), ("2.0.1", False), ("2.0.2", True), ("2.1.0", True),
+    ("10.0.0", True), ("2.0.2-dev", False), ("", False),
+])
+def test_schema_hints_require_capability_202_or_newer(version, supported):
+    assert supports_schema_hints(version) is supported
+
+
+def test_schema_hints_are_opt_in_strict_and_schema_only():
+    base = {"category_id": "1000010274", "title": "商品"}
+    omitted = PrecheckInput.model_validate(base)
+    explicit_false = PrecheckInput.model_validate({**base, "require_schema_hints": False})
+    required = PrecheckInput.model_validate({**base, "require_schema_hints": True})
+    assert omitted.require_schema_hints is False and required.require_schema_hints is True
+    assert omitted.model_dump(mode="json", exclude_defaults=True) == explicit_false.model_dump(mode="json", exclude_defaults=True) == base
+    assert required.model_dump(mode="json", exclude_defaults=True)["require_schema_hints"] is True
+    for value in ("true", 1, None):
+        with pytest.raises(ValidationError):
+            PrecheckInput.model_validate({**base, "require_schema_hints": value})
+    for operation in ("tree", "search", "predict"):
+        with pytest.raises(ValidationError):
+            PrecheckInput.model_validate({**base, "operation": operation, "require_schema_hints": True})
+
+
+def test_schema_hint_signing_rechecks_version_without_changing_legacy_gate():
+    class Session:
+        version = "2.0.1"
+        def get(self, model, key, **kwargs):
+            return SimpleNamespace(skill_version=self.version) if self.version else None
+
+    session, device = Session(), uuid4()
+    _require_current_category_capability(session, device)
+    with pytest.raises(PrecheckUnavailable):
+        _require_current_category_capability(session, device, require_hints=True)
+    session.version = "2.0.2"
+    _require_current_category_capability(session, device, require_hints=True)
+    session.version = None
+    with pytest.raises(PrecheckUnavailable):
+        _require_current_category_capability(session, device, require_hints=True)
 
 
 @pytest.mark.parametrize(("version", "expected"), [("2.0.0", None), ("2.0.1", "1"), (None, None)])

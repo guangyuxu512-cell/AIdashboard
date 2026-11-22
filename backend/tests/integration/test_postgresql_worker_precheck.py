@@ -564,6 +564,125 @@ def test_schema_metadata_requires_new_capability_without_breaking_legacy_prechec
                                   PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
 
 
+def test_schema_hints_are_gated_without_changing_existing_requests(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+
+    class Signer:
+        calls = 0
+        def sign(self, request):
+            self.calls += 1
+            return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
+
+    def request(name, **extra):
+        return PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+            "context": {"product_id": name, "revision": 1, "attempt": 1},
+            "input": {"category_id": "1000010274", "title": "商品", **extra}})
+
+    def sign(session, signer, task):
+        task.status, task.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        return sign_current_precheck(session, auth, signer, device_id, task.task_id,
+                                     PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+
+    with Session(engine) as session:
+        service, signer = WorkerPrecheckService(session, auth), Signer()
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.1"
+        session.commit()
+        legacy = service.submit(principal, request("hints-legacy"))
+        assert "_require_schema_hints" not in legacy.input_json
+        assert service.submit(principal, request("hints-legacy", require_schema_hints=False)).task_id == legacy.task_id
+        with pytest.raises(PrecheckConflict):
+            service.submit(principal, request("hints-legacy", require_schema_hints=True))
+        session.rollback()
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, request("hints-old-worker", require_schema_hints=True))
+        session.rollback()
+        # The existing enhanced schema and full-tree capability remain at 2.0.1.
+        metadata = service.submit(principal, request("hints-old-metadata", require_schema_metadata=True))
+        tree = service.submit(principal, request("hints-old-tree", operation="tree", full_category_tree=True))
+        assert metadata.input_json["_require_schema_metadata"] is True
+        assert tree.input_json["_full_category_tree"] is True
+        assert "/product/tproduct/getSchema" in sign(session, signer, metadata)["url"]
+        assert "/product/tproduct/categoryOptionsN" in sign(session, signer, tree)["url"]
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.2"
+        session.commit()
+        upgraded = service.submit(principal, request("hints-new-worker", require_schema_hints=True))
+        assert upgraded.input_json["_require_schema_hints"] is True
+        assert "/product/tproduct/getSchema" in sign(session, signer, upgraded)["url"]
+        signed_calls = signer.calls
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        assert capability.skill_version == "2.0.2"
+        # Simulate a later report arriving through a different request/session.
+        # Signing must not reuse this session's stale 2.0.2 identity-map entry.
+        with Session(engine) as other:
+            other.get(DeviceSkillCapability, (device_id, "douyin.category_schema")).skill_version = "2.0.1"
+            other.commit()
+        with pytest.raises(PrecheckUnavailable):
+            sign_current_precheck(session, auth, signer, device_id, upgraded.task_id,
+                                  PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        assert signer.calls == signed_calls
+        assert capability.skill_version == "2.0.1"
+        # Repeated submissions of an already assigned task remain idempotent;
+        # the signing guard, rather than a replacement task, blocks downgrade.
+        assert service.submit(principal, request("hints-new-worker", require_schema_hints=True)).task_id == upgraded.task_id
+        assert "/product/tproduct/getSchema" in sign(session, signer, legacy)["url"]
+
+
+def test_schema_hints_select_only_an_authorized_online_202_worker(ready_precheck):
+    engine, principal, auth, first_device = ready_precheck
+    second_device, now = uuid4(), datetime.now(UTC)
+    request = PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+        "context": {"product_id": "hints-devices", "revision": 1, "attempt": 1},
+        "input": {"category_id": "1000010274", "title": "商品", "require_schema_hints": True}})
+    try:
+        with Session(engine) as session:
+            capability = session.get(DeviceSkillCapability, (first_device, "douyin.category_schema"))
+            capability.skill_version = "2.0.1"
+            session.add(Device(device_id=second_device, team_id=session.get(Device, first_device).team_id,
+                               display_name="second worker", enabled=True))
+            session.flush()
+            session.add_all([
+                DeviceRuntime(device_id=second_device, worker_version="0.5.2", started_at=now,
+                              last_seen_at=now, connection_status="online"),
+                DeviceSkillCapability(device_id=second_device, skill_id="douyin.category_schema",
+                    display_name="test", runtime="python", skill_version="2.0.2", classification="internal"),
+                WorkerRpaShopInventory(device_id=second_device, installation_id=uuid4(), available=True,
+                    last_discovered_at=now, shops=[{"localShopId": "local-2", "platformShopId": "456",
+                        "shopName": "fixture", "platform": "douyin", "sessionStored": True}]),
+            ])
+            session.commit()
+            with pytest.raises(PrecheckUnavailable):
+                WorkerPrecheckService(session, auth).submit(principal, request)
+            session.rollback()
+            grant = auth.grant.model_copy(update={"device_ids": (first_device, second_device),
+                "all_mapped_shops": (first_device, second_device), "device_shops": ()})
+            authorized, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
+            runtime = session.get(DeviceRuntime, second_device)
+            runtime.connection_status = "offline"
+            session.commit()
+            with pytest.raises(PrecheckUnavailable):
+                WorkerPrecheckService(session, authorized).submit(principal, request)
+            session.rollback()
+            runtime = session.get(DeviceRuntime, second_device)
+            runtime.connection_status = "online"
+            session.commit()
+            task = WorkerPrecheckService(session, authorized).submit(principal, request)
+            assert task.target_device_id == second_device and task.input_json["platform_shop_id"] == "456"
+    finally:
+        with Session(engine) as session:
+            ids = list(session.scalars(select(Task.task_id).where(
+                Task.created_by_user_id == auth.grant.authorized_by_user_id, Task.skill_id == "douyin.category_schema")))
+            session.execute(delete(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.client_id == "pdc-test"))
+            session.execute(delete(Task).where(Task.task_id.in_(ids)))
+            session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == second_device))
+            session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == second_device))
+            session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id == second_device))
+            session.execute(delete(Device).where(Device.device_id == second_device))
+            session.commit()
+
+
 def test_safe_string_business_code_survives_failure_and_replay(ready_precheck):
     engine, principal, auth, device_id = ready_precheck
     with Session(engine) as session:
