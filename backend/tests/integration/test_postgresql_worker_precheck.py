@@ -1,5 +1,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+import hashlib
+import json
 from threading import Barrier
 from uuid import uuid4
 
@@ -14,10 +16,10 @@ from app.modules.sessions.application_auth import ApplicationPrincipal, ClientGr
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability, WorkerDeviceCredential
-from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckSubmission, PrecheckTerminal
+from app.modules.workers.precheck_contract import PrecheckDeliveryAcknowledgement, PrecheckPlatformRetry, PrecheckSubmission, PrecheckTerminal
 from app.modules.workers.precheck_contract import PrecheckSignInput, RpaInventoryReport, mapped_shop_id
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
-from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, save_rpa_inventory, session_snapshot_expired, sign_current_precheck
+from app.modules.workers.precheck_service import PrecheckConflict, PrecheckInvalidResult, PrecheckNotFound, PrecheckPlatformRetryExhausted, PrecheckUnavailable, WorkerPrecheckService, accept_precheck_terminal, acknowledge_product_delivery, product_delivery_context, save_rpa_inventory, session_snapshot_expired, sign_current_precheck
 from app.integrations.douyin_signer.schemas import DouyinSignResult
 
 
@@ -776,6 +778,224 @@ def test_generic_failure_does_not_quarantine_or_redispatch(ready_precheck):
                                            error_code="PLATFORM_REQUEST_FAILED"))
         assert service.submit(principal, request).task_id == task.task_id
         assert service.submit(principal, submission(product="next-product")).target_device_id == device_id
+
+
+def _platform_retry_body(task, *, code=10004, stage="platform", safe_code="PLATFORM_BUSINESS_REJECTED"):
+    identity = task.input_json
+    return json.dumps({"status": "failed", "error_code": safe_code, "error_message": "设备预检未完成",
+        "result": {"kind": "douyin.category_schema", "category_id": identity["category_id"],
+                   "device_id": str(task.target_device_id), "local_shop_id": identity["local_shop_id"],
+                   "platform_shop_id": identity["platform_shop_id"], "http_status": 200,
+                   "platform_code": code, "error_stage": stage, "safe_error_code": safe_code}},
+        ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _with_retry(request, task, body):
+    return request.model_copy(update={"retry": PrecheckPlatformRetry(previous_task_id=task.task_id, terminal_json=body)})
+
+
+def _ack_platform_failure(session, task, body):
+    task.status = "running"
+    session.commit()
+    return acknowledge_product_delivery(session, task.target_device_id, task.task_id,
+        PrecheckDeliveryAcknowledgement(status="failed", payload_sha256=hashlib.sha256(body.encode()).hexdigest(),
+                                        error_code="PLATFORM_BUSINESS_REJECTED"))
+
+
+def _three_authorized_shops(session, auth, device_id):
+    inventory = session.get(WorkerRpaShopInventory, device_id)
+    first = {**inventory.shops[0], "sessionRevision": "a" * 64}
+    inventory.shops = [first, {**first, "localShopId": "local-2", "platformShopId": "456"},
+                       {**first, "localShopId": "local-3", "platformShopId": "789"}]
+    session.commit()
+    grant = auth.grant.model_copy(update={"all_mapped_shops": (device_id,), "device_shops": ()})
+    return StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
+
+
+def test_platform_retry_waits_for_ack_then_limits_distinct_shops_and_replays(ready_precheck):
+    engine, _, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        auth, principal = _three_authorized_shops(session, auth, device_id)
+        service = WorkerPrecheckService(session, auth)
+        request = submission(product="platform-retry").model_copy(update={"delivery": "product"})
+        first = service.submit(principal, request)
+        body = _platform_retry_body(first)
+        retry_first = _with_retry(request, first, body)
+        first.status = "running"
+        session.commit()
+        assert service.submit(principal, retry_first).task_id == first.task_id
+        _ack_platform_failure(session, first, body)
+        # Ordinary idempotent resubmission never interprets a generic error as an expiry.
+        assert service.submit(principal, request).task_id == first.task_id
+        second = service.submit(principal, retry_first)
+        assert second.input_json["platform_shop_id"] != first.input_json["platform_shop_id"]
+        assert service.submit(principal, retry_first).task_id == second.task_id
+        replay = product_delivery_context(session, auth, device_id, first.task_id,
+                                          protocol_v2=True, protocol_v3=True, protocol_v4=True)
+        assert replay["superseded"] and replay["receipt_sha256"] == hashlib.sha256(body.encode()).hexdigest()
+        assert replay["platform_retry_supported"] is False
+        with pytest.raises(PrecheckNotFound):
+            product_delivery_context(session, auth, device_id, first.task_id, protocol_v2=True, protocol_v3=True)
+        body2 = _platform_retry_body(second, code="10004")
+        _ack_platform_failure(session, second, body2)
+        third = service.submit(principal, _with_retry(request, second, body2))
+        assert len({first.input_json["platform_shop_id"], second.input_json["platform_shop_id"],
+                    third.input_json["platform_shop_id"]}) == 3
+        body3 = _platform_retry_body(third)
+        _ack_platform_failure(session, third, body3)
+        with pytest.raises(PrecheckPlatformRetryExhausted):
+            service.submit(principal, _with_retry(request, third, body3))
+        session.rollback()
+        assert not session_snapshot_expired(session, first)
+        assert service.submit(principal, submission(product="unrelated-product")).task_id
+
+
+def test_platform_retry_rejects_forgery_other_errors_and_explicit_shop(ready_precheck):
+    engine, _, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        auth, principal = _three_authorized_shops(session, auth, device_id)
+        service = WorkerPrecheckService(session, auth)
+        request = submission(product="platform-proof").model_copy(update={"delivery": "product"})
+        first = service.submit(principal, request)
+        body = _platform_retry_body(first)
+        _ack_platform_failure(session, first, body)
+        for bad in (body + " ", _platform_retry_body(first, code=10008),
+                    _platform_retry_body(first, stage="session"),
+                    _platform_retry_body(first, safe_code="PLATFORM_REQUEST_FAILED"),
+                    body.replace('"category_id":"1000005146"', '"category_id":"999"')):
+            with pytest.raises(PrecheckInvalidResult):
+                service.submit(principal, _with_retry(request, first, bad))
+            session.rollback()
+        with pytest.raises(PrecheckNotFound):
+            service.submit(principal, _with_retry(submission(product="another").model_copy(
+                update={"delivery": "product"}), first, body))
+        session.rollback()
+        selected = submission(product="explicit-shop").model_copy(update={"delivery": "product"})
+        selected = selected.model_copy(update={"input": selected.input.model_copy(update={"shop_id": mapped_shop_id("123")})})
+        pinned = service.submit(principal, selected)
+        pinned_body = _platform_retry_body(pinned)
+        _ack_platform_failure(session, pinned, pinned_body)
+        with pytest.raises(PrecheckPlatformRetryExhausted):
+            service.submit(principal, _with_retry(selected, pinned, pinned_body))
+        session.rollback()
+
+
+def test_platform_retry_without_another_shop_preserves_failure(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        request = submission(product="platform-no-alternative").model_copy(update={"delivery": "product"})
+        first = service.submit(principal, request)
+        body = _platform_retry_body(first)
+        _ack_platform_failure(session, first, body)
+        with pytest.raises(PrecheckPlatformRetryExhausted):
+            service.submit(principal, _with_retry(request, first, body))
+        session.rollback()
+        assert session.get(Task, first.task_id).error_code == "PLATFORM_BUSINESS_REJECTED"
+        assert service.submit(principal, request).task_id == first.task_id
+
+
+def test_platform_retry_counts_the_same_shop_once_across_devices(ready_precheck):
+    engine, _, auth, first_device = ready_precheck
+    second_device, now = uuid4(), datetime.now(UTC)
+    try:
+        with Session(engine) as session:
+            inventory = session.get(WorkerRpaShopInventory, first_device)
+            inventory.shops = [{**inventory.shops[0], "sessionRevision": "a" * 64}]
+            grant = auth.grant.model_copy(update={"all_mapped_shops": (first_device,), "device_shops": ()})
+            authorized, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
+            session.commit()
+            request = submission(product="platform-multidevice").model_copy(update={"delivery": "product"})
+            first = WorkerPrecheckService(session, authorized).submit(principal, request)
+            body = _platform_retry_body(first)
+            _ack_platform_failure(session, first, body)
+            session.add(Device(device_id=second_device, team_id=session.get(Device, first_device).team_id,
+                               display_name="second worker", enabled=True))
+            session.flush()
+            duplicate = {"localShopId": "duplicate", "platformShopId": "123", "shopName": "same shop",
+                         "platform": "douyin", "sessionStored": True, "sessionRevision": "b" * 64}
+            session.add_all([
+                DeviceRuntime(device_id=second_device, worker_version="0.5.2", started_at=now,
+                              last_seen_at=now, connection_status="online"),
+                DeviceSkillCapability(device_id=second_device, skill_id="douyin.category_schema",
+                                      display_name="test", runtime="python", skill_version="1", classification="internal"),
+                WorkerRpaShopInventory(device_id=second_device, installation_id=uuid4(), available=True,
+                    last_discovered_at=now, shops=[duplicate, {**duplicate, "localShopId": "other", "platformShopId": "456"}]),
+            ])
+            session.commit()
+            grant = grant.model_copy(update={"device_ids": (first_device, second_device),
+                                            "all_mapped_shops": (first_device, second_device)})
+            authorized, principal = StubAuthorizer(grant), ApplicationPrincipal(grant, "synthetic-token")
+            replacement = WorkerPrecheckService(session, authorized).submit(principal, _with_retry(request, first, body))
+            assert replacement.target_device_id == second_device
+            assert replacement.input_json["platform_shop_id"] == "456"
+    finally:
+        with Session(engine) as session:
+            ids = list(session.scalars(select(Task.task_id).where(
+                Task.created_by_user_id == auth.grant.authorized_by_user_id, Task.skill_id == "douyin.category_schema")))
+            session.execute(delete(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.client_id == "pdc-test"))
+            session.execute(delete(Task).where(Task.task_id.in_(ids)))
+            session.execute(delete(WorkerRpaShopInventory).where(WorkerRpaShopInventory.device_id == second_device))
+            session.execute(delete(DeviceSkillCapability).where(DeviceSkillCapability.device_id == second_device))
+            session.execute(delete(DeviceRuntime).where(DeviceRuntime.device_id == second_device))
+            session.execute(delete(Device).where(Device.device_id == second_device))
+            session.commit()
+
+
+def test_platform_retry_mixed_expiry_chain_stops_after_three_shops(ready_precheck):
+    engine, _, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        auth, principal = _three_authorized_shops(session, auth, device_id)
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [*inventory.shops, {**inventory.shops[0], "localShopId": "local-4", "platformShopId": "000"}]
+        session.commit()
+        service = WorkerPrecheckService(session, auth)
+        request = submission(product="platform-mixed-expiry").model_copy(update={"delivery": "product"})
+        first = service.submit(principal, request)
+        body = _platform_retry_body(first)
+        _ack_platform_failure(session, first, body)
+        second = service.submit(principal, _with_retry(request, first, body))
+        second.status = "running"
+        session.commit()
+        acknowledge_product_delivery(session, device_id, second.task_id,
+            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="a" * 64, error_code="SHOP_SESSION_EXPIRED"))
+        third = service.submit(principal, request)
+        assert len({first.input_json["platform_shop_id"], second.input_json["platform_shop_id"],
+                    third.input_json["platform_shop_id"]}) == 3
+        third.status = "running"
+        session.commit()
+        acknowledge_product_delivery(session, device_id, third.task_id,
+            PrecheckDeliveryAcknowledgement(status="failed", payload_sha256="b" * 64, error_code="SHOP_SESSION_EXPIRED"))
+        with pytest.raises(PrecheckPlatformRetryExhausted):
+            service.submit(principal, request)
+        session.rollback()
+
+
+def test_platform_retry_concurrent_replay_creates_only_one_replacement(ready_precheck):
+    engine, _, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        auth, principal = _three_authorized_shops(session, auth, device_id)
+        service = WorkerPrecheckService(session, auth)
+        request = submission(product="platform-concurrent").model_copy(update={"delivery": "product"})
+        first = service.submit(principal, request)
+        body = _platform_retry_body(first)
+        _ack_platform_failure(session, first, body)
+        retry = _with_retry(request, first, body)
+        first_id = first.task_id
+    barrier = Barrier(4)
+    def submit_once(_):
+        with Session(engine) as session:
+            barrier.wait(timeout=10)
+            return WorkerPrecheckService(session, auth).submit(principal, retry).task_id
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        assigned = list(pool.map(submit_once, range(4)))
+    assert len(set(assigned)) == 1 and assigned[0] != first_id
+    with Session(engine) as session:
+        context = Task.input_json["_precheck_context"]
+        tasks = session.scalars(select(Task.task_id).where(
+            context["client_id"].astext == principal.grant.client_id,
+            context["product_id"].astext == "platform-concurrent")).all()
+        assert len(tasks) == 2
 
 
 def test_worker_observed_expiry_is_snapshot_bound_and_can_recover(ready_precheck):

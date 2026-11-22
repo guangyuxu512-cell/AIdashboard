@@ -8,10 +8,12 @@ SENSITIVE_FIELD_NAMES = frozenset(
         "cookies",
         "password",
         "payload",
+        "retry",
         "session_payload_base64",
         "secret",
         "secret_encrypted",
         "token",
+        "terminal_json",
     },
 )
 

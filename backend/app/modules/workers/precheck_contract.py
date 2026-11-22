@@ -79,12 +79,22 @@ class PrecheckInput(BaseModel):
         return self
 
 
+class PrecheckPlatformRetry(BaseModel):
+    """Proof of an already delivered, explicitly rejected platform result."""
+    model_config = ConfigDict(extra="forbid")
+    previous_task_id: UUID
+    # Preserve the exact bytes Worker sent to the product service. Never render
+    # this in validation output, logs, or the Task record.
+    terminal_json: SecretStr = Field(min_length=1, max_length=8192, repr=False)
+
+
 class PrecheckSubmission(BaseModel):
     model_config = ConfigDict(extra="forbid")
     kind: Literal["douyin.category_schema"]
     context: PrecheckContext
     input: PrecheckInput
     delivery: Literal["central", "product"] = "central"
+    retry: PrecheckPlatformRetry | None = None
 
 
 class PrecheckDeliveryAcknowledgement(BaseModel):
