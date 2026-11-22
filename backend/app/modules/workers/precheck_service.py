@@ -23,7 +23,7 @@ from app.modules.sessions.application_auth import ApplicationAuthenticationError
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
-from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, supports_full_category_tree, validate_terminal_result
+from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, supports_full_category_tree, supports_schema_hints, validate_terminal_result
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 from app.modules.workers.session_health import merge_session_observations, worker_session_observation
 
@@ -382,7 +382,8 @@ class WorkerPrecheckService:
             if (not supports_saved_shop_sessions(worker_version)
                     or (data.input.operation != "schema" and not supports_category_lookup(skill_version))
                     or ((data.input.full_category_tree or data.input.require_schema_metadata)
-                        and not supports_full_category_tree(skill_version))):
+                        and not supports_full_category_tree(skill_version))
+                    or (data.input.require_schema_hints and not supports_schema_hints(skill_version))):
                 continue
             for shop in inventory.shops:
                 local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
@@ -433,6 +434,7 @@ class WorkerPrecheckService:
                         **({"operation": data.input.operation} if data.input.operation != "schema" else {}),
                         **({"_full_category_tree": True} if data.input.full_category_tree else {}),
                         **({"_require_schema_metadata": True} if data.input.require_schema_metadata else {}),
+                        **({"_require_schema_hints": True} if data.input.require_schema_hints else {}),
                         **({"image_url": data.input.image_url} if data.input.image_url is not None else {}),
                         **({"_session_revision": session_revision} if session_revision else {}),
                         **({"_platform_retry_chain": True} if bounded_retry else {}),
@@ -618,9 +620,10 @@ def acknowledge_product_delivery(session: Session, device_id: UUID, task_id: UUI
     return task
 
 
-def _require_current_category_capability(session: Session, device_id: UUID) -> None:
+def _require_current_category_capability(session: Session, device_id: UUID, *, require_hints: bool = False) -> None:
     capability = session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND))
-    if capability is None or not supports_full_category_tree(capability.skill_version):
+    supports = supports_schema_hints if require_hints else supports_full_category_tree
+    if capability is None or not supports(capability.skill_version):
         raise PrecheckUnavailable()
 
 
@@ -656,8 +659,10 @@ def sign_current_precheck(session: Session, authenticator: ApplicationAuthentica
     operation = task.input_json.get("operation", "schema")
     if operation not in {"schema", "tree", "search", "predict"}:
         raise PrecheckInvalidResult()
-    if operation == "schema" and task.input_json.get("_require_schema_metadata") is True:
-        _require_current_category_capability(session, device_id)
+    if operation == "schema" and (task.input_json.get("_require_schema_metadata") is True
+                                   or task.input_json.get("_require_schema_hints") is True):
+        _require_current_category_capability(session, device_id,
+            require_hints=task.input_json.get("_require_schema_hints") is True)
     lid = {"schema": "029388877158", "tree": "197362053948",
            "search": "165756507732", "predict": "209821032275"}[operation]
     params = {"appid": "1", "_bid": "ffa_goods", "_lid": lid}
