@@ -21,7 +21,7 @@ INPUT_SCHEMA = {"type": "object", "properties": {
     "skip_expired_session": {"type": "boolean"}},
     "required": ["category_id", "title", "local_shop_id", "platform_shop_id"],
     "additionalProperties": False}
-_ITEM = {"id", "label", "name", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create"}
+_ITEM = {"id", "label", "name", "placeholder", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create"}
 _OPTION = {"value_name", "label", "name", "text", "value_id", "value", "id"}
 _ADDITIONS = {"ui_type", "diy_type", "measure_templates"}
 _TEMPLATE = {"template_id", "display_name", "value_modules"}
@@ -57,7 +57,12 @@ def _project(value, kind):
     output = {}
     for key in allowed & value.keys():
         child = value[key]
-        if (kind, key) in nested_objects and isinstance(child, dict):
+        if kind == "item" and key == "placeholder":
+            # This is the platform's field hint, not a product's entered value.
+            # Unknown or oversized shapes are not included in the projection.
+            if isinstance(child, str) and len(child) <= 500:
+                output[key] = child
+        elif (kind, key) in nested_objects and isinstance(child, dict):
             output[key] = _project(child, nested_objects[(kind, key)])
         elif (kind, key) in nested_lists and isinstance(child, list):
             # PDC treats invalid measure/template/unit entries as unknown; do

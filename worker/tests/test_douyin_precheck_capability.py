@@ -61,6 +61,23 @@ def test_success_normalizes_numeric_code_and_keeps_only_safe_fields(platform_cod
     assert host.platform_calls == 1
 
 
+def test_schema_field_hints_survive_without_product_values_or_unknown_shapes():
+    class HintHost(Host):
+        async def post_schema(self, signed, cookie, user_agent, params):
+            return 200, {"code": 0, "data": {"model": {"category_properties": {"items": [
+                {"id": "one", "label": "数量", "placeholder": "请选择数量", "value": "synthetic-secret"},
+                {"id": "two", "label": "属性", "placeholder": {"cookie": "synthetic-secret"}},
+                {"id": "three", "label": "属性", "placeholder": "x" * 501},
+            ]}}}}
+
+    result = asyncio.run(capability.execute(HintHost(0), task()))
+    assert result.status is ExecutionStatus.SUCCESS
+    items = result.result["items"]
+    assert items[0]["placeholder"] == "请选择数量"
+    assert "placeholder" not in items[1] and "placeholder" not in items[2]
+    assert "synthetic-secret" not in repr(result)
+
+
 def test_material_template_options_and_matching_picture_rule_are_sanitized():
     # Metadata shape observed in the platform's 1000010274 page schema. The
     # returned picture values and unrelated fields are deliberately excluded.

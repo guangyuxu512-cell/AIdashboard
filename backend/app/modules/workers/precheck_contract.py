@@ -168,7 +168,7 @@ class PrecheckSignInput(BaseModel):
         return self
 
 
-_ITEM = {"id", "label", "name", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create", "property_picture"}
+_ITEM = {"id", "label", "name", "placeholder", "required", "options", "hidden", "available", "additions", "rules", "type", "multiple", "allow_create", "property_picture"}
 _OPTION = {"value_name", "label", "name", "text", "value_id", "value", "id"}
 _ADDITIONS = {"ui_type", "diy_type", "measure_templates"}
 _TEMPLATE = {"template_id", "display_name", "value_modules"}
@@ -198,7 +198,10 @@ def _object(value: Any, kind: str) -> None:
                     ("additions", "measure_templates"): "template", ("template", "value_modules"): "module",
                     ("module", "unit_options"): "unit", ("module", "value_options"): "option"}
     for key, child in value.items():
-        if (kind, key) == ("item", "property_picture"):
+        if (kind, key) == ("item", "placeholder"):
+            if not isinstance(child, str) or len(child) > 500:
+                raise ValueError("invalid field placeholder")
+        elif (kind, key) == ("item", "property_picture"):
             if (not isinstance(child, dict) or set(child) != _PICTURE
                     or not isinstance(child["id"], str) or child["id"] != str(value.get("id", ""))
                     or not isinstance(child["label"], str) or not child["label"].strip()
