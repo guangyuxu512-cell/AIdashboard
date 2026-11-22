@@ -104,7 +104,8 @@ def get_delivery_context(task_id: UUID, response: Response,
                          protocol: Annotated[str | None, Header(alias="X-Precheck-Protocol")] = None) -> dict:
     response.headers["Cache-Control"] = "no-store"
     return product_delivery_context(session, auth, principal.device_id, task_id,
-                                    protocol_v2=protocol in {"2", "3"}, protocol_v3=protocol == "3")
+                                    protocol_v2=protocol in {"2", "3", "4"},
+                                    protocol_v3=protocol in {"3", "4"}, protocol_v4=protocol == "4")
 
 
 @worker_router.post("/tasks/{task_id}/precheck-delivered", dependencies=[Depends(_enabled)])

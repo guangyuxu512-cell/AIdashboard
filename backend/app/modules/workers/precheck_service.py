@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 import hashlib
+import hmac
 import json
 import re
 from uuid import UUID, uuid4
 
 import httpx
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -39,12 +40,36 @@ class PrecheckConflict(AppError):
     code, message, status_code = "PRECHECK_CONFLICT", "该商品版本的预检请求或状态不一致", 409
 
 
+class PrecheckPlatformRetryExhausted(AppError):
+    code, message, status_code = "PRECHECK_PLATFORM_RETRY_EXHAUSTED", "没有可更换的授权店铺", 409
+
+
 class PrecheckInvalidResult(AppError):
     code, message, status_code = "PRECHECK_RESULT_INVALID", "设备预检结果无效", 422
 
 
 class PrecheckSignerUnavailable(AppError):
     code, message, status_code = "PRECHECK_SIGNER_UNAVAILABLE", "本次预检签名未完成", 503
+
+
+def _validate_platform_retry(task: Task, terminal_json: SecretStr) -> str:
+    """Validate the exact Worker result without persisting or logging it."""
+    try:
+        encoded = terminal_json.get_secret_value().encode("utf-8")
+        if len(encoded) > 8192:
+            raise ValueError("retry proof too large")
+        terminal = PrecheckTerminal.model_validate_json(encoded)
+        if (terminal.status != "failed" or terminal.error_code != "PLATFORM_BUSINESS_REJECTED"
+                or not isinstance(terminal.result, dict)
+                or terminal.result.get("safe_error_code") != "PLATFORM_BUSINESS_REJECTED"
+                or terminal.result.get("error_stage") != "platform"
+                or terminal.result.get("platform_code") not in (10004, "10004")):
+            raise ValueError("not an eligible rejection")
+        validate_terminal_result(terminal.result, success=False, expected=task.input_json,
+                                 device_id=task.target_device_id)
+        return hashlib.sha256(encoded).hexdigest()
+    except (UnicodeError, ValueError, TypeError, KeyError, ValidationError):
+        raise PrecheckInvalidResult() from None
 
 
 def session_snapshot_expired(session: Session, task: Task) -> bool:
@@ -190,6 +215,7 @@ class WorkerPrecheckService:
         ).encode("utf-8")).hexdigest()
         key = (grant.client_id, data.context.product_id, data.context.revision)
         existing = self.session.get(ApplicationWorkerPrecheck, key)
+        bounded_retry = False
         if existing is not None:
             if existing.request_hash != request_hash:
                 raise PrecheckConflict()
@@ -197,13 +223,42 @@ class WorkerPrecheckService:
             if task is None or not self._authorized_shop(grant, task.target_device_id,
                     task.input_json["local_shop_id"], task.input_json["platform_shop_id"]):
                 raise PrecheckNotFound()
-            # A product-queue retry may move on only after the previous
-            # snapshot was explicitly rejected as logged out. Other failures
-            # keep the existing idempotent result and are never reclassified.
-            if not (task.status == "failed" and task.error_code == "SHOP_SESSION_EXPIRED"
-                    and task.input_json.get("_result_delivery") == "product"
-                    and task.input_json.get("_session_revision")):
-                return task
+            if data.retry is not None:
+                previous = self.session.get(Task, data.retry.previous_task_id)
+                context = previous.input_json.get("_precheck_context") if previous is not None else None
+                if (data.delivery != "product" or previous is None or previous.skill_id != PRECHECK_KIND
+                        or previous.input_json.get("_result_delivery") != "product"
+                        or context != {"client_id": grant.client_id, "product_id": data.context.product_id,
+                                       "revision": data.context.revision}
+                        or not self._authorized_shop(grant, previous.target_device_id,
+                            previous.input_json.get("local_shop_id"), previous.input_json.get("platform_shop_id"))):
+                    raise PrecheckNotFound()
+                digest = _validate_platform_retry(previous, data.retry.terminal_json)
+                # Direct delivery precedes the Worker acknowledgement. Preserve
+                # the same task until its digest is durable, never dispatch early.
+                if previous.task_id == task.task_id and previous.status in ("pending", "running", "lost"):
+                    return task
+                receipt = previous.result_json if isinstance(previous.result_json, dict) else {}
+                recorded = receipt.get("delivery_sha256")
+                if (previous.status != "failed" or previous.error_code != "PLATFORM_BUSINESS_REJECTED"
+                        or not isinstance(recorded, str) or not hmac.compare_digest(recorded, digest)):
+                    raise PrecheckInvalidResult()
+                # A repeated acknowledgement for an older attempt can only
+                # observe the current assignment; it cannot trigger a new one.
+                if previous.task_id != task.task_id:
+                    return task
+                if data.input.shop_id is not None:
+                    raise PrecheckPlatformRetryExhausted()
+                bounded_retry = True
+            else:
+                # Preserve the existing explicit session-expiry handling.
+                if not (task.status == "failed" and task.error_code == "SHOP_SESSION_EXPIRED"
+                        and task.input_json.get("_result_delivery") == "product"
+                        and task.input_json.get("_session_revision")):
+                    return task
+                bounded_retry = task.input_json.get("_platform_retry_chain") is True
+        elif data.retry is not None:
+            raise PrecheckNotFound()
 
         # Serialize this short selection/insert transaction so concurrent
         # submissions observe each other's latest shop assignment.
@@ -309,6 +364,19 @@ class WorkerPrecheckService:
                     for device, inventory, _, _ in rows)
                 if not refreshed and isinstance(platform_id, str):
                     avoided_shops.add(platform_id)
+        if bounded_retry:
+            context_key = Task.input_json["_precheck_context"]
+            attempted = set(self.session.scalars(select(platform_key).where(
+                Task.skill_id == PRECHECK_KIND,
+                context_key["client_id"].astext == grant.client_id,
+                context_key["product_id"].astext == data.context.product_id,
+                context_key["revision"].astext == str(data.context.revision),
+                platform_key.is_not(None),
+            )).all())
+            attempted = {shop for shop in attempted if isinstance(shop, str) and shop}
+            if len(attempted) >= 3:
+                raise PrecheckPlatformRetryExhausted()
+            avoided_shops.update(attempted)
         choices = []
         for device, inventory, worker_version, skill_version in rows:
             if (not supports_saved_shop_sessions(worker_version)
@@ -343,6 +411,8 @@ class WorkerPrecheckService:
                                 last_by_pair.get((device.device_id, local_id)) or datetime.min.replace(tzinfo=UTC),
                                 str(device.device_id), local_id, platform_id, session_revision, device))
         if not choices:
+            if bounded_retry:
+                raise PrecheckPlatformRetryExhausted()
             raise PrecheckUnavailable()
         _, _, _, _, _, local_id, platform_id, session_revision, device = min(choices, key=lambda row: row[:6])
         # Re-read protected grant immediately before writing, including the
@@ -365,6 +435,7 @@ class WorkerPrecheckService:
                         **({"_require_schema_metadata": True} if data.input.require_schema_metadata else {}),
                         **({"image_url": data.input.image_url} if data.input.image_url is not None else {}),
                         **({"_session_revision": session_revision} if session_revision else {}),
+                        **({"_platform_retry_chain": True} if bounded_retry else {}),
                         "_precheck_context": {"client_id": grant.client_id,
                             "product_id": data.context.product_id, "revision": data.context.revision},
                         **({"_result_delivery": "product"} if data.delivery == "product" else {})},
@@ -470,7 +541,7 @@ def accept_precheck_terminal(session: Session, device_id: UUID, task_id: UUID, d
 
 def product_delivery_context(session: Session, authenticator: ApplicationAuthenticator,
                              device_id: UUID, task_id: UUID, *, protocol_v2: bool = False,
-                             protocol_v3: bool = False) -> dict:
+                             protocol_v3: bool = False, protocol_v4: bool = False) -> dict:
     """Authenticate the assigned Worker and describe only its own direct delivery."""
     record = session.scalar(select(ApplicationWorkerPrecheck).where(ApplicationWorkerPrecheck.task_id == task_id))
     task = session.get(Task, task_id)
@@ -487,7 +558,9 @@ def product_delivery_context(session: Session, authenticator: ApplicationAuthent
         # after the product revision has been assigned to a replacement task.
         context = task.input_json.get("_precheck_context")
         receipt = task.result_json if isinstance(task.result_json, dict) else {}
-        if (not protocol_v2 or task.status != "failed" or task.error_code != "SHOP_SESSION_EXPIRED"
+        replayable = (task.error_code == "SHOP_SESSION_EXPIRED" or
+                      (protocol_v4 and task.error_code == "PLATFORM_BUSINESS_REJECTED"))
+        if (not protocol_v2 or task.status != "failed" or not replayable
                 or not isinstance(context, dict) or not isinstance(receipt.get("delivery_sha256"), str)):
             raise PrecheckNotFound()
         record = session.get(ApplicationWorkerPrecheck,
@@ -513,6 +586,8 @@ def product_delivery_context(session: Session, authenticator: ApplicationAuthent
                        "receipt_sha256": task.result_json.get("delivery_sha256") if superseded else None})
     if protocol_v3:
         result["operation"] = task.input_json.get("operation", "schema")
+    if protocol_v4:
+        result["platform_retry_supported"] = not superseded
     return result
 
 

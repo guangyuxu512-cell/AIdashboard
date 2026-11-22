@@ -59,6 +59,16 @@ def test_only_assigned_authorized_worker_can_read_delivery_context():
         product_delivery_context(session, auth, device_id, task.task_id)
 
 
+def test_platform_retry_capability_is_opt_in_to_protocol_four():
+    session, auth, _, task, device_id = fixture()
+    for kwargs in ({}, {"protocol_v2": True}, {"protocol_v2": True, "protocol_v3": True}):
+        assert "platform_retry_supported" not in product_delivery_context(session, auth, device_id, task.task_id, **kwargs)
+    latest = product_delivery_context(session, auth, device_id, task.task_id,
+                                      protocol_v2=True, protocol_v3=True, protocol_v4=True)
+    assert latest["platform_retry_supported"] is True
+    assert latest["operation"] == "schema"
+
+
 def test_delivery_ack_stores_only_digest_and_is_idempotent():
     session, _, record, task, device_id = fixture()
     # The task is locked first so an already-acknowledged old task can be
