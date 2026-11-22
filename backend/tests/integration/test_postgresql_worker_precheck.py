@@ -613,12 +613,17 @@ def test_schema_hints_are_gated_without_changing_existing_requests(ready_prechec
         assert "/product/tproduct/getSchema" in sign(session, signer, upgraded)["url"]
         signed_calls = signer.calls
         capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
-        capability.skill_version = "2.0.1"
-        session.commit()
+        assert capability.skill_version == "2.0.2"
+        # Simulate a later report arriving through a different request/session.
+        # Signing must not reuse this session's stale 2.0.2 identity-map entry.
+        with Session(engine) as other:
+            other.get(DeviceSkillCapability, (device_id, "douyin.category_schema")).skill_version = "2.0.1"
+            other.commit()
         with pytest.raises(PrecheckUnavailable):
             sign_current_precheck(session, auth, signer, device_id, upgraded.task_id,
                                   PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
         assert signer.calls == signed_calls
+        assert capability.skill_version == "2.0.1"
         # Repeated submissions of an already assigned task remain idempotent;
         # the signing guard, rather than a replacement task, blocks downgrade.
         assert service.submit(principal, request("hints-new-worker", require_schema_hints=True)).task_id == upgraded.task_id

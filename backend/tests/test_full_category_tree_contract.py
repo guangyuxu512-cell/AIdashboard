@@ -64,7 +64,7 @@ def test_schema_hints_are_opt_in_strict_and_schema_only():
 def test_schema_hint_signing_rechecks_version_without_changing_legacy_gate():
     class Session:
         version = "2.0.1"
-        def get(self, model, key):
+        def get(self, model, key, **kwargs):
             return SimpleNamespace(skill_version=self.version) if self.version else None
 
     session, device = Session(), uuid4()

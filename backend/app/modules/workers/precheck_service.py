@@ -621,7 +621,10 @@ def acknowledge_product_delivery(session: Session, device_id: UUID, task_id: UUI
 
 
 def _require_current_category_capability(session: Session, device_id: UUID, *, require_hints: bool = False) -> None:
-    capability = session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND))
+    # The hint guarantee is checked again at signing, even if this SQLAlchemy
+    # session has already cached an earlier capability observation.
+    capability = (session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND), populate_existing=True)
+                  if require_hints else session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND)))
     supports = supports_schema_hints if require_hints else supports_full_category_tree
     if capability is None or not supports(capability.skill_version):
         raise PrecheckUnavailable()
