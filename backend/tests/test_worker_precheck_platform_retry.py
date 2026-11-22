@@ -134,11 +134,15 @@ def test_exhausted_is_a_distinct_http_409():
     app.dependency_overrides[_service] = lambda: Service()
     try:
         with TestClient(app) as client:
-            result = client.post("/internal/applications/v1/worker-prechecks", json={
+            payload = {
                 "kind": "douyin.category_schema", "delivery": "product",
                 "context": {"product_id": "one", "revision": 1, "attempt": 1},
-                "input": {"category_id": "123", "title": "fixture"}})
+                "input": {"category_id": "123", "title": "fixture"}}
+            result = client.post("/internal/applications/v1/worker-prechecks", json=payload)
             assert result.status_code == 409
             assert result.json()["code"] == "PRECHECK_PLATFORM_RETRY_EXHAUSTED"
+            payload["retry"] = {"previous_task_id": str(uuid4()), "terminal_json": "TEST_PRIVATE_" * 1000}
+            rejected = client.post("/internal/applications/v1/worker-prechecks", json=payload)
+            assert rejected.status_code == 422 and "TEST_PRIVATE_" not in rejected.text
     finally:
         app.dependency_overrides.clear()

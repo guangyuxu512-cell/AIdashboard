@@ -830,6 +830,15 @@ def test_platform_retry_waits_for_ack_then_limits_distinct_shops_and_replays(rea
         second = service.submit(principal, retry_first)
         assert second.input_json["platform_shop_id"] != first.input_json["platform_shop_id"]
         assert service.submit(principal, retry_first).task_id == second.task_id
+        # Replaying a genuine old receipt must still recheck that particular
+        # old shop's grant, even when the current shop remains authorized.
+        limited = auth.grant.model_copy(update={"all_mapped_shops": (), "device_shops": (
+            DeviceShopGrant(device_id=device_id, local_shop_id=second.input_json["local_shop_id"],
+                            platform_shop_id=second.input_json["platform_shop_id"]),)})
+        with pytest.raises(PrecheckNotFound):
+            WorkerPrecheckService(session, StubAuthorizer(limited)).submit(
+                ApplicationPrincipal(limited, "synthetic-token"), retry_first)
+        session.rollback()
         replay = product_delivery_context(session, auth, device_id, first.task_id,
                                           protocol_v2=True, protocol_v3=True, protocol_v4=True)
         assert replay["superseded"] and replay["receipt_sha256"] == hashlib.sha256(body.encode()).hexdigest()
