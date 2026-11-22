@@ -16,6 +16,7 @@ ITEMS_LIMIT = 4 * 1024 * 1024
 RESULT_LIMIT = ITEMS_LIMIT + 16 * 1024
 CATEGORY_LOOKUP_CAPABILITY_VERSION = (2, 0, 0)
 FULL_CATEGORY_TREE_CAPABILITY_VERSION = (2, 0, 1)
+SCHEMA_HINTS_CAPABILITY_VERSION = (2, 0, 2)
 
 
 def mapped_shop_id(platform_shop_id: str) -> UUID:
@@ -33,6 +34,11 @@ def supports_full_category_tree(version: str) -> bool:
     return bool(match and tuple(int(value) for value in match.groups()) >= FULL_CATEGORY_TREE_CAPABILITY_VERSION)
 
 
+def supports_schema_hints(version: str) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version)
+    return bool(match and tuple(int(value) for value in match.groups()) >= SCHEMA_HINTS_CAPABILITY_VERSION)
+
+
 class PrecheckContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     product_id: str = Field(min_length=1, max_length=128)
@@ -47,6 +53,7 @@ class PrecheckInput(BaseModel):
     operation: Literal["schema", "tree", "search", "predict"] = "schema"
     full_category_tree: bool = Field(default=False, strict=True)
     require_schema_metadata: bool = Field(default=False, strict=True)
+    require_schema_hints: bool = Field(default=False, strict=True)
     image_url: str | None = Field(default=None, max_length=10000)
     shop_id: UUID | None = None
 
@@ -56,6 +63,8 @@ class PrecheckInput(BaseModel):
             raise ValueError("full category tree requires tree operation")
         if self.require_schema_metadata and self.operation != "schema":
             raise ValueError("schema metadata requires schema operation")
+        if self.require_schema_hints and self.operation != "schema":
+            raise ValueError("schema hints require schema operation")
         if self.operation in {"search", "predict"} and not self.title.strip():
             raise ValueError("invalid title")
         if self.operation == "schema" and len(self.title) > 500:
