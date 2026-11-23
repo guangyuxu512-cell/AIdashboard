@@ -4,10 +4,10 @@ from typing import Any, Literal
 
 
 def worker_session_observation(
-    shop: dict[str, Any], *, now: datetime | None = None,
+    shop: dict[str, Any], *, now: datetime | None = None, compass: bool = False,
 ) -> tuple[Literal["valid", "invalid"], datetime] | None:
-    status = shop.get("sessionStatus")
-    raw_time = shop.get("sessionCheckedAt")
+    status = shop.get("compassSessionStatus" if compass else "sessionStatus")
+    raw_time = shop.get("compassSessionCheckedAt" if compass else "sessionCheckedAt")
     if (status not in ("valid", "invalid") or not isinstance(raw_time, str)
             or shop.get("sessionStored") is not True or not shop.get("sessionRevision")):
         return None

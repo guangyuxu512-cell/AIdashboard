@@ -119,3 +119,34 @@ def test_new_worker_keeps_inventory_compatible_with_old_backend(tmp_path, monkey
             assert payload["shops"][0]["compassSessionVerified"] is True
 
     asyncio.run(scenario())
+
+
+def test_compass_observation_falls_back_to_previous_server_without_losing_merchant_status(tmp_path):
+    async def scenario():
+        bodies = []
+
+        def handler(request):
+            import json
+            body = json.loads(request.content)
+            bodies.append(body)
+            return httpx.Response(422 if "compassSessionStatus" in body["shops"][0] else 204)
+
+        settings = WorkerSettings(server_url="https://test.invalid", device_id=uuid4(),
+                                  device_token="synthetic", runtime_root=tmp_path)
+        payload = {"available": True, "installation_id": str(uuid4()), "shops": [{
+            "localShopId": "a", "platformShopId": "1", "shopName": "A", "platform": "douyin",
+            "sessionStatus": "valid", "sessionCheckedAt": datetime.now(UTC).isoformat(),
+            "compassSessionVerified": True, "compassSessionStatus": "valid",
+            "compassSessionCheckedAt": datetime.now(UTC).isoformat(),
+        }]}
+        async with httpx.AsyncClient(base_url="https://test.invalid", transport=httpx.MockTransport(handler)) as http:
+            client = WorkerApiClient(settings, client=http)
+            await client.report_rpa_inventory(payload)
+            await client.report_rpa_inventory(payload)
+        assert len(bodies) == 3
+        assert bodies[1]["shops"][0]["sessionStatus"] == "valid"
+        assert bodies[1]["shops"][0]["compassSessionVerified"] is True
+        assert "compassSessionStatus" not in bodies[1]["shops"][0]
+        assert "compassSessionStatus" not in bodies[2]["shops"][0]
+
+    asyncio.run(scenario())

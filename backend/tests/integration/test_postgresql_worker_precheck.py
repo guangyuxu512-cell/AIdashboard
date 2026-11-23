@@ -1247,6 +1247,28 @@ def test_worker_observed_expiry_is_snapshot_bound_and_can_recover(ready_precheck
         assert service.submit(principal, submission(product="health-refreshed")).target_device_id == device_id
 
 
+def test_compass_observation_is_preserved_only_for_the_same_snapshot(ready_precheck):
+    engine, _, _, device_id = ready_precheck
+    with Session(engine) as session:
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        install = inventory.installation_id
+        shop = {**inventory.shops[0], "sessionRevision": "a" * 64}
+        checked = datetime.now(UTC)
+        def report(item):
+            return RpaInventoryReport.model_validate({
+                "available": True, "installation_id": install, "shops": [item],
+            })
+        save_rpa_inventory(session, device_id, report({**shop, "compassSessionStatus": "invalid",
+                                                      "compassSessionCheckedAt": checked.isoformat()}))
+        save_rpa_inventory(session, device_id, report(shop))
+        assert session.get(WorkerRpaShopInventory, device_id).shops[0]["compassSessionStatus"] == "invalid"
+        save_rpa_inventory(session, device_id, report({**shop, "compassSessionStatus": "valid",
+            "compassSessionCheckedAt": (checked + timedelta(seconds=1)).isoformat()}))
+        assert session.get(WorkerRpaShopInventory, device_id).shops[0]["compassSessionStatus"] == "valid"
+        save_rpa_inventory(session, device_id, report({**shop, "sessionRevision": "b" * 64}))
+        assert session.get(WorkerRpaShopInventory, device_id).shops[0]["compassSessionStatus"] is None
+
+
 def test_network_failure_does_not_clear_an_earlier_confirmed_expiry(ready_precheck):
     engine, principal, auth, device_id = ready_precheck
     with Session(engine) as session:

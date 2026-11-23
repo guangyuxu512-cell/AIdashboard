@@ -4,6 +4,7 @@ import type {
   DeviceCreateDto,
   DeviceLocalShopInventoryDto,
   DeviceReadDto,
+  DeviceShopOverviewDto,
   DeviceSkillCapabilityReadDto,
   DeviceUpdateDto,
   WorkerCredentialReadDto,
@@ -11,6 +12,10 @@ import type {
 } from './contracts'
 
 export const deviceApi = {
+  async getShopOverview(): Promise<DeviceShopOverviewDto[]> {
+    const response = await httpClient.get<DeviceShopOverviewDto[]>('/api/v1/devices/local-shop-overview')
+    return response.data
+  },
   async list(
     params: PageParams & { search?: string },
   ): Promise<PageDto<DeviceReadDto>> {

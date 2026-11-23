@@ -140,12 +140,16 @@ class LocalShopSummary(BaseModel):
     compass_session_verified: bool | None = Field(default=None, alias="compassSessionVerified", strict=True)
     session_status: Literal["valid", "invalid"] | None = Field(default=None, alias="sessionStatus")
     session_checked_at: AwareDatetime | None = Field(default=None, alias="sessionCheckedAt")
+    compass_session_status: Literal["valid", "invalid"] | None = Field(default=None, alias="compassSessionStatus")
+    compass_session_checked_at: AwareDatetime | None = Field(default=None, alias="compassSessionCheckedAt")
 
     @model_validator(mode="after")
     def check_session_observation(self) -> LocalShopSummary:
         if (self.session_status is None) != (self.session_checked_at is None):
             raise ValueError("session status and check time must be paired")
-        if self.session_status is not None and (
+        if (self.compass_session_status is None) != (self.compass_session_checked_at is None):
+            raise ValueError("compass session status and check time must be paired")
+        if (self.session_status is not None or self.compass_session_status is not None) and (
             not self.session_stored or not self.session_revision or not self.platform_shop_id
             or self.platform != "douyin"
         ):

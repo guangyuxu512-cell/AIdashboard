@@ -5,6 +5,7 @@ import {
   Images,
   ListChecks,
   Monitor,
+  Store,
   Settings,
   Workflow,
 } from '@lucide/vue'
@@ -153,6 +154,19 @@ export const MODULE_REGISTRY = [
     enabled: true,
     permissionCode: null,
     order: 31,
+  },
+  {
+    moduleCode: 'worker-shops',
+    accessModuleCode: 'device',
+    moduleName: '店铺状态',
+    navigationGroup: 'management',
+    navigationParent: 'automation',
+    routeName: 'worker-shops',
+    routePath: '/worker-shops',
+    icon: Store,
+    enabled: true,
+    permissionCode: null,
+    order: 31.5,
   },
   {
     moduleCode: 'task',
