@@ -45,11 +45,11 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
         '/api/v1/devices/local-shop-overview': [{
           device_id: '00000000-0000-4000-8000-000000000091', device_name: '设备一',
           device_enabled: true, available: true, last_discovered_at: '2026-11-23T05:00:00Z',
-          worker_runtime: { connection_status: 'online' }, shops: [{
-            local_shop_id: 'local-1', platform_shop_id: '123', shop_name: '示例店铺', platform: 'douyin',
+          worker_runtime: { connection_status: 'online' }, shops: Array.from({ length: 5 }, (_, index) => ({
+            local_shop_id: `local-${index + 1}`, platform_shop_id: `123${index + 1}`, shop_name: `示例店铺${index + 1}`, platform: 'douyin',
             session_status: 'valid', status_observed_at: '2026-11-23T05:00:00Z',
             compass_session_status: 'unknown', compass_status_observed_at: null,
-          }],
+          })),
         }],
       }
       await route.fulfill({ json: data[url.pathname] ?? [] })
@@ -94,10 +94,30 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
   }
 
   await page.goto('/#/worker-shops')
-  await expect(page.getByText('示例店铺', { exact: true })).toBeVisible()
-  await expect(page.getByText('设备一', { exact: true })).toBeVisible()
-  await expect(page.getByText('有效', { exact: true })).toBeVisible()
-  await expect(page.getByText('未确认', { exact: true })).toBeVisible()
+  await expect(page.getByText('共 5 条', { exact: true })).toBeVisible()
+  const body = page.locator('.n-data-table-base-table-body')
+  const firstRow = page.getByRole('row', { name: /示例店铺1/ })
+  const lastRow = page.getByRole('row', { name: /示例店铺5/ })
+  await expect(firstRow).toContainText('设备一')
+  await expect(firstRow).toContainText('有效')
+  await expect(firstRow).toContainText('未确认')
   await expect(page.getByText('罗盘验证时间', { exact: true })).toBeVisible()
+  for (const size of [{ width: 1440, height: 1000 }, { width: 1366, height: 768 }]) {
+    await page.setViewportSize(size)
+    await expect.poll(async () => {
+      const bodyBox = await body.boundingBox()
+      const firstBox = await firstRow.boundingBox()
+      const lastBox = await lastRow.boundingBox()
+      return Boolean(bodyBox && firstBox && lastBox &&
+        bodyBox.height >= lastBox.y + lastBox.height - firstBox.y &&
+        firstBox.y >= bodyBox.y && lastBox.y + lastBox.height <= bodyBox.y + bodyBox.height)
+    }).toBe(true)
+  }
+  const search = page.getByPlaceholder('搜索店铺或设备')
+  await search.fill('示例店铺3')
+  await expect(page.getByText('共 1 条', { exact: true })).toBeVisible()
+  await expect(page.getByRole('row', { name: /示例店铺3/ })).toHaveCount(1)
+  await search.clear()
+  await expect(page.getByText('共 5 条', { exact: true })).toBeVisible()
 
 })
