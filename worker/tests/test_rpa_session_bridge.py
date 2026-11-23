@@ -118,6 +118,8 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch, s
     inventory = asyncio.run(bridge.list_shops())
     assert inventory.shops[0].local_shop_id == "a"
     assert inventory.shops[0].session_stored is True
+    assert inventory.shops[0].rpa_helper_digest == trust.helper_tree_sha256
+    assert "rpa_helper_digest" not in inventory.shops[0].model_dump()
     assert inventory.shops[0].compass_session_verified is (True if supports_compass else None)
     assert len(inventory.shops[0].session_revision) == 64
     assert "synthetic-encrypted-a" not in inventory.model_dump_json()
