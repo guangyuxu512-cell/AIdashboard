@@ -87,5 +87,5 @@ const columns: DataTableColumns<ShopRow> = [
 </template>
 
 <style scoped>
-.worker-shops-page { display: flex; min-height: 0; flex-direction: column; gap: var(--space-4); }
+.worker-shops-page { display: flex; height: 100%; min-height: 0; flex-direction: column; gap: var(--space-4); }
 </style>
