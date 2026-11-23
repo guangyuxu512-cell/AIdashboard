@@ -112,6 +112,37 @@ def test_invalid_merchant_can_recover_even_when_compass_is_unavailable():
     assert bridge.refreshes == [("local-a", "123", "a" * 64, False)]
 
 
+def test_unconfirmed_shop_can_try_once_without_calling_ambiguous_responses_expired():
+    bridge = Bridge()
+    clock = [100.0]
+    target = shop().model_copy(update={"compass_session_verified": False})
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(200, json={"st": 10012})
+        return httpx.Response(200, json={"code": 10008})
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
+    assert asyncio.run(monitor.check(target)) is True
+    assert monitor.report(target)["sessionStatus"] is None
+    assert monitor.report(target)["compassSessionStatus"] is None
+    assert asyncio.run(monitor.request_refresh(target)) is True
+    assert bridge.refreshes == [("local-a", "123", "a" * 64, True)]
+    clock[0] += 3600
+    assert asyncio.run(monitor.check(target)) is False
+
+
+@pytest.mark.parametrize("case", ["network", "wrong_shop"])
+def test_unconfirmed_shop_does_not_prepare_when_service_unreachable_or_identity_mismatches(case):
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            if case == "network":
+                raise httpx.ConnectError("offline")
+            return httpx.Response(200, json={"st": 10012})
+        return httpx.Response(200, json={"code": 0, "data": {"id": "different"}})
+    target = shop().model_copy(update={"compass_session_verified": False})
+    monitor = ShopSessionHealth(Bridge(), transport=httpx.MockTransport(handler))
+    assert asyncio.run(monitor.check(target)) is False
+
+
 def test_unverified_compass_prepares_only_when_service_responds_not_on_network_failure():
     bridge = Bridge()
     clock = [100.0]

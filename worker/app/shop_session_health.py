@@ -40,6 +40,7 @@ class SessionObservation:
 class IdentityProbe:
     status: Literal["valid", "invalid"] | None
     can_prepare_compass: bool = False
+    reachable_without_identity: bool = False
 
 
 class ShopSessionHealth:
@@ -78,7 +79,7 @@ class ShopSessionHealth:
         # background preparation attempt; reserve retries for missing or
         # explicitly invalid sessions.
         unverified = (shop.session_stored and shop.compass_session_verified is False
-                      and report["sessionStatus"] == "valid"
+                      and report["sessionStatus"] != "invalid"
                       and report["compassSessionStatus"] is None)
         limit = 1 if unverified else _MAX_REFRESH_ATTEMPTS
         return attempts < limit and self.clock() >= retry_at
@@ -164,6 +165,7 @@ class ShopSessionHealth:
         kinds = reserved[1] if reserved else {"merchant", "compass"}
         results: dict[str, Literal["valid", "invalid"] | None] = {kind: None for kind in kinds}
         compass_reachable = False
+        merchant_reachable_unknown = False
         try:
             if await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id) != shop.session_revision:
                 for kind in ("merchant", "compass"):
@@ -183,6 +185,8 @@ class ShopSessionHealth:
                         results[kind] = probe.status
                         if kind == "compass":
                             compass_reachable = probe.can_prepare_compass
+                        elif probe.status is None:
+                            merchant_reachable_unknown = probe.reachable_without_identity
                     except asyncio.CancelledError:
                         raise
                     except Exception:
@@ -193,6 +197,7 @@ class ShopSessionHealth:
                     self._observations.pop((key, kind), None)
                 results = {kind: None for kind in kinds}
                 compass_reachable = False
+                merchant_reachable_unknown = False
         except asyncio.CancelledError:
             raise
         except Exception:
@@ -210,7 +215,8 @@ class ShopSessionHealth:
         confirmed_invalid = any(result == "invalid" for result in results.values())
         needs_initial_compass = (shop.compass_session_verified is False and compass_reachable
                                  and results.get("compass") is None
-                                 and self.report(shop)["sessionStatus"] == "valid"
+                                 and (self.report(shop)["sessionStatus"] == "valid"
+                                      or (self.report(shop)["sessionStatus"] is None and merchant_reachable_unknown))
                                  and self.report(shop)["compassSessionStatus"] is None)
         return (confirmed_invalid or needs_initial_compass) and self._refresh_available(shop)
 
@@ -247,9 +253,8 @@ async def _check_identity(client: httpx.AsyncClient, cookies: httpx.Cookies, use
         return IdentityProbe("invalid")
     # An unverified snapshot may need its first Compass visit, but a failed
     # network request, non-200 response or a different shop is not that signal.
-    can_prepare = (kind == "compass" and status == 200 and type(code) is int
-                   and code != 0 and identity is None)
-    return IdentityProbe(None, can_prepare)
+    reachable_unknown = status == 200 and type(code) is int and code != 0 and identity is None
+    return IdentityProbe(None, kind == "compass" and reachable_unknown, reachable_unknown)
 
 
 def _explicit_login_failure(payload: dict) -> bool:
