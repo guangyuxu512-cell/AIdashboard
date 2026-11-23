@@ -16,7 +16,9 @@ from app.worker import Worker
 def test_direct_delivery_survives_disconnect_without_repeating_platform_work(tmp_path):
     task_id, device_id = uuid4(), uuid4()
     token = "ccw_synthetic_worker_token"
-    payload = {"kind": "douyin.category_schema", "category_id": "123", "items": [{"id": "1"}]}
+    payload = {"kind": "douyin.category_schema", "category_id": "123", "items": [{"id": "1",
+        "additions": {"measure_templates": [{"value_modules": [{"validate_rule": {"unit_rules": [
+            {"unit_id": 6, "min": 1, "max": 1825}, {"unit_id": 7, "min": 0.033, "max": 60.833}]}}]}]}}]}
     settings = WorkerSettings(server_url="https://central.test", device_id=device_id, device_token=token,
                               product_precheck_origin="https://product.test", runtime_root=tmp_path)
     events = []
