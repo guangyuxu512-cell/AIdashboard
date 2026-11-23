@@ -17,6 +17,7 @@ RESULT_LIMIT = ITEMS_LIMIT + 16 * 1024
 CATEGORY_LOOKUP_CAPABILITY_VERSION = (2, 0, 0)
 FULL_CATEGORY_TREE_CAPABILITY_VERSION = (2, 0, 1)
 SCHEMA_HINTS_CAPABILITY_VERSION = (2, 0, 2)
+SCHEMA_UNIT_RULES_CAPABILITY_VERSION = (2, 0, 3)
 
 
 def mapped_shop_id(platform_shop_id: str) -> UUID:
@@ -39,6 +40,11 @@ def supports_schema_hints(version: str) -> bool:
     return bool(match and tuple(int(value) for value in match.groups()) >= SCHEMA_HINTS_CAPABILITY_VERSION)
 
 
+def supports_schema_unit_rules(version: str) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", version) if isinstance(version, str) else None
+    return bool(match and tuple(int(value) for value in match.groups()) >= SCHEMA_UNIT_RULES_CAPABILITY_VERSION)
+
+
 class PrecheckContext(BaseModel):
     model_config = ConfigDict(extra="forbid")
     product_id: str = Field(min_length=1, max_length=128)
@@ -54,6 +60,7 @@ class PrecheckInput(BaseModel):
     full_category_tree: bool = Field(default=False, strict=True)
     require_schema_metadata: bool = Field(default=False, strict=True)
     require_schema_hints: bool = Field(default=False, strict=True)
+    require_schema_unit_rules: bool = Field(default=False, strict=True)
     image_url: str | None = Field(default=None, max_length=10000)
     shop_id: UUID | None = None
 
@@ -65,6 +72,8 @@ class PrecheckInput(BaseModel):
             raise ValueError("schema metadata requires schema operation")
         if self.require_schema_hints and self.operation != "schema":
             raise ValueError("schema hints require schema operation")
+        if self.require_schema_unit_rules and self.operation != "schema":
+            raise ValueError("schema unit rules require schema operation")
         if self.operation in {"search", "predict"} and not self.title.strip():
             raise ValueError("invalid title")
         if self.operation == "schema" and len(self.title) > 500:
@@ -206,6 +215,32 @@ def _scalar(value: Any) -> None:
     raise ValueError("non-scalar schema value")
 
 
+def _unit_rules(value: Any) -> None:
+    """Validate known unit-specific bounds or the existing unknown sentinel."""
+    if value is None:
+        return
+    if not isinstance(value, list):
+        raise ValueError("invalid unit rules")
+    if not value:
+        return
+    if len(value) == 1 and isinstance(value[0], dict) and set(value[0]) == {"present"} and value[0]["present"] is True:
+        return
+    seen: set[int] = set()
+    for entry in value:
+        if (not isinstance(entry, dict) or set(entry) != {"unit_id", "min", "max"}
+                or type(entry["unit_id"]) is not int or entry["unit_id"] <= 0
+                or entry["unit_id"] in seen):
+            raise ValueError("invalid unit rule")
+        minimum, maximum = entry["min"], entry["max"]
+        for bound in (minimum, maximum):
+            if bound is not None and (type(bound) not in (int, float)
+                    or (type(bound) is float and not math.isfinite(bound))):
+                raise ValueError("invalid unit rule bound")
+        if minimum is not None and maximum is not None and minimum > maximum:
+            raise ValueError("invalid unit rule range")
+        seen.add(entry["unit_id"])
+
+
 def _object(value: Any, kind: str) -> None:
     allowed = {"item": _ITEM, "option": _OPTION, "additions": _ADDITIONS,
                "template": _TEMPLATE, "module": _MODULE, "validation": _VALIDATION,
@@ -235,8 +270,8 @@ def _object(value: Any, kind: str) -> None:
                     _object(entry, nested_lists[(kind, key)])
         elif (kind, key) == ("module", "unit_linkage") and child in (None, {}, {"present": True}):
             pass
-        elif (kind, key) == ("validation", "unit_rules") and child in (None, [], [{"present": True}]):
-            pass
+        elif (kind, key) == ("validation", "unit_rules"):
+            _unit_rules(child)
         else:
             _scalar(child)
 

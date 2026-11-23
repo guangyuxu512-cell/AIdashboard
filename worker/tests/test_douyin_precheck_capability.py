@@ -78,6 +78,62 @@ def test_schema_field_hints_survive_without_product_values_or_unknown_shapes():
     assert "synthetic-secret" not in repr(result)
 
 
+def test_schema_preserves_observed_per_unit_limits_without_inventing_a_missing_unit():
+    rules = [{"unit_id": 6, "min": 1, "max": 1825},
+             {"unit_id": 7, "min": 0.033, "max": 60.833},
+             {"unit_id": 10, "min": 0.003, "max": 5.069}]
+
+    class UnitRuleHost(Host):
+        async def post_schema(self, signed, cookie, user_agent, params):
+            return 200, {"code": 0, "data": {"model": {"category_properties": {"items": [{
+                "id": "2988", "required": False,
+                "additions": {"ui_type": "measure", "measure_templates": [{"template_id": 182,
+                    "value_modules": [{"module_id": 432, "input_type": "input", "value_required": True,
+                        "unit_linkage": None, "extra": {"unit_rule_type": "分单位"},
+                        "unit_options": [{"label": "天", "value": 6}, {"label": "月", "value": 7},
+                                         {"label": "年", "value": 10}, {"label": "个月", "value": 242}],
+                        "validate_rule": {"data_type": "float", "precision": 3,
+                                          "min": None, "max": None, "unit_rules": rules}}]}]},
+                "value": "synthetic-sensitive-product-value"}]}}}}
+
+    result = asyncio.run(capability.execute(UnitRuleHost(0), task()))
+    assert result.status is ExecutionStatus.SUCCESS
+    field = result.result["items"][0]
+    module = field["additions"]["measure_templates"][0]["value_modules"][0]
+    assert field["required"] is False and module["value_required"] is True
+    assert module["unit_linkage"] is None and "extra" not in module
+    assert module["validate_rule"]["unit_rules"] == rules
+    assert {unit["value"] for unit in module["unit_options"]} == {6, 7, 10, 242}
+    assert 242 not in {rule["unit_id"] for rule in module["validate_rule"]["unit_rules"]}
+    assert "synthetic-sensitive-product-value" not in repr(result)
+
+
+@pytest.mark.parametrize(("raw", "expected"), [
+    (None, None), ([], []), ([{"present": True}], [{"present": True}]),
+    ([{"unit_id": 6, "min": None, "max": None}], [{"unit_id": 6, "min": None, "max": None}]),
+    ([{"unit_id": 6, "min": 1, "max": 2, "cookie": "synthetic-secret"}], [{"present": True}]),
+    ([{"unit_id": 6, "min": 1, "max": 2},
+      {"unit_id": 7, "min": 1, "max": 2, "future_rule": True}], [{"present": True}]),
+    ([{"unit_id": 6, "min": 1}], [{"present": True}]),
+    ([{"unit_id": 6, "min": 1, "max": 2}, {"unit_id": 6, "min": 1, "max": 2}], [{"present": True}]),
+    ([{"unit_id": 6, "min": 3, "max": 2}], [{"present": True}]),
+    ([{"unit_id": True, "min": 1, "max": 2}], [{"present": True}]),
+    ([{"unit_id": 6, "min": False, "max": 2}], [{"present": True}]),
+    ([{"unit_id": 6, "min": float("nan"), "max": 2}], [{"present": True}]),
+    ([{"unit_id": 6, "min": 1, "max": {"secret": "synthetic-secret"}}], [{"present": True}]),
+    ({"unit_id": 6, "min": 1, "max": 2}, [{"present": True}]),
+])
+def test_unknown_unit_rule_shapes_remain_unknown_without_leaking(raw, expected):
+    projected = capability._project({"unit_rules": raw}, "validation")
+    assert projected["unit_rules"] == expected
+    assert "synthetic-secret" not in repr(projected)
+
+
+def test_unknown_unit_linkage_remains_a_presence_marker():
+    projected = capability._project({"unit_linkage": {"cookie": "synthetic-secret"}}, "module")
+    assert projected == {"unit_linkage": {"present": True}}
+
+
 def test_material_template_options_and_matching_picture_rule_are_sanitized():
     # Metadata shape observed in the platform's 1000010274 page schema. The
     # returned picture values and unrelated fields are deliberately excluded.
