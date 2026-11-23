@@ -41,6 +41,9 @@ describe('Worker shop overview', () => {
     expect(columns.find((col) => col.key === 'compass_session_status')!.render(rows[0]).props.label).toBe('未确认')
     expect(columns.find((col) => col.key === 'compass_session_status')!.render(rows[1]).props.label).toBe('失效')
     expect(columns.find((col) => col.key === 'online')!.render(rows[1]).props.label).toBe('不可用')
+    const nonDouyin = { ...rows[0], platform: 'pdd' }
+    expect(columns.find((col) => col.key === 'session_status')!.render(nonDouyin)).toBe('—')
+    expect(columns.find((col) => col.key === 'compass_session_status')!.render(nonDouyin)).toBe('—')
   })
 
   it('keys the overview by user and team to prevent stale cross-team results', () => {

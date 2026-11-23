@@ -56,13 +56,15 @@ const columns: DataTableColumns<ShopRow> = [
     const online = row.device.device_enabled && row.device.worker_runtime?.connection_status === 'online' && row.device.available
     return h(StatusTag, { label: online ? '在线' : '不可用', tone: online ? 'success' : 'neutral' })
   } },
-  { title: '抖店', key: 'session_status', width: 110, render: (row) => statusCell(row.session_status) },
+  { title: '抖店', key: 'session_status', width: 110,
+    render: (row) => row.platform === 'douyin' ? statusCell(row.session_status) : '—' },
   { title: '抖店验证时间', key: 'status_observed_at', minWidth: 170,
-    render: (row) => row.session_status === 'reauthorization_required' ? '—' : formatTime(row.status_observed_at) },
+    render: (row) => row.platform !== 'douyin' || row.session_status === 'reauthorization_required'
+      ? '—' : formatTime(row.status_observed_at) },
   { title: '罗盘', key: 'compass_session_status', width: 110,
-    render: (row) => statusCell(row.compass_session_status ?? 'unknown') },
+    render: (row) => row.platform === 'douyin' ? statusCell(row.compass_session_status ?? 'unknown') : '—' },
   { title: '罗盘验证时间', key: 'compass_status_observed_at', minWidth: 170,
-    render: (row) => formatTime(row.compass_status_observed_at) },
+    render: (row) => row.platform === 'douyin' ? formatTime(row.compass_status_observed_at) : '—' },
 ]
 </script>
 
