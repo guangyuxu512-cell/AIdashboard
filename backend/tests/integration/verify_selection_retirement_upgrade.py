@@ -59,7 +59,7 @@ with connect(dsn, connect_timeout=5) as connection:
                        "VALUES (%s,%s,%s,%s,%s)", (ids["token"], ids["user"], "fixture", "0" * 64,
                        Json(["GET /api/v1/product-selection/runs", "GET /api/v1/devices"])))
 
-command.upgrade(config, "head")
+command.upgrade(config, "20261121_0058")
 with connect(dsn, connect_timeout=5) as connection:
     assert connection.execute("SELECT version_num FROM alembic_version").fetchone()[0] == "20261121_0058"
     assert connection.execute("SELECT count(*) FROM pg_tables WHERE schemaname='public' "

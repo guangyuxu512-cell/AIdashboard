@@ -14,12 +14,14 @@ def test_retired_library_tables_and_permissions_are_gone(postgresql_engine):
         "product_library_products", "product_library_groups",
     }
     with postgresql_engine.connect() as connection:
-        assert connection.scalar(text("select version_num from alembic_version")) == "20261121_0058"
+        assert connection.scalar(text("select version_num from alembic_version")) == "20261124_0059"
         tables = set(inspect(connection).get_table_names())
         assert not retired.intersection(tables)
         assert not {"product_selection_candidates", "product_selection_runs", "product_selection_strategies"}.intersection(tables)
-        assert {"shop_product_data_products", "shop_product_data_metric_snapshots", "shop_operating_daily_metrics",
-                "worker_rpa_shop_inventories", "tasks", "task_events", "assets", "schedules"} <= tables
+        assert not {"shop_product_data_products", "shop_product_data_metric_snapshots",
+                    "shop_product_data_series", "shop_product_data_generations",
+                    "shop_product_data_collection_batches"}.intersection(tables)
+        assert {"shop_operating_daily_metrics", "worker_rpa_shop_inventories", "tasks", "task_events", "assets", "schedules"} <= tables
         for table in ("team_module_accesses", "membership_module_accesses"):
             assert connection.scalar(text("select count(*) from " + table + " where module_code = 'product-library'")) == 0
         assert connection.scalar(text("""

@@ -1,5 +1,11 @@
 # 数据库与 Migration 协作规范
 
+## 2026-11-24 中控旧商品数据退役（0059 active）
+
+- `20261121_0058` 已进入 Green dev `74ca03e3c4faf6a5ce0e4b290bfbc027ade1ee09`（GitHub CI `45184007563` 成功），前述 active 为历史。为 `feat/retire-central-product-data-v1` 分配 `20261124_0059`，down 为 `20261121_0058`，仅删除中控 `shop_product_data_*` 五张表及旧 API Token 对应权限。
+- 用户已确认旧商品数据和专用表无需保留。独立商品库、运营中心、Worker、设备、任务、通用定时和其他经营数据不属于本迁移；正式部署前须核查无活动采集并取得可读备份。迁移不可逆，回滚旧数据需恢复备份。
+- Feature 使用本机隔离 `control_center_feat_retire_product_data`；Integration 仍需在 `control_center_integration` 上独立验收并核对实际迁移版本。不得重写旧 revision。
+
 ## 2026-11-21 中控旧选品退役（0058 active）
 
 - `20261120_0057` 已进入 Green dev 并实际应用于 Integration 与生产，槽位 released。本 Feature 使用 `20261121_0058`，down revision 为 `20261120_0057`。

@@ -8,7 +8,6 @@ MANAGEMENT_TAGS = {
     "access", "access-management",
     "assets", "users", "devices",
     "notification-channels", "operating-dashboard",
-    "product-data",
     "tasks", "schedules",
 }
 

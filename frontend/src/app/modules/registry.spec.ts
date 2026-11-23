@@ -14,6 +14,7 @@ describe('execution-layer navigation', () => {
     expect(getModuleDefinition('ai-workbench')).toBeUndefined()
     expect(getModuleDefinition('product-library')).toBeUndefined()
     expect(getModuleDefinition('product-selection')).toBeUndefined()
+    expect(getModuleDefinition('product-data')).toBeUndefined()
     expect(getModuleDefinition('shop')).toMatchObject({ navigationVisible: false })
     const visible = getNavigationModules().map((module) => module.moduleCode)
     expect(visible).not.toContain('shop')
@@ -37,7 +38,7 @@ describe('execution-layer navigation', () => {
     expect(getModuleAccessCode(getModuleDefinition('operating-dashboard')!)).toBe('shop')
     expect(getNavigationModules(MODULE_REGISTRY, {
       allowedModuleCodes: new Set(['shop']),
-    }).map((item) => item.moduleCode)).toEqual(['operating-dashboard', 'product-data'])
+    }).map((item) => item.moduleCode)).toEqual(['operating-dashboard'])
   })
 
   it('retains the asset grant without exposing a material-center menu', () => {

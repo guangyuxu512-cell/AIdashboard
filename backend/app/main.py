@@ -20,7 +20,6 @@ from app.modules.devices.api import router as devices_router
 from app.modules.human_auth.api import router as human_auth_router
 from app.modules.notifications.api import router as notifications_router
 from app.modules.operating_dashboard.api import router as operating_dashboard_router
-from app.modules.product_data.api import router as product_data_router
 from app.modules.schedules.api import router as schedules_router
 from app.modules.schedules.scheduler import trigger_due_schedules_forever
 from app.modules.tasks.api import router as tasks_router
@@ -104,7 +103,6 @@ def create_app() -> FastAPI:
     application.include_router(devices_router)
     application.include_router(notifications_router)
     application.include_router(operating_dashboard_router)
-    application.include_router(product_data_router)
     application.include_router(application_worker_precheck_router)
     application.include_router(tasks_router)
     application.include_router(schedules_router)
