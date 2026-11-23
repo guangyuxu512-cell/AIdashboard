@@ -36,7 +36,7 @@ def install_openapi_security(app, cookie_name: str) -> None:
             for method, detail in operations.items():
                 if method in METHODS and _is_management_operation(path, method, detail):
                     detail["security"] = [{"CentralAiToken": []}, {"CentralHumanSession": []}]
-                elif method in METHODS and (detail.get("tags") or [""])[0] == "api-tokens":
+                elif method in METHODS and (detail.get("tags") or [""])[0] in {"api-tokens", "token-management"}:
                     detail["security"] = [{"CentralHumanSession": []}]
         return schema
 
