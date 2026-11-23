@@ -383,8 +383,11 @@ class Worker:
                 await self._report_rpa_inventory(inventory)
                 if (self.shop_session_health is not None and not self._active_task_ids
                         and (self._shop_health_probe is None or self._shop_health_probe.done())):
-                    shop = self.shop_session_health.due(inventory.shops)
-                    if shop is not None:
+                    missing = self.shop_session_health.missing_session_due(inventory.shops)
+                    shop = self.shop_session_health.due(inventory.shops) if missing is None else None
+                    if missing is not None:
+                        self._shop_health_probe = asyncio.create_task(self.shop_session_health.request_refresh(missing))
+                    elif shop is not None:
                         self._shop_health_probe = asyncio.create_task(self._verify_local_shop(inventory, shop))
             except asyncio.CancelledError:
                 raise
@@ -411,10 +414,12 @@ class Worker:
 
     async def _verify_local_shop(self, inventory, shop) -> None:
         try:
-            await self.shop_session_health.check(shop)
+            needs_refresh = await self.shop_session_health.check(shop)
             # An older probe may not replace a newly discovered RPA snapshot.
             if self._last_rpa_inventory is inventory:
                 await self._report_rpa_inventory(inventory)
+                if needs_refresh and not self._active_task_ids:
+                    await self.shop_session_health.request_refresh(shop)
         except asyncio.CancelledError:
             raise
         except Exception:

@@ -98,6 +98,10 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch, s
 '  if sys.argv[2] == "False": print(json.dumps({"ok":False,"errorCode":"INVALID_REQUEST"}),flush=True); continue\n'
 '  r={"verified":True}\n'
 ' elif d["type"] == "read_stored_session": r={"localShopId":"a","platformShopId":"1","platform":"douyin","userAgent":"test","cookies":[{"name":"example","value":"synthetic-secret","domain":".jinritemai.com","path":"/"},{"name":"compass","value":"synthetic-compass","domain":"compass.jinritemai.com","path":"/"}]}\n'
+' elif d["type"] == "request_session_refresh":\n'
+'  assert d["localShopId"] == "a" and d["expectedPlatformShopId"] == "1" and d["sessionRevision"] == "a" * 64 and d["requireCompass"] is True\n'
+'  r={"requested":True}\n'
+' elif d["type"] == "session_refresh_status": r={"outcome":"manual_required","observedAt":"2026-11-23T00:00:00.000Z"}\n'
 ' else: raise ValueError("unexpected legacy browser command")\n'
 ' print(json.dumps({"ok":True,"result":r}),flush=True)\n'''.replace("'\n'", ""), encoding="utf-8")
     original = asyncio.create_subprocess_exec
@@ -125,6 +129,9 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch, s
         changed = asyncio.run(bridge.list_shops())
         assert changed.shops[0].compass_session_verified is None
     session = asyncio.run(bridge.read_session("a", "1"))
+    assert asyncio.run(bridge.request_session_refresh("a", "1", "a" * 64, True)) is True
+    status = asyncio.run(bridge.session_refresh_status("a", "1", "a" * 64))
+    assert status is not None and status.outcome == "manual_required"
     assert session.cookies[0].value.get_secret_value() == "synthetic-secret"
     assert session.cookies[1].domain == "compass.jinritemai.com"
     assert "synthetic-secret" not in repr(session)

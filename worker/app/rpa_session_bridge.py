@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 from contextlib import asynccontextmanager, closing
 from dataclasses import dataclass
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -53,6 +54,12 @@ class TrustedRpaInstallation:
 
     installation_root: Path
     helper_tree_sha256: str
+
+
+@dataclass(frozen=True, slots=True)
+class LocalRefreshStatus:
+    outcome: Literal['saved', 'manual_required', 'busy', 'retryable']
+    observed_at: datetime
 
 
 def helper_tree_digest(root: Path) -> str:
@@ -292,6 +299,32 @@ class RpaLocalBridge:
                     raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
             return session
 
+    async def request_session_refresh(self, local_shop_id: str, platform_shop_id: str, session_revision: str,
+                                      require_compass: bool) -> bool:
+        async with self._connection() as bridge:
+            result = await bridge.call({"type": "request_session_refresh", "localShopId": local_shop_id,
+                                        "expectedPlatformShopId": platform_shop_id, "sessionRevision": session_revision,
+                                        "requireCompass": require_compass})
+            return result == {"requested": True}
+
+    async def session_refresh_status(self, local_shop_id: str, platform_shop_id: str,
+                                     session_revision: str) -> LocalRefreshStatus | None:
+        async with self._connection() as bridge:
+            result = await bridge.call({"type": "session_refresh_status", "localShopId": local_shop_id,
+                                        "expectedPlatformShopId": platform_shop_id, "sessionRevision": session_revision})
+            if result == {"outcome": None, "observedAt": None}:
+                return None
+            try:
+                if set(result) != {"outcome", "observedAt"} or result["outcome"] not in (
+                        "saved", "manual_required", "busy", "retryable"):
+                    raise ValueError
+                observed = datetime.fromisoformat(result["observedAt"].replace("Z", "+00:00"))
+                if observed.tzinfo is None:
+                    raise ValueError
+                return LocalRefreshStatus(result["outcome"], observed)
+            except (KeyError, ValueError, TypeError, AttributeError):
+                raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID") from None
+
 
 class RpaAutoBridge:
     """Re-read same-user discovery so opening RPA later needs no Worker restart."""
@@ -331,6 +364,16 @@ class RpaAutoBridge:
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         bridge = await asyncio.to_thread(self._bridge)
         return await bridge.read_session(local_shop_id, platform_shop_id)
+
+    async def request_session_refresh(self, local_shop_id: str, platform_shop_id: str, session_revision: str,
+                                      require_compass: bool) -> bool:
+        bridge = await asyncio.to_thread(self._bridge)
+        return await bridge.request_session_refresh(local_shop_id, platform_shop_id, session_revision, require_compass)
+
+    async def session_refresh_status(self, local_shop_id: str, platform_shop_id: str,
+                                     session_revision: str) -> LocalRefreshStatus | None:
+        bridge = await asyncio.to_thread(self._bridge)
+        return await bridge.session_refresh_status(local_shop_id, platform_shop_id, session_revision)
 
     async def session_revision(self, local_shop_id: str, platform_shop_id: str) -> str | None:
         """Read the saved snapshot identity without decrypting or exporting it."""
