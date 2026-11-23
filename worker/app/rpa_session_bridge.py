@@ -292,6 +292,14 @@ class RpaLocalBridge:
                     raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
             return session
 
+    async def request_session_refresh(self, local_shop_id: str, platform_shop_id: str, session_revision: str,
+                                      require_compass: bool) -> bool:
+        async with self._connection() as bridge:
+            result = await bridge.call({"type": "request_session_refresh", "localShopId": local_shop_id,
+                                        "expectedPlatformShopId": platform_shop_id, "sessionRevision": session_revision,
+                                        "requireCompass": require_compass})
+            return result == {"requested": True}
+
 
 class RpaAutoBridge:
     """Re-read same-user discovery so opening RPA later needs no Worker restart."""
@@ -331,6 +339,11 @@ class RpaAutoBridge:
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         bridge = await asyncio.to_thread(self._bridge)
         return await bridge.read_session(local_shop_id, platform_shop_id)
+
+    async def request_session_refresh(self, local_shop_id: str, platform_shop_id: str, session_revision: str,
+                                      require_compass: bool) -> bool:
+        bridge = await asyncio.to_thread(self._bridge)
+        return await bridge.request_session_refresh(local_shop_id, platform_shop_id, session_revision, require_compass)
 
     async def session_revision(self, local_shop_id: str, platform_shop_id: str) -> str | None:
         """Read the saved snapshot identity without decrypting or exporting it."""

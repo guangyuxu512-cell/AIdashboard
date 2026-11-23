@@ -21,7 +21,7 @@ Worker：
 
 - 只主动访问 Backend，不监听本地 HTTP 端口。
 - 不直接访问 PostgreSQL，不持有数据库账号。
-- 店铺状态验证通过受信任的本机 RPA 桥读取已保存会话，不打开浏览器，状态上报不包含会话内容。现行类目预检为服务器签名临时发送本店 Cookie，再由 Worker 在本机请求平台。
+- 店铺状态验证通过受信任的本机 RPA 桥读取已保存会话，状态上报不包含会话内容。自动补取只向同机受信 RPA 发送固定店铺与快照标识，由 RPA 使用对应比特窗口完成，不接受服务器指定程序路径。现行类目预检为服务器签名临时发送本店 Cookie，再由 Worker 在本机请求平台。
 - 不承载 Vue/Electron UI。
 - 不接受命令、Shell、脚本路径或 EXE 路径。
 - 当前存在 PythonExecutor 与 RPAExecutor；Browser、Node、EXE Executor 尚未实现。

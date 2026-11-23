@@ -16,6 +16,11 @@ def shop(revision="a" * 64):
 class Bridge:
     def __init__(self):
         self.revision = "a" * 64
+        self.refreshes = []
+
+    async def request_session_refresh(self, local_id, platform_id, revision, require_compass):
+        self.refreshes.append((local_id, platform_id, revision, require_compass))
+        return True
 
     async def session_revision(self, local_id, platform_id):
         return self.revision
@@ -55,6 +60,81 @@ def test_no_saved_snapshot_never_starts_a_check():
     monitor = ShopSessionHealth(Bridge())
     assert monitor.due([target]) is None
     assert monitor.report(target)["sessionStatus"] is None
+    assert monitor.missing_session_due([target]) == target
+
+
+def test_missing_session_refresh_is_per_shop_and_bounded():
+    bridge = Bridge()
+    clock = [100.0]
+    monitor = ShopSessionHealth(bridge, clock=lambda: clock[0])
+    targets = [shop().model_copy(update={"local_shop_id": str(index), "platform_shop_id": str(index),
+                                         "session_stored": False, "session_revision": None})
+               for index in range(5)]
+    for target in targets:
+        assert monitor.missing_session_due(targets) == target
+        assert asyncio.run(monitor.request_refresh(target)) is True
+    assert len(bridge.refreshes) == 5
+    assert monitor.missing_session_due(targets) is None
+    assert not asyncio.run(monitor.request_refresh(targets[0]))
+
+
+def test_unavailable_rpa_can_accept_refresh_after_it_is_updated():
+    class UpdatingBridge(Bridge):
+        ready = False
+
+        async def request_session_refresh(self, local_id, platform_id, revision, require_compass):
+            if not self.ready:
+                raise RuntimeError("old helper")
+            return await super().request_session_refresh(local_id, platform_id, revision, require_compass)
+
+    bridge = UpdatingBridge()
+    clock = [100.0]
+    monitor = ShopSessionHealth(bridge, clock=lambda: clock[0])
+    target = shop().model_copy(update={"session_stored": False, "session_revision": None})
+    for _ in range(4):
+        assert not asyncio.run(monitor.request_refresh(target))
+        clock[0] += 301
+    bridge.ready = True
+    assert asyncio.run(monitor.request_refresh(target))
+    assert bridge.refreshes == [("local-a", "123", "missing", False)]
+
+
+def test_invalid_merchant_can_recover_even_when_compass_is_unavailable():
+    bridge = Bridge()
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            raise httpx.ConnectError("offline")
+        return httpx.Response(200, json={"code": 1, "msg": "请先登录"})
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+    target = shop()
+    assert asyncio.run(monitor.check(target)) is True
+    assert asyncio.run(monitor.request_refresh(target)) is True
+    assert bridge.refreshes == [("local-a", "123", "a" * 64, False)]
+
+
+def test_unverified_compass_prepares_only_when_service_responds_not_on_network_failure():
+    bridge = Bridge()
+    clock = [100.0]
+    target = shop().model_copy(update={"compass_session_verified": False})
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(200, json={"st": 100704})
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
+    assert asyncio.run(monitor.check(target)) is True
+    assert monitor.report(target)["compassSessionStatus"] is None
+    assert asyncio.run(monitor.request_refresh(target)) is True
+    assert bridge.refreshes == [("local-a", "123", "a" * 64, True)]
+    clock[0] += 3600
+    assert asyncio.run(monitor.check(target)) is False
+    assert not asyncio.run(monitor.request_refresh(target))
+    def failed(request):
+        if request.url.host == "compass.jinritemai.com":
+            raise httpx.ConnectError("offline")
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+    offline = ShopSessionHealth(bridge, transport=httpx.MockTransport(failed))
+    assert asyncio.run(offline.check(target)) is False
+    assert offline.report(target)["compassSessionStatus"] is None
 
 
 @pytest.mark.parametrize("status,payload,expected", [

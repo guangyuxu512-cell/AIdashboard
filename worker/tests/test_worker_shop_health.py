@@ -29,6 +29,9 @@ def test_real_work_preempts_background_shop_verification(tmp_path):
                 return inventory
 
         class Health:
+            def missing_session_due(self, shops):
+                return None
+
             def due(self, shops):
                 return shops[0]
 
