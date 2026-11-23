@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     encryption_key: SecretStr | None = None
     # Independent persistent key for voluntarily recoverable API tokens.
     api_token_recovery_key: SecretStr | None = None
+    # The server-side Token manager bridge is disabled until both are configured.
+    token_manager_credentials_file: Path | None = None
+    token_manager_proxy_origin: str | None = None
     runtime_environment: Literal["development", "test", "production"] = "development"
     cors_allowed_origins: list[str] = Field(default_factory=list)
     human_session_ttl_seconds: int = Field(
@@ -135,6 +138,18 @@ class Settings(BaseSettings):
     # default, so Feature/Integration processes never begin platform work
     # merely because this value is present.
     operating_dashboard_daily_collection_local_time: time = time(hour=9)
+
+    @field_validator("token_manager_proxy_origin")
+    @classmethod
+    def validate_token_manager_proxy_origin(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        parsed = urlsplit(value)
+        if (parsed.scheme != "http" or parsed.hostname != "127.0.0.1"
+                or parsed.username or parsed.password or parsed.path not in ("", "/")
+                or parsed.query or parsed.fragment or parsed.port is None):
+            raise ValueError("Token manager proxy must be a loopback HTTP origin")
+        return value.rstrip("/")
 
     @field_validator("douyin_signer_api_key", mode="before")
     @classmethod
