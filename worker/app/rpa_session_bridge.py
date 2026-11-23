@@ -138,6 +138,7 @@ class LocalShop(BaseModel):
     session_stored: bool = Field(alias="sessionStored", default=False)
     session_revision: str | None = Field(alias="sessionRevision", default=None, pattern=r"^[0-9a-f]{64}$")
     compass_session_verified: bool | None = Field(alias="compassSessionVerified", default=None, strict=True)
+    rpa_helper_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$", exclude=True)
 
 
 class LocalShopInventory(BaseModel):
@@ -279,7 +280,8 @@ class RpaLocalBridge:
                 key = (shop.local_shop_id, shop.platform_shop_id)
                 revision = revisions.get(key)
                 shops.append(shop.model_copy(update={"session_revision": revision,
-                    "compass_session_verified": verified.get(key) if revision and latest.get(key) == revision else None}))
+                    "compass_session_verified": verified.get(key) if revision and latest.get(key) == revision else None,
+                    "rpa_helper_digest": self.trust.helper_tree_sha256}))
             return inventory.model_copy(update={"shops": shops})
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:

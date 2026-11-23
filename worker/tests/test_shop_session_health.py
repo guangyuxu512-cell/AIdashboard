@@ -82,6 +82,48 @@ def test_missing_session_refresh_is_per_shop_and_bounded():
     assert not asyncio.run(monitor.request_refresh(targets[0]))
 
 
+def test_new_trusted_rpa_helper_resets_exhausted_refresh_attempts():
+    bridge = Bridge()
+    clock = [100.0]
+    monitor = ShopSessionHealth(bridge, clock=lambda: clock[0])
+    original = shop().model_copy(update={"session_stored": False, "session_revision": None,
+                                         "rpa_helper_digest": "a" * 64})
+    for _ in range(3):
+        assert asyncio.run(monitor.request_refresh(original))
+        clock[0] += 301
+    assert not asyncio.run(monitor.request_refresh(original))
+    updated = original.model_copy(update={"rpa_helper_digest": "b" * 64})
+    assert asyncio.run(monitor.request_refresh(updated))
+    assert len(bridge.refreshes) == 4
+
+
+def test_new_rpa_helper_rechecks_a_stored_session_without_waiting_for_old_timer():
+    bridge = Bridge()
+    clock = [100.0]
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(200, json={"st": 0, "data": {"shop_id": "123"}})
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
+    old = shop().model_copy(update={"rpa_helper_digest": "a" * 64})
+    new = old.model_copy(update={"rpa_helper_digest": "b" * 64})
+    assert monitor.due([old]) is old
+    assert not asyncio.run(monitor.check(old))
+    assert monitor.due([old]) is None
+    assert monitor.due([new]) is new
+
+
+def test_rpa_helper_change_does_not_override_recorded_manual_verification():
+    bridge = Bridge()
+    bridge.status = LocalRefreshStatus("manual_required", datetime.now(UTC))
+    monitor = ShopSessionHealth(bridge)
+    old = shop().model_copy(update={"rpa_helper_digest": "a" * 64})
+    new = old.model_copy(update={"rpa_helper_digest": "b" * 64})
+    assert not asyncio.run(monitor.request_refresh(old))
+    assert not asyncio.run(monitor.request_refresh(new))
+    assert bridge.refreshes == []
+
+
 def test_unavailable_rpa_can_accept_refresh_after_it_is_updated():
     class UpdatingBridge(Bridge):
         ready = False
