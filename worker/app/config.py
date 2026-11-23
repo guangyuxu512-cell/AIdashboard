@@ -28,6 +28,8 @@ class WorkerSettings(BaseSettings):
     device_display_name: str | None = None
     heartbeat_interval_seconds: float = Field(default=15, ge=1, le=300)
     poll_interval_seconds: float = Field(default=3, ge=0.2, le=60)
+    compass_basic_shop_interval_seconds: float = Field(default=30, ge=0.01, le=3600)
+    compass_basic_device_limit: int = Field(default=5, ge=1, le=5)
     lease_renew_interval_seconds: float = Field(default=20, ge=1, le=300)
     request_timeout_seconds: float = Field(default=10, ge=1, le=60)
     runtime_root: Path = Path("runtime")

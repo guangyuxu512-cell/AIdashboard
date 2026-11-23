@@ -390,6 +390,7 @@ class TaskRepository:
         now: datetime,
         lease_until: datetime,
         precheck_only: bool = False,
+        parallel_kind: str | None = None,
         local_context_supported: bool = True,
         operations_delivery_supported: bool = True,
     ) -> Task | None:
@@ -405,6 +406,10 @@ class TaskRepository:
         )
         if device is None:
             return None
+        if parallel_kind is not None:
+            return self._claim_parallel(device_id=device_id, now=now, lease_until=lease_until,
+                                        kind=parallel_kind, local_context_supported=local_context_supported,
+                                        operations_delivery_supported=operations_delivery_supported)
         active = self.session.execute(
             select(Task.skill_id, Task.input_json["platform_shop_id"].astext).where(
                 Task.target_device_id == device_id,
@@ -492,18 +497,22 @@ class TaskRepository:
         if candidate.skill_id == PRECHECK_KIND and candidate.platform_shop_id:
             # A store mapped to more than one computer still has at most three
             # in-flight prechecks. This lock covers only allocation, not work.
-            self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(
-                "worker-precheck-shop:" + candidate.platform_shop_id, 0,
-            ))))
-            current_shop_count = self.session.scalar(
-                select(func.count()).select_from(Task).where(
-                    Task.skill_id == PRECHECK_KIND,
-                    Task.status == TaskStatus.RUNNING.value,
-                    shop_column == candidate.platform_shop_id,
-                ),
-            ) or 0
-            if current_shop_count >= 3:
+            if not self._shop_has_capacity(candidate.platform_shop_id, 'worker-precheck-shop:',
+                    Task.skill_id == PRECHECK_KIND, shop_column, 3):
                 return None
+        if candidate.skill_id == 'douyin.compass_selection':
+            payload = self.session.scalar(select(Task.input_json).where(Task.task_id == candidate.task_id))
+            shops = payload.get(LOCAL_SHOPS_KEY, []) if isinstance(payload, dict) else []
+            if (payload and payload.get('operation') == 'basic' and isinstance(shops, list)
+                    and len(shops) == 1 and isinstance(shops[0], dict)):
+                platform = shops[0].get('platform_shop_id')
+                if isinstance(platform, str) and platform:
+                    basic_shop = Task.input_json[LOCAL_SHOPS_KEY][0]['platform_shop_id'].astext
+                    is_basic = and_(Task.skill_id == 'douyin.compass_selection',
+                                    Task.input_json['operation'].astext == 'basic')
+                    if not self._shop_has_capacity(platform, 'worker-compass-basic-shop:',
+                                                   is_basic, basic_shop, 1):
+                        return None
         statement = (
             update(Task)
             .where(
@@ -519,6 +528,101 @@ class TaskRepository:
             .returning(Task)
         )
         return self.session.execute(statement).scalar_one_or_none()
+
+    def _claim_parallel(self, *, device_id: UUID, now: datetime, lease_until: datetime,
+                        kind: str, local_context_supported: bool,
+                        operations_delivery_supported: bool) -> Task | None:
+        """Claim one explicitly parallel-safe task under the locked device row.
+
+        The old claim endpoints retain their exclusive semantics for older
+        Workers. A new Worker uses this endpoint only while draining parallel
+        prechecks or Compass basic tasks.
+        """
+        if kind not in {'precheck', 'basic'}:
+            return None
+        if kind == 'basic' and (not local_context_supported or not operations_delivery_supported):
+            return None
+        active = self.session.execute(select(Task.skill_id, Task.input_json).where(
+            Task.target_device_id == device_id, Task.status == TaskStatus.RUNNING.value)).all()
+        prechecks, basics = [], []
+        for skill, payload in active:
+            if not isinstance(payload, dict):
+                return None
+            if skill == PRECHECK_KIND and payload.get('platform_shop_id'):
+                prechecks.append(payload['platform_shop_id'])
+            elif (skill == 'douyin.compass_selection' and payload.get('operation') == 'basic'
+                  and isinstance(payload.get(LOCAL_SHOPS_KEY), list)
+                  and len(payload[LOCAL_SHOPS_KEY]) == 1
+                  and isinstance(payload[LOCAL_SHOPS_KEY][0], dict)
+                  and isinstance(payload[LOCAL_SHOPS_KEY][0].get('platform_shop_id'), str)
+                  and payload[LOCAL_SHOPS_KEY][0]['platform_shop_id']):
+                basics.append(payload[LOCAL_SHOPS_KEY][0]['platform_shop_id'])
+            else:
+                return None
+        if (kind == 'precheck' and len(prechecks) >= 15) or (kind == 'basic' and len(basics) >= 5):
+            return None
+
+        op = Task.input_json['operation'].astext
+        precheck_shop = Task.input_json['platform_shop_id'].astext
+        basic_shop = Task.input_json[LOCAL_SHOPS_KEY][0]['platform_shop_id'].astext
+        is_basic = and_(Task.skill_id == 'douyin.compass_selection', op == 'basic')
+        eligible = [Task.target_device_id == device_id, Task.status == TaskStatus.PENDING.value,
+                    ~Task.skill_id.like('yingdao.%'), ~Task.shop_links.any()]
+        if not local_context_supported:
+            eligible.append(~Task.input_json.has_key(LOCAL_SHOPS_KEY))
+        if not operations_delivery_supported:
+            eligible.append(Task.skill_id != 'douyin.compass_selection')
+        # An older exclusive task drains both streams before it runs.
+        parallel = or_(Task.skill_id == PRECHECK_KIND, is_basic)
+        barrier = self.session.execute(select(Task.created_at, Task.task_id).where(
+            *eligible, ~func.coalesce(parallel, False),
+            *([Task.skill_id != 'douyin.compass_selection'] if kind == 'precheck' and self.session.scalar(
+                select(Task.task_id).where(Task.target_device_id == device_id,
+                    Task.skill_id == 'douyin.compass_selection', Task.status == TaskStatus.LOST.value,
+                    Task.error_code == 'SELECTION_DELIVERY_PENDING').limit(1)) is not None else []),
+            ).order_by(Task.created_at, Task.task_id).limit(1)).first()
+        predicates = list(eligible)
+        if barrier is not None:
+            predicates.append(or_(Task.created_at < barrier.created_at,
+                                  and_(Task.created_at == barrier.created_at, Task.task_id < barrier.task_id)))
+        if kind == 'precheck':
+            predicates.extend((Task.skill_id == PRECHECK_KIND, precheck_shop.is_not(None), precheck_shop != ''))
+            counts = {shop: prechecks.count(shop) for shop in set(prechecks)}
+            if len(counts) >= 5:
+                predicates.append(precheck_shop.in_(list(counts)))
+            global_full = list(self.session.scalars(select(precheck_shop).where(
+                Task.skill_id == PRECHECK_KIND, Task.status == TaskStatus.RUNNING.value)
+                .group_by(precheck_shop).having(func.count() >= 3)).all())
+            global_full = [shop for shop in global_full if shop]
+            if global_full:
+                predicates.append(precheck_shop.not_in(global_full))
+            shop_column, global_limit, prefix = precheck_shop, 3, 'worker-precheck-shop:'
+        else:
+            predicates.extend((is_basic, basic_shop.is_not(None), basic_shop != ''))
+            active_shops = list(self.session.scalars(select(basic_shop).where(
+                is_basic, Task.status == TaskStatus.RUNNING.value)).all())
+            if active_shops:
+                predicates.append(basic_shop.not_in([shop for shop in active_shops if shop]))
+            shop_column, global_limit, prefix = basic_shop, 1, 'worker-compass-basic-shop:'
+        candidate = self.session.execute(select(Task.task_id, shop_column.label('shop')).where(
+            *predicates).order_by(Task.created_at, Task.task_id).with_for_update(skip_locked=True).limit(1)).first()
+        if candidate is None or not candidate.shop:
+            return None
+        same_kind = Task.skill_id == PRECHECK_KIND if kind == 'precheck' else is_basic
+        if not self._shop_has_capacity(candidate.shop, prefix, same_kind, shop_column, global_limit):
+            return None
+        statement = (update(Task).where(Task.task_id == candidate.task_id,
+                     Task.status == TaskStatus.PENDING.value).values(status=TaskStatus.RUNNING.value,
+                     started_at=now, lease_until=lease_until, updated_at=now).returning(Task))
+        return self.session.execute(statement).scalar_one_or_none()
+
+    def _shop_has_capacity(self, shop: str, lock_prefix: str, task_kind: Any,
+                           shop_column: Any, limit: int) -> bool:
+        """Serialize only the short cross-device allocation for a store."""
+        self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(lock_prefix + shop, 0))))
+        current = self.session.scalar(select(func.count()).select_from(Task).where(
+            task_kind, Task.status == TaskStatus.RUNNING.value, shop_column == shop)) or 0
+        return current < limit
 
     def renew(
         self,
