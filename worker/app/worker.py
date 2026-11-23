@@ -114,29 +114,20 @@ class Worker:
                             except Exception as error:
                                 logger.warning("Worker parallel task failed: %s", error)
                     if not await self._deliver_pending_terminals():
-                        # An unavailable operations center must not block the
-                        # existing product precheck queue on this device.
+                        # Keep retrying Operations results, but don't let one
+                        # unrouteable result block unrelated queued work. The
+                        # durable outbox is preserved across tasks and updates.
                         try:
                             pending = self.result_outbox.pending()
                             only_operations = bool(pending) and all(item.result_delivery == 'operations' for item in pending)
                         except OutboxError:
                             only_operations = False
-                        if only_operations and self.executor.can_claim() and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
-                            method = getattr(self.client, 'claim_parallel', None)
-                            task = await method('precheck') if method is not None else None
-                            if (task is None and not basics and (method is None or
-                                    getattr(self.client, 'parallel_claim_supported', True) is False)):
-                                task = await self.client.claim_precheck()
-                            if task is not None:
-                                self._active_task_ids.add(task.task_id)
-                                await self._cancel_shop_health_probe()
-                                prechecks.add(asyncio.create_task(self._execute_claimed_task(task)))
-                                continue
-                        if prechecks or basics:
-                            await self._wait_for_prechecks_or_stop(prechecks | basics, stop_event)
-                        else:
-                            await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
-                        continue
+                        if not only_operations:
+                            if prechecks or basics:
+                                await self._wait_for_prechecks_or_stop(prechecks | basics, stop_event)
+                            else:
+                                await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
+                            continue
                     if not prechecks and not basics:
                         # Capability files must not change under active tasks.
                         await self._refresh_capabilities_if_due()
