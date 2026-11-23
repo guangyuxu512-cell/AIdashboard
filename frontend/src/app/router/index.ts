@@ -5,7 +5,6 @@ import { requireModuleDefinition } from '@/app/modules/registry'
 const foundationModule = requireModuleDefinition('foundation')
 const assetModule = requireModuleDefinition('asset')
 const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
-const productDataModule = requireModuleDefinition('product-data')
 const deviceModule = requireModuleDefinition('device')
 const workerShopsModule = requireModuleDefinition('worker-shops')
 const taskModule = requireModuleDefinition('task')
@@ -43,12 +42,6 @@ const router = createRouter({
       component: () =>
         import('@/pages/operating-dashboard/OperatingDashboardPage.vue'),
       meta: { moduleCode: operatingDashboardModule.moduleCode },
-    },
-    {
-      path: productDataModule.routePath,
-      name: productDataModule.routeName,
-      component: () => import('@/pages/product-data/ProductDataPage.vue'),
-      meta: { moduleCode: productDataModule.moduleCode },
     },
     {
       path: deviceModule.routePath,

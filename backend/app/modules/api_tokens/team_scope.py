@@ -21,7 +21,6 @@ TEAM_SCOPED_OPERATIONS = frozenset({
     'GET /api/v1/operations-selection-schedules/{strategy_id}',
     'GET /api/v1/operations-selection-schedules/{strategy_id}/runs',
     'GET /api/v1/operating-dashboard/collections/{collection_job_id}',
-    'GET /api/v1/product-data',
     'GET /api/v1/schedules',
     'GET /api/v1/schedules/{schedule_id}',
     'GET /api/v1/schedules/{schedule_id}/runs',

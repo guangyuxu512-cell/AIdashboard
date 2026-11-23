@@ -17,6 +17,7 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
             "/api/v1/product-collection/requests",
             f"/api/v1/product-collection/requests/{identifier}",
             "/internal/applications/v1/shops",
+            "/api/v1/product-data",
             "/api/v1/product-data/collection-shops",
             f"/api/v1/product-data/collections/{identifier}",
             f"/api/v1/product-data/collection-batches/{identifier}",
@@ -46,7 +47,6 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
             "/api/v1/worker/rpa-shop-inventory",
             "/api/v1/tasks",
             "/api/v1/schedules",
-            "/api/v1/product-data",
             "/internal/applications/v1/worker-prechecks",
         ):
             assert path in paths
@@ -54,7 +54,7 @@ def test_retired_central_library_and_ai_routes_are_absent_while_worker_routes_re
         assert not any(path.startswith("/api/v1/ai-models") for path in paths)
         assert not any(path.startswith("/api/v1/product-selection/") for path in paths)
         permissions = {entry["id"] for entry in permissions_catalog(app)}
-        assert "GET /api/v1/product-data" in permissions
+        assert "GET /api/v1/product-data" not in permissions
         assert not any(" /api/v1/product-data/collection" in entry for entry in permissions)
         assert not any(" /api/v1/shop-onboarding" in entry for entry in permissions)
         assert not any("/session" in entry and " /api/v1/shops/" in entry for entry in permissions)
