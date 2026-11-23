@@ -164,7 +164,7 @@ function parameterDisplay(value: unknown): string {
           >
             {{ schedule.applicationId ?? '—' }}
           </NDescriptionsItem>
-          <NDescriptionsItem label="Skill ID">
+          <NDescriptionsItem label="技能 ID">
             {{ schedule.skillId }}
           </NDescriptionsItem>
           <NDescriptionsItem label="创建时间">

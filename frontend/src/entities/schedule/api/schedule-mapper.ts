@@ -1,3 +1,5 @@
+import { formatSkillName } from '@/entities/business-skill/model/display'
+
 import type {
   ScheduleDetailViewModel,
   ScheduleListItemViewModel,
@@ -83,9 +85,11 @@ export function mapScheduleListItemDto(
     deviceName: dto.device_display_name,
     executionType: dto.execution_type,
     executionTypeDisplay:
-      dto.execution_type === 'business_skill' ? '业务 Skill' : '影刀应用',
+      dto.execution_type === 'business_skill' ? '业务技能' : '影刀应用',
     skillId: dto.skill_id,
-    executionName: dto.execution_display_name,
+    executionName: dto.execution_type === 'business_skill'
+      ? formatSkillName(dto.skill_id, dto.execution_display_name)
+      : dto.execution_display_name,
     scheduleType: dto.schedule_type,
     localTime,
     timezone: dto.timezone,

@@ -35,6 +35,20 @@ function mountDialog() {
     deviceOptions: [{ label: '设备一', value: 'device-1' }] }, global: { renderStubDefaultSlot: true } })
 }
 describe('Worker schedule form', () => {
+  it('shows the readable skill name while retaining its scheduling ID', async () => {
+    mocks.skills = { data: ref([{ ...skill, skillId: 'douyin.compass_selection', displayName: '罗盘选品' }]),
+      isPending: ref(false), error: ref(null) }
+    const wrapper = mountDialog()
+    wrapper.findAllComponents(AppSelect)[0]!.vm.$emit('update:modelValue', 'device-1')
+    await flushPromises()
+    expect(wrapper.findAllComponents(AppSelect)[1]!.props('options')).toEqual([
+      { label: '罗盘选品', value: 'douyin.compass_selection', disabled: false },
+    ])
+    wrapper.findAllComponents(AppSelect)[1]!.vm.$emit('update:modelValue', 'douyin.compass_selection')
+    await flushPromises()
+    expect(wrapper.findAllComponents(AppSelect)[1]!.props('modelValue')).toBe('douyin.compass_selection')
+  })
+
   it('selects device inventory and submits local ids with schedule disabled by default', async () => {
     const wrapper = mountDialog()
     wrapper.findComponent(AppInput).vm.$emit('update:modelValue', '测试计划')
