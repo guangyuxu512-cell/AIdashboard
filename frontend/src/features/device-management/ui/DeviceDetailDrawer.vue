@@ -128,9 +128,13 @@ defineEmits<{
           <div v-for="shop in localShops.shops" :key="shop.local_shop_id">
             <dt>{{ shop.shop_name }}</dt>
             <dd>
-              {{ sessionLabels[shop.session_status] }}
+              抖店：{{ sessionLabels[shop.session_status] }}
               <small v-if="shop.status_observed_at">
                 · {{ formatRelativeTime(shop.status_observed_at) }}{{ shop.session_status === 'reauthorization_required' ? '上报' : '验证' }}
+              </small>
+              · 罗盘：{{ sessionLabels[shop.compass_session_status ?? 'unknown'] }}
+              <small v-if="shop.compass_status_observed_at">
+                · {{ formatRelativeTime(shop.compass_status_observed_at) }}验证
               </small>
             </dd>
           </div>

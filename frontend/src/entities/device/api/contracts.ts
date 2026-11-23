@@ -26,6 +26,8 @@ export interface DeviceLocalShopDto {
   platform: string
   session_status: 'valid' | 'invalid' | 'reauthorization_required' | 'unknown'
   status_observed_at: string | null
+  compass_session_status?: 'valid' | 'invalid' | 'reauthorization_required' | 'unknown'
+  compass_status_observed_at?: string | null
 }
 
 export interface DeviceLocalShopInventoryDto {
@@ -33,6 +35,12 @@ export interface DeviceLocalShopInventoryDto {
   available: boolean
   last_discovered_at: string | null
   shops: DeviceLocalShopDto[]
+}
+
+export interface DeviceShopOverviewDto extends DeviceLocalShopInventoryDto {
+  device_name: string
+  device_enabled: boolean
+  worker_runtime: DeviceRuntimeReadDto | null
 }
 
 export interface DeviceCreateDto {

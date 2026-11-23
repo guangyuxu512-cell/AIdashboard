@@ -11,6 +11,7 @@ TEAM_SCOPED_OPERATIONS = frozenset({
     'GET /api/v1/assets/{asset_id}/content',
     'GET /api/v1/assets/{asset_id}/thumbnail',
     'GET /api/v1/devices',
+    'GET /api/v1/devices/local-shop-overview',
     'GET /api/v1/devices/{device_id}',
     'GET /api/v1/devices/{device_id}/local-shops',
     'GET /api/v1/devices/{device_id}/business-skills',

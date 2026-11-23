@@ -56,6 +56,8 @@ class DeviceLocalShopRead(BaseModel):
     session_status: Literal["valid", "invalid", "reauthorization_required", "unknown"]
     compass_session_verified: bool | None = None
     status_observed_at: datetime | None = None
+    compass_session_status: Literal["valid", "invalid", "reauthorization_required", "unknown"] = "unknown"
+    compass_status_observed_at: datetime | None = None
 
 
 class DeviceLocalShopInventoryRead(BaseModel):
@@ -63,3 +65,9 @@ class DeviceLocalShopInventoryRead(BaseModel):
     available: bool
     last_discovered_at: datetime | None
     shops: list[DeviceLocalShopRead]
+
+
+class DeviceShopOverviewRead(DeviceLocalShopInventoryRead):
+    device_name: str
+    device_enabled: bool
+    worker_runtime: DeviceRuntimeRead | None = None

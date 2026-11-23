@@ -10,7 +10,7 @@ from app.modules.access.contracts import ActorContext
 from app.modules.access.dependencies import require_module_access
 from app.modules.access.module_access import ModuleCode
 from app.modules.devices.schemas import (
-    DeviceCreate, DeviceLocalShopInventoryRead, DeviceRead, DeviceUpdate,
+    DeviceCreate, DeviceLocalShopInventoryRead, DeviceRead, DeviceShopOverviewRead, DeviceUpdate,
 )
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
@@ -85,6 +85,14 @@ def list_devices(
         page=pagination.page,
         page_size=pagination.page_size,
     )
+
+
+@router.get("/local-shop-overview", response_model=list[DeviceShopOverviewRead])
+def list_local_shop_overview(
+    actor: Annotated[ActorContext, Depends(get_device_authorized_actor)],
+    service: Annotated[DeviceService, Depends(get_device_service)],
+) -> list[DeviceShopOverviewRead]:
+    return service.list_shop_overview(actor)
 
 
 @router.get("/{device_id}", response_model=DeviceRead)

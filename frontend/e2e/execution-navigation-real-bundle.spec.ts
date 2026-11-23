@@ -42,6 +42,15 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
           is_access_administrator: true,
         },
         '/api/v1/devices': { items: [], total: 0, page: 1, page_size: 20 },
+        '/api/v1/devices/local-shop-overview': [{
+          device_id: '00000000-0000-4000-8000-000000000091', device_name: '设备一',
+          device_enabled: true, available: true, last_discovered_at: '2026-11-23T05:00:00Z',
+          worker_runtime: { connection_status: 'online' }, shops: [{
+            local_shop_id: 'local-1', platform_shop_id: '123', shop_name: '示例店铺', platform: 'douyin',
+            session_status: 'valid', status_observed_at: '2026-11-23T05:00:00Z',
+            compass_session_status: 'unknown', compass_status_observed_at: null,
+          }],
+        }],
       }
       await route.fulfill({ json: data[url.pathname] ?? [] })
       return
@@ -83,5 +92,12 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
     await expect(nav.getByText('选品库', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('自动化中心', { exact: true })).toBeVisible()
   }
+
+  await page.goto('/#/worker-shops')
+  await expect(page.getByText('示例店铺', { exact: true })).toBeVisible()
+  await expect(page.getByText('设备一', { exact: true })).toBeVisible()
+  await expect(page.getByText('有效', { exact: true })).toBeVisible()
+  await expect(page.getByText('未确认', { exact: true })).toBeVisible()
+  await expect(page.getByText('罗盘验证时间', { exact: true })).toBeVisible()
 
 })
