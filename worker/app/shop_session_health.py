@@ -22,6 +22,7 @@ _VALID_AGE = timedelta(minutes=30)
 _MAX_BYTES = 256 * 1024
 _REFRESH_INTERVAL = 30 * 60
 _MAX_REFRESH_ATTEMPTS = 3
+_EXHAUSTED_REFRESH_INTERVAL = 6 * 60 * 60
 _LOGIN_MESSAGES = {
     "未登录", "用户未登录", "请先登录", "请重新登录", "登录失效", "登录已失效",
     "登录过期", "登录已过期", "登录状态失效", "登录状态已失效", "登录状态已过期",
@@ -54,6 +55,7 @@ class ShopSessionHealth:
         self._observations: dict[tuple[tuple[str, str, str], str], SessionObservation] = {}
         self._pending: dict[tuple[str, str, str], tuple[float, set[str]]] = {}
         self._refresh_attempts: dict[tuple[str, str, str], tuple[int, float]] = {}
+        self._manual_blocked: set[tuple[str, str, str]] = set()
 
     @staticmethod
     def _refresh_key(shop: LocalShop) -> tuple[str, str, str] | None:
@@ -71,18 +73,14 @@ class ShopSessionHealth:
 
     def _refresh_available(self, shop: LocalShop) -> bool:
         key = self._refresh_key(shop)
-        if key is None:
+        if key is None or key in self._manual_blocked:
             return False
         attempts, retry_at = self._refresh_attempts.get(key, (0, 0))
-        report = self.report(shop)
-        # An unverified Compass snapshot is not proof of expiry. Give it one
-        # background preparation attempt; reserve retries for missing or
-        # explicitly invalid sessions.
-        unverified = (shop.session_stored and shop.compass_session_verified is False
-                      and report["sessionStatus"] != "invalid"
-                      and report["compassSessionStatus"] is None)
-        limit = 1 if unverified else _MAX_REFRESH_ATTEMPTS
-        return attempts < limit and self.clock() >= retry_at
+        if attempts >= _MAX_REFRESH_ATTEMPTS:
+            if self.clock() < retry_at + _EXHAUSTED_REFRESH_INTERVAL:
+                return False
+            self._refresh_attempts[key] = (0, retry_at)
+        return self.clock() >= retry_at
 
     async def request_refresh(self, shop: LocalShop) -> bool:
         key = self._refresh_key(shop)
@@ -97,9 +95,30 @@ class ShopSessionHealth:
         # must not replace the still-usable merchant snapshot on failure.
         require_compass = shop.session_stored and self.report(shop)["sessionStatus"] != "invalid"
         try:
+            # The launch acknowledgement is not the result. An older RPA may
+            # not expose outcomes yet; its other bridge operations stay usable.
+            try:
+                status = await self.bridge.session_refresh_status(shop.local_shop_id, shop.platform_shop_id, key[2])
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                status = None
+            if status is not None:
+                age = (self.now() - status.observed_at).total_seconds()
+                if age >= -300:
+                    age = max(0, age)
+                    if status.outcome == "manual_required":
+                        self._manual_blocked.add(key)
+                        return False
+                    if status.outcome == "saved" and age <= 24 * 60 * 60:
+                        return False  # The next inventory cycle must observe the new revision.
+                    delay = _REFRESH_INTERVAL if status.outcome == "retryable" else 60
+                    if status.outcome in ("busy", "retryable") and age < delay:
+                        self._refresh_attempts[key] = (attempts, self.clock() + delay - age)
+                        return False
             accepted = await self.bridge.request_session_refresh(shop.local_shop_id, shop.platform_shop_id, key[2], require_compass)
             if accepted:
-                self._refresh_attempts[key] = (attempts + 1, self.clock() + _REFRESH_INTERVAL)
+                self._refresh_attempts[key] = (attempts + 1, self.clock() + _UNKNOWN_INTERVAL)
             return accepted
         except asyncio.CancelledError:
             raise
@@ -121,6 +140,7 @@ class ShopSessionHealth:
         self._observations = {key: value for key, value in self._observations.items() if key[0] in keys}
         self._pending = {key: value for key, value in self._pending.items() if key in keys}
         self._refresh_attempts = {key: value for key, value in self._refresh_attempts.items() if key in refresh_keys}
+        self._manual_blocked.intersection_update(refresh_keys)
         now = self.clock()
         candidates = []
         for shop in shops:
