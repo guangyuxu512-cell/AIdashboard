@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Response, status
@@ -69,14 +69,28 @@ def claim_precheck_task(
     return _claim_worker_task(principal, service, precheck_only=True)
 
 
+@router.post('/claim-parallel', response_model=WorkerTaskRead, response_model_exclude_defaults=True,
+             responses={204: {'description': '当前设备没有可并行的指定任务'}})
+def claim_parallel_task(
+    principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
+    service: Annotated[TaskService, Depends(get_worker_task_service)],
+    kind: Literal['precheck', 'basic'],
+) -> WorkerTaskRead | Response:
+    return _claim_worker_task(principal, service, parallel_kind=kind)
+
+
 def _claim_worker_task(
     principal: WorkerPrincipal,
     service: TaskService,
     *,
     precheck_only: bool = False,
+    parallel_kind: str | None = None,
 ) -> WorkerTaskRead | Response:
-    claimed = (service.claim_with_context(principal, precheck_only=True)
-               if precheck_only else service.claim_with_context(principal))
+    if parallel_kind is not None:
+        claimed = service.claim_with_context(principal, parallel_kind=parallel_kind)
+    else:
+        claimed = (service.claim_with_context(principal, precheck_only=True)
+                   if precheck_only else service.claim_with_context(principal))
     if claimed is None:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     task = claimed.task

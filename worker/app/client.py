@@ -117,6 +117,21 @@ class WorkerApiClient:
             raise WorkerApiError("WORKER_CLAIM_INVALID", "预检领取返回了其他任务", 0)
         return task
 
+    async def claim_parallel(self, kind: str) -> WorkerTask | None:
+        if kind not in {'precheck', 'basic'}:
+            raise ValueError('invalid parallel task kind')
+        response = await self.client.post('/api/v1/worker/tasks/claim-parallel', params={'kind': kind})
+        self.parallel_claim_supported = response.status_code != 404
+        if response.status_code in {204, 404}:
+            return None
+        self._raise_for_error(response)
+        task = WorkerTask.model_validate(response.json())
+        valid = (task.skill_id == 'douyin.category_schema' if kind == 'precheck' else
+                 task.skill_id == 'douyin.compass_selection' and task.input.get('operation') == 'basic')
+        if not valid:
+            raise WorkerApiError('WORKER_CLAIM_INVALID', '并行领取返回了其他任务', 0)
+        return task
+
     async def download_task_asset(self, download_path: str) -> bytes:
         if not download_path.startswith("/api/v1/worker/tasks/"):
             raise WorkerApiError(
