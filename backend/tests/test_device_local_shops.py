@@ -5,13 +5,14 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.core.config import Settings, get_settings
 from app.core.database import get_database_session
 from app.main import create_app
 from app.modules.devices.exceptions import DeviceNotFoundError
-from app.modules.devices.api import get_device_authorized_actor, get_device_service
+from app.modules.devices.api import get_device_authorized_actor, get_device_service, router as devices_router
 from app.modules.devices.schemas import DeviceShopOverviewRead
 from app.modules.devices.service import DeviceService
 from app.modules.workers.auth import get_worker_principal
@@ -167,7 +168,8 @@ def test_overview_uses_only_actor_scoped_devices():
 
 
 def test_overview_route_uses_existing_device_access_and_does_not_collide_with_device_id():
-    app = create_app()
+    app = FastAPI()
+    app.include_router(devices_router)
     actor, device_id = Mock(), uuid4()
     service = Mock()
     service.list_shop_overview.return_value = [DeviceShopOverviewRead(
