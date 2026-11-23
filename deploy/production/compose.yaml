@@ -44,6 +44,8 @@ services:
       UVICORN_PORT: ${BACKEND_BIND_PORT:-18001}
       BACKEND_ASSET_STORAGE_MODE: ${BACKEND_ASSET_STORAGE_MODE:-local}
       BACKEND_ASSET_STORAGE_DIR: /app/data/assets
+      BACKEND_TOKEN_MANAGER_CREDENTIALS_FILE: /run/secrets/token-manager/credentials.json
+      BACKEND_TOKEN_MANAGER_PROXY_ORIGIN: http://127.0.0.1:${FRONTEND_BIND_PORT:-18080}
     depends_on:
       douyin-signer:
         condition: service_healthy
@@ -52,6 +54,7 @@ services:
       # Mount the directory, not the file: atomic grant-file replacement must
       # remain visible to the running backend when access is revoked.
       - "${APPLICATION_SHOP_SESSION_CONFIG_SOURCE:-application-session-empty}:/run/secrets/application-sessions:ro"
+      - "${TOKEN_MANAGER_CONFIG_SOURCE:-token-manager-empty}:/run/secrets/token-manager:ro"
     network_mode: host
     restart: unless-stopped
     init: true
@@ -116,3 +119,5 @@ volumes:
     name: control-center-backend-prod-assets
   application-session-empty:
     name: control-center-application-session-empty
+  token-manager-empty:
+    name: control-center-token-manager-empty
