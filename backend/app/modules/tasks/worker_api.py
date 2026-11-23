@@ -74,7 +74,7 @@ def claim_precheck_task(
 def claim_parallel_task(
     principal: Annotated[WorkerPrincipal, Depends(get_worker_principal)],
     service: Annotated[TaskService, Depends(get_worker_task_service)],
-    kind: Literal['precheck', 'basic'],
+    kind: Literal['precheck', 'basic', 'selection'],
 ) -> WorkerTaskRead | Response:
     return _claim_worker_task(principal, service, parallel_kind=kind)
 

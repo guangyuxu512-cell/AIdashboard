@@ -118,16 +118,22 @@ class WorkerApiClient:
         return task
 
     async def claim_parallel(self, kind: str) -> WorkerTask | None:
-        if kind not in {'precheck', 'basic'}:
+        if kind not in {'precheck', 'basic', 'selection'}:
             raise ValueError('invalid parallel task kind')
         response = await self.client.post('/api/v1/worker/tasks/claim-parallel', params={'kind': kind})
+        fallback_basic = kind == 'selection' and response.status_code == 422
+        if fallback_basic:
+            # Old servers understand only basic. They keep rank/categories
+            # exclusive until the upgraded server is deployed.
+            response = await self.client.post('/api/v1/worker/tasks/claim-parallel', params={'kind': 'basic'})
         self.parallel_claim_supported = response.status_code != 404
         if response.status_code in {204, 404}:
             return None
         self._raise_for_error(response)
         task = WorkerTask.model_validate(response.json())
         valid = (task.skill_id == 'douyin.category_schema' if kind == 'precheck' else
-                 task.skill_id == 'douyin.compass_selection' and task.input.get('operation') == 'basic')
+                 task.skill_id == 'douyin.compass_selection' and task.input.get('operation') in
+                 ({'basic'} if kind == 'basic' or fallback_basic else {'categories', 'rank', 'basic'}))
         if not valid:
             raise WorkerApiError('WORKER_CLAIM_INVALID', '并行领取返回了其他任务', 0)
         return task
