@@ -113,6 +113,20 @@ def test_business_rejection_and_network_failure_do_not_mark_session_expired():
     assert asyncio.run(capability.execute(host, task())).error_code == 'SHOP_SESSION_EXPIRED'
 
 
+def test_only_explicit_basic_permission_denial_preserves_safe_signal():
+    product = '1000000000000000001'
+    explicit = asyncio.run(capability.execute(Host({'st': 600002, 'msg': '无权限'}),
+                                              task('basic', product_id=product)))
+    assert explicit.error_code == 'PLATFORM_BUSINESS_REJECTED'
+    assert explicit.error_message == '平台返回无权限'
+    assert explicit.result == {'kind': capability.SKILL_ID, 'http_status': 200, 'platform_code': 600002}
+    for payload in ({'st': 600002, 'msg': '平台暂不可用'}, {'st': 123, 'msg': '无权限'}):
+        result = asyncio.run(capability.execute(Host(payload), task('basic', product_id=product)))
+        assert result.error_message == '罗盘请求被平台拒绝'
+    rank = asyncio.run(capability.execute(Host({'st': 600002, 'msg': '无权限'}), task()))
+    assert rank.error_message == '罗盘请求被平台拒绝'
+
+
 def test_rejects_bad_parameters_or_wrong_shop_before_any_request():
     host = Host(rank_payload())
     result = asyncio.run(capability.execute(host, task(category_id='101,0')))
