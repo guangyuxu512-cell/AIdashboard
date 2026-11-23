@@ -261,6 +261,8 @@ Backend Queue 中可以同时存在多个 PENDING Task；Queue 深度与 Worker 
 普通任务不会被持续预检饿死。Business Skill 不得假设永远只有一个 Task，所有 Context 与 Runtime
 状态都必须按 `task_id` 隔离。
 
+罗盘选品 `basic` 使用独立的并行领取，最多每设备 5 个、每店 1 个，并可与商品预检共存。类目、榜单和普通任务仍独占；较早的独占任务会阻止后续并行任务继续领取。每店完成到下一次开始默认至少间隔 30 秒。
+
 Yingdao Provider V1 的 execution capacity 固定为 1。RPAExecutor 使用 Provider 级 Semaphore，
 ShadowBot Adapter 保留自身互斥作为防御层。Skill 内部不得通过 sleep/poll 等待槽。正常情况下，
 普通任务的单活动边界使后续影刀 Task 保持 Backend PENDING；前一 Task SUCCESS 或 FAILED 后释放

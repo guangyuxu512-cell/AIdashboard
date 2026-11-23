@@ -32,6 +32,11 @@ from app.task_images import TaskImagePreparer, TaskImagePreparationError
 logger = logging.getLogger(__name__)
 _PRECHECK_KIND = "douyin.category_schema"
 _PRECHECK_DEVICE_LIMIT = 15
+_COMPASS_KIND = "douyin.compass_selection"
+
+
+def _is_compass_basic(task: WorkerTask) -> bool:
+    return task.skill_id == _COMPASS_KIND and task.input.get('operation') == 'basic'
 
 
 class Worker:
@@ -75,6 +80,9 @@ class Worker:
         self._skill_snapshot_generation = 0
         self._skill_snapshot_lock = asyncio.Lock()
         self._terminal_delivery_lock = asyncio.Lock()
+        self._basic_shop_locks: dict[str, asyncio.Lock] = {}
+        self._basic_shop_finished: dict[str, float] = {}
+        self._next_parallel_kind = 'precheck'
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._heartbeat_consecutive_failures = 0
 
@@ -91,18 +99,20 @@ class Worker:
         rpa_task = (asyncio.create_task(self._rpa_inventory_loop(stop_event))
                     if self.capability_runtime is not None else None)
         prechecks: set[asyncio.Task[None]] = set()
+        basics: set[asyncio.Task[None]] = set()
         try:
             while not stop_event.is_set():
                 try:
-                    for finished in tuple(prechecks):
+                    for finished in tuple(prechecks | basics):
                         if finished.done():
-                            prechecks.remove(finished)
+                            prechecks.discard(finished)
+                            basics.discard(finished)
                             try:
                                 finished.result()
                             except asyncio.CancelledError:
                                 pass
                             except Exception as error:
-                                logger.warning("Worker precheck task failed: %s", error)
+                                logger.warning("Worker parallel task failed: %s", error)
                     if not await self._deliver_pending_terminals():
                         # An unavailable operations center must not block the
                         # existing product precheck queue on this device.
@@ -112,18 +122,22 @@ class Worker:
                         except OutboxError:
                             only_operations = False
                         if only_operations and self.executor.can_claim() and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
-                            task = await self.client.claim_precheck()
+                            method = getattr(self.client, 'claim_parallel', None)
+                            task = await method('precheck') if method is not None else None
+                            if (task is None and not basics and (method is None or
+                                    getattr(self.client, 'parallel_claim_supported', True) is False)):
+                                task = await self.client.claim_precheck()
                             if task is not None:
                                 self._active_task_ids.add(task.task_id)
                                 await self._cancel_shop_health_probe()
                                 prechecks.add(asyncio.create_task(self._execute_claimed_task(task)))
                                 continue
-                        if prechecks:
-                            await self._wait_for_prechecks_or_stop(prechecks, stop_event)
+                        if prechecks or basics:
+                            await self._wait_for_prechecks_or_stop(prechecks | basics, stop_event)
                         else:
                             await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
                         continue
-                    if not prechecks:
+                    if not prechecks and not basics:
                         # Capability files must not change under active tasks.
                         await self._refresh_capabilities_if_due()
                         if self._base_update_pending:
@@ -136,10 +150,9 @@ class Worker:
                         await self._check_base_update_for_drain()
                     if not self.executor.can_claim():
                         task = None
-                    elif prechecks and not self._base_update_pending and len(prechecks) < _PRECHECK_DEVICE_LIMIT:
-                        task = await self.client.claim_precheck()
-                    elif prechecks:
-                        task = None
+                    elif prechecks or basics:
+                        task = (None if self._base_update_pending else
+                                await self._claim_parallel(prechecks=len(prechecks), basics=len(basics)))
                     else:
                         task = await self.client.claim()
                     if task is not None:
@@ -152,20 +165,23 @@ class Worker:
                             # Fill available slots immediately instead of adding
                             # the ordinary idle-poll interval to every claim.
                             continue
+                        if _is_compass_basic(task):
+                            basics.add(asyncio.create_task(self._execute_claimed_task(task)))
+                            continue
                         await self._execute_claimed_task(task)
                 except asyncio.CancelledError:
                     raise
                 except Exception as error:
                     logger.warning("Worker poll cycle failed: %s", error)
-                if prechecks:
-                    await self._wait_for_prechecks_or_stop(prechecks, stop_event)
+                if prechecks or basics:
+                    await self._wait_for_prechecks_or_stop(prechecks | basics, stop_event)
                 else:
                     await self._wait_or_stop(stop_event, self.settings.poll_interval_seconds)
         finally:
             # As with the existing single-task loop, a normal stop waits for
             # already claimed work and its durable result before disconnecting.
-            if prechecks:
-                await asyncio.gather(*prechecks, return_exceptions=True)
+            if prechecks or basics:
+                await asyncio.gather(*prechecks, *basics, return_exceptions=True)
             heartbeat_supervisor_task.cancel()
             if reporter_task is not None:
                 reporter_task.cancel()
@@ -187,6 +203,42 @@ class Worker:
             if self.local_runtime_state is not None:
                 self.local_runtime_state.stop()
             await self.client.close()
+
+    async def _claim_parallel(self, *, prechecks: int, basics: int) -> WorkerTask | None:
+        choices = ('precheck', 'basic') if self._next_parallel_kind == 'precheck' else ('basic', 'precheck')
+        for kind in choices:
+            if kind == 'precheck' and prechecks >= _PRECHECK_DEVICE_LIMIT:
+                continue
+            if kind == 'basic' and basics >= self.settings.compass_basic_device_limit:
+                continue
+            method = getattr(self.client, 'claim_parallel', None)
+            task = await method(kind) if method is not None else None
+            # An old Backend does not know the new route. Its old precheck-only
+            # endpoint remains safe while no basic task is running.
+            if (task is None and kind == 'precheck' and not basics
+                    and (method is None or getattr(self.client, 'parallel_claim_supported', True) is False)):
+                task = await self.client.claim_precheck()
+            if task is not None:
+                self._next_parallel_kind = 'basic' if kind == 'precheck' else 'precheck'
+                return task
+        return None
+
+    async def _execute_with_basic_interval(self, task: WorkerTask) -> ExecutionResult:
+        if not _is_compass_basic(task) or len(task.local_shops) != 1:
+            return await self._prepare_and_execute(task)
+        shop_id = task.local_shops[0].local_shop_id
+        lock = self._basic_shop_locks.setdefault(shop_id, asyncio.Lock())
+        async with lock:
+            loop = asyncio.get_running_loop()
+            remaining = self._basic_shop_finished.get(shop_id, 0) + self.settings.compass_basic_shop_interval_seconds - loop.time()
+            if remaining > 0:
+                await asyncio.sleep(remaining)
+            logger.info('Compass basic started shop=%s task=%s', shop_id, task.task_id)
+            try:
+                return await self._prepare_and_execute(task)
+            finally:
+                self._basic_shop_finished[shop_id] = loop.time()
+                logger.info('Compass basic finished shop=%s task=%s', shop_id, task.task_id)
 
     async def _wait_for_prechecks_or_stop(
         self, prechecks: set[asyncio.Task[None]], stop_event: asyncio.Event,
@@ -539,7 +591,7 @@ class Worker:
                 ),
             },
         )
-        execution_task = asyncio.create_task(self._prepare_and_execute(task))
+        execution_task = asyncio.create_task(self._execute_with_basic_interval(task))
         lease_task = asyncio.create_task(self._renew_lease(task))
         try:
             done, _ = await asyncio.wait(

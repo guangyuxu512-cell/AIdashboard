@@ -558,8 +558,9 @@ class TaskService:
         *,
         now: datetime | None = None,
         precheck_only: bool = False,
+        parallel_kind: str | None = None,
     ) -> ClaimedWorkerTask | None:
-        task = self._claim_without_commit(principal, now=now, precheck_only=precheck_only)
+        task = self._claim_without_commit(principal, now=now, precheck_only=precheck_only, parallel_kind=parallel_kind)
         if task is None:
             self.session.commit()
             return None
@@ -590,6 +591,7 @@ class TaskService:
         *,
         now: datetime | None,
         precheck_only: bool = False,
+        parallel_kind: str | None = None,
     ) -> Task | None:
         claimed_at = now or datetime.now(UTC)
         if self.repository.get_enabled_device(principal.device_id) is None:
@@ -604,6 +606,7 @@ class TaskService:
             now=claimed_at,
             lease_until=lease_until,
             precheck_only=precheck_only,
+            parallel_kind=parallel_kind,
             local_context_supported=_supports_local_shop_context(getattr(runtime, "worker_version", None)),
             operations_delivery_supported=_supports_operations_delivery(getattr(runtime, "worker_version", None)),
         )

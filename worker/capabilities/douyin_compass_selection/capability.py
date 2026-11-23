@@ -287,6 +287,11 @@ async def execute(host, task):
         if type(code) not in {int, str}:
             return _failure('PLATFORM_RESPONSE_INVALID', '罗盘返回格式无效', http_status=http_status)
         safe_code = code if type(code) is int or (isinstance(code, str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,64}', code)) else None
+        if params.operation == 'basic' and code in (600002, '600002') and normalized == '无权限':
+            # Preserve the existing error/result contract while retaining the
+            # platform's explicit permission signal for store failover.
+            return _failure('PLATFORM_BUSINESS_REJECTED', '平台返回无权限',
+                            http_status=http_status, platform_code=safe_code)
         return _failure('PLATFORM_BUSINESS_REJECTED', '罗盘请求被平台拒绝', http_status=http_status, platform_code=safe_code)
     try:
         data = _project(payload.get('data'), params.operation, params)

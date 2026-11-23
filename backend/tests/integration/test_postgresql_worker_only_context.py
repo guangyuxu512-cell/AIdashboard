@@ -21,6 +21,7 @@ from app.modules.tasks.exceptions import TaskInputInvalidError
 from app.modules.tasks.models import Task
 from app.modules.tasks.schemas import TaskCreate, WorkerTaskRead
 from app.modules.tasks.service import TaskService
+from app.modules.tasks.worker_api import claim_parallel_task, claim_task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
 from app.modules.workers.precheck_models import WorkerRpaShopInventory
@@ -120,6 +121,30 @@ def test_old_worker_can_claim_precheck_without_new_payload_field(worker_context)
         payload = WorkerTaskRead(task_id=precheck.task_id, skill_id=precheck.skill_id,
             input={}, lease_until=claimed.task.lease_until, local_shops=[]).model_dump(exclude_defaults=True)
         assert 'local_shops' not in payload
+
+
+def test_parallel_basic_claims_keep_shop_context_and_operations_delivery(worker_context):
+    engine, actor, device_id = worker_context
+    now = datetime.now(UTC)
+    with Session(engine, expire_on_commit=False) as session:
+        session.get(DeviceRuntime, device_id).worker_version = '0.5.15'
+        inventory = session.get(WorkerRpaShopInventory, device_id)
+        inventory.shops = [{'localShopId': f'local-{i}', 'platformShopId': str(100 + i),
+                            'shopName': f'fixture {i}', 'platform': 'douyin'} for i in range(5)]
+        for i in range(5):
+            session.add(Task(task_id=uuid4(), team_id=actor.team_id, created_by_user_id=actor.user_id,
+                target_device_id=device_id, skill_id='douyin.compass_selection', execution_display_name='fixture',
+                status='pending', input_json={'operation': 'basic', 'product_id': str(i + 1),
+                    'correlation_id': str(uuid4()), '_worker_local_shops': [{'local_shop_id': f'local-{i}',
+                        'platform': 'douyin', 'platform_shop_id': str(100 + i)}]},
+                created_at=now + timedelta(microseconds=i)))
+        session.commit()
+        principal, service = WorkerPrincipal(device_id=device_id), TaskService(session)
+        claims = [claim_task(principal, service)]
+        claims += [claim_parallel_task(principal, service, 'basic') for _ in range(4)]
+        assert len({claim.task_id for claim in claims}) == 5
+        assert all(claim.input['operation'] == 'basic' and claim.result_delivery == 'operations' for claim in claims)
+        assert all(len(claim.local_shops) == 1 and '_worker_local_shops' not in claim.input for claim in claims)
 
 
 def test_schedule_uses_local_shops_and_is_disabled_by_default_in_form(worker_context):
