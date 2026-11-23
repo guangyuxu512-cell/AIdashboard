@@ -51,19 +51,19 @@ class ShopSessionHealth:
         self.transport = transport
         self.clock = clock
         self.now = now
-        self._next_check: dict[tuple[tuple[str, str, str], str], float] = {}
-        self._observations: dict[tuple[tuple[str, str, str], str], SessionObservation] = {}
-        self._pending: dict[tuple[str, str, str], tuple[float, set[str]]] = {}
-        self._refresh_attempts: dict[tuple[str, str, str], tuple[int, float]] = {}
-        self._manual_blocked: set[tuple[str, str, str]] = set()
+        self._next_check: dict[tuple[tuple[str, str, str, str | None], str], float] = {}
+        self._observations: dict[tuple[tuple[str, str, str, str | None], str], SessionObservation] = {}
+        self._pending: dict[tuple[str, str, str, str | None], tuple[float, set[str]]] = {}
+        self._refresh_attempts: dict[tuple[str, str, str, str | None], tuple[int, float]] = {}
+        self._manual_blocked: set[tuple[str, str, str, str | None]] = set()
 
     @staticmethod
-    def _refresh_key(shop: LocalShop) -> tuple[str, str, str] | None:
+    def _refresh_key(shop: LocalShop) -> tuple[str, str, str, str | None] | None:
         if shop.platform != "douyin" or not shop.platform_shop_id:
             return None
         if shop.session_stored and not shop.session_revision:
             return None  # A temporarily unavailable SQLite revision is not a missing session.
-        return shop.local_shop_id, shop.platform_shop_id, shop.session_revision or "missing"
+        return shop.local_shop_id, shop.platform_shop_id, shop.session_revision or "missing", shop.rpa_helper_digest
 
     def missing_session_due(self, shops: list[LocalShop]) -> LocalShop | None:
         for shop in shops:
@@ -126,11 +126,11 @@ class ShopSessionHealth:
             return False
 
     @staticmethod
-    def _key(shop: LocalShop) -> tuple[str, str, str] | None:
+    def _key(shop: LocalShop) -> tuple[str, str, str, str | None] | None:
         if (shop.platform != "douyin" or not shop.session_stored or not shop.platform_shop_id
                 or not shop.session_revision):
             return None
-        return shop.local_shop_id, shop.platform_shop_id, shop.session_revision
+        return shop.local_shop_id, shop.platform_shop_id, shop.session_revision, shop.rpa_helper_digest
 
     def due(self, shops: list[LocalShop]) -> LocalShop | None:
         keys = {key for shop in shops if (key := self._key(shop)) is not None}
