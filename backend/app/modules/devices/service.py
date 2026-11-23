@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
@@ -14,12 +16,13 @@ from app.modules.devices.exceptions import (
 from app.modules.devices.models import Device
 from app.modules.devices.repository import DeviceRepository
 from app.modules.devices.schemas import (
-    DeviceCreate, DeviceLocalShopInventoryRead, DeviceLocalShopRead, DeviceUpdate,
+    DeviceCreate, DeviceLocalShopInventoryRead, DeviceLocalShopRead, DeviceShopOverviewRead, DeviceUpdate,
 )
 from app.modules.tasks.repository import TaskRepository
 from app.modules.workers.repository import WorkerRepository
 from app.modules.workers.precheck_models import WorkerRpaShopInventory
 from app.modules.workers.session_health import merge_session_observations, worker_session_observation
+from app.modules.workers.service import WorkerService
 from app.modules.tasks.models import Task
 
 
@@ -63,6 +66,20 @@ class DeviceService:
         if device is None:
             raise DeviceNotFoundError()
         return device
+
+    def list_shop_overview(self, actor: ActorContext) -> list[DeviceShopOverviewRead]:
+        devices = self.repository.list_all_for_actor(actor=actor)
+        runtimes = WorkerService(self.session, repository=self.worker_repository).get_runtime_reads(
+            [device.device_id for device in devices],
+        )
+        result = []
+        for device in devices:
+            inventory = self.get_local_shops(actor, device.device_id)
+            result.append(DeviceShopOverviewRead(
+                **inventory.model_dump(), device_name=device.display_name,
+                device_enabled=device.enabled, worker_runtime=runtimes.get(device.device_id),
+            ))
+        return result
 
     def get_for_write(self, actor: ActorContext, device_id: UUID) -> Device:
         self._require_super_account(actor)
@@ -118,6 +135,9 @@ class DeviceService:
                 continue
             if shop.get("sessionStored") is not True:
                 state, observed_at = "reauthorization_required", inventory.last_discovered_at
+                compass_state, compass_at = "reauthorization_required", None
+                previous = shop.get("compassSessionVerified")
+                compass_verified = previous if type(previous) is bool else None
             else:
                 state, observed_at = observations.get(
                     (local_id, platform_id, shop.get("sessionRevision")), ("unknown", None),
@@ -126,11 +146,17 @@ class DeviceService:
                 state, observed_at = merge_session_observations(
                     (state, observed_at) if observed_at else None, reported,
                 ) or ("unknown", None)
+                compass_state, compass_at = worker_session_observation(shop, now=now, compass=True) or ("unknown", None)
+                previous = shop.get("compassSessionVerified")
+                # Preserve the old snapshot flag for older Workers; a recent local
+                # observation is more authoritative for downstream selection.
+                compass_verified = (True if compass_state == "valid" else False if compass_state == "invalid"
+                                    else previous if type(previous) is bool else None)
             shops.append(DeviceLocalShopRead(
                 local_shop_id=local_id, platform_shop_id=platform_id,
                 shop_name=name, platform=platform, session_status=state,
-                compass_session_verified=shop.get("compassSessionVerified") if type(shop.get("compassSessionVerified")) is bool else None,
-                status_observed_at=observed_at,
+                compass_session_verified=compass_verified, status_observed_at=observed_at,
+                compass_session_status=compass_state, compass_status_observed_at=compass_at,
             ))
         available = bool(
             inventory.available

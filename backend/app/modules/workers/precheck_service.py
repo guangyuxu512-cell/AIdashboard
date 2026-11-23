@@ -490,16 +490,18 @@ def save_rpa_inventory(session: Session, device_id: UUID, data: RpaInventoryRepo
         shops = []
         for shop in data.shops:
             row = shop.model_dump(mode="json", by_alias=True)
-            checked_at = shop.session_checked_at
-            if checked_at and checked_at > now + timedelta(minutes=5):
-                # A bad device clock must not make its entire inventory or
-                # unrelated prechecks unavailable.
-                checked_at = None
-                row["sessionStatus"], row["sessionCheckedAt"] = None, None
             old = previous.get((shop.local_shop_id, shop.platform_shop_id, shop.session_revision))
-            old_observation = worker_session_observation(old, now=now) if old else None
-            if old_observation and (checked_at is None or old_observation[1] > checked_at):
-                row["sessionStatus"], row["sessionCheckedAt"] = old_observation[0], old_observation[1].isoformat()
+            for compass, status_field, time_field, checked_at in (
+                (False, "sessionStatus", "sessionCheckedAt", shop.session_checked_at),
+                (True, "compassSessionStatus", "compassSessionCheckedAt", shop.compass_session_checked_at),
+            ):
+                if checked_at and checked_at > now + timedelta(minutes=5):
+                    # A bad clock must not make unrelated inventory unavailable.
+                    checked_at = None
+                    row[status_field], row[time_field] = None, None
+                old_observation = worker_session_observation(old, now=now, compass=compass) if old else None
+                if old_observation and (checked_at is None or old_observation[1] > checked_at):
+                    row[status_field], row[time_field] = old_observation[0], old_observation[1].isoformat()
             shops.append(row)
         inventory.installation_id = data.installation_id
         inventory.shops = shops

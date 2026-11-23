@@ -28,7 +28,8 @@ describe('execution-layer navigation', () => {
       (entry) => entry.type === 'group' && entry.groupCode === 'automation',
     )
     expect(automation?.type === 'group' && automation.children.map((item) => item.moduleCode))
-      .toEqual(['device', 'task', 'schedule'])
+      .toEqual(['device', 'worker-shops', 'task', 'schedule'])
+    expect(getModuleAccessCode(getModuleDefinition('worker-shops')!)).toBe('device')
     expect(getModuleDefinition('parameter-preset')).toBeUndefined()
   })
 

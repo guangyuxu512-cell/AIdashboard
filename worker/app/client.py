@@ -49,6 +49,7 @@ class WorkerApiClient:
     ) -> None:
         self.settings = settings
         self._inventory_health_retry_at = 0.0
+        self._inventory_supported_level = 2
         self._owns_client = client is None
         self.client = client or httpx.AsyncClient(
             base_url=str(settings.server_url).rstrip("/"),
@@ -195,24 +196,29 @@ class WorkerApiClient:
 
     async def report_rpa_inventory(self, payload: dict[str, Any]) -> None:
         shops = payload.get("shops")
-        extended = isinstance(shops, list) and any(
-            isinstance(shop, dict) and any(key in shop for key in ("sessionStatus", "sessionCheckedAt", "compassSessionVerified"))
-            for shop in shops
-        )
-        legacy = ({**payload, "shops": [
-            {key: value for key, value in shop.items() if key not in ("sessionStatus", "sessionCheckedAt", "compassSessionVerified")}
-            if isinstance(shop, dict) else shop for shop in shops
-        ]} if extended else payload)
-        use_extended = extended and monotonic() >= self._inventory_health_retry_at
-        response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=payload if use_extended else legacy)
-        if use_extended and response.status_code == 422:
-            # An old Backend rejects new optional fields. Keep shop inventory
-            # and prechecks working while the Backend is being upgraded.
-            response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=legacy)
-            if response.is_success:
-                self._inventory_health_retry_at = monotonic() + 300
-        elif use_extended and response.is_success:
-            self._inventory_health_retry_at = 0.0
+        if not isinstance(shops, list) or not shops:
+            response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=payload)
+            self._raise_for_error(response)
+            return
+        compass_fields = {"compassSessionStatus", "compassSessionCheckedAt"}
+        old_health_fields = {"sessionStatus", "sessionCheckedAt", "compassSessionVerified"}
+        present = {key for shop in shops if isinstance(shop, dict) for key in shop}
+        max_level = 2 if present & compass_fields else 1 if present & old_health_fields else 0
+        level = max_level if monotonic() >= self._inventory_health_retry_at else min(max_level, self._inventory_supported_level)
+        while True:
+            omit = set() if level == 2 else compass_fields if level == 1 else compass_fields | old_health_fields
+            body = {**payload, "shops": [
+                {key: value for key, value in shop.items() if key not in omit}
+                if isinstance(shop, dict) else shop for shop in shops
+            ]}
+            response = await self.client.put("/api/v1/worker/rpa-shop-inventory", json=body)
+            if response.status_code != 422 or level == 0:
+                break
+            # Older servers can still receive the fields they understand.
+            level -= 1
+        if response.is_success:
+            self._inventory_supported_level = level
+            self._inventory_health_retry_at = monotonic() + 300 if level < max_level else 0.0
         self._raise_for_error(response)
 
     async def sign_precheck(self, task_id: UUID, *, cookie: str, user_agent: str) -> dict[str, str]:

@@ -31,6 +31,8 @@ def test_only_matching_identity_reports_valid_without_exporting_session():
 
     def handler(request):
         calls.append(request.url.path)
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(200, json={"st": 0, "data": {"shop_id": "123"}})
         assert request.url.host == "fxg.jinritemai.com"
         assert request.headers["cookie"] == "test=synthetic"
         return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
@@ -40,8 +42,9 @@ def test_only_matching_identity_reports_valid_without_exporting_session():
     target = shop()
     assert monitor.due([target]) == target
     asyncio.run(monitor.check(target))
-    assert calls == ["/common/index/index"]
-    assert monitor.report(target) == {"sessionStatus": "valid", "sessionCheckedAt": now.isoformat()}
+    assert calls == ["/compass_api/shop/mall/common/shop_info_v2", "/common/index/index"]
+    assert monitor.report(target) == {"sessionStatus": "valid", "sessionCheckedAt": now.isoformat(),
+                                     "compassSessionStatus": "valid", "compassSessionCheckedAt": now.isoformat()}
     assert "synthetic" not in repr(monitor.report(target))
     assert monitor.due([target]) is None
     assert monitor.report(shop("b" * 64))["sessionStatus"] is None
@@ -100,3 +103,94 @@ def test_replaced_session_during_request_never_receives_old_result():
     asyncio.run(monitor.check(shop()))
     assert monitor.report(shop())["sessionStatus"] is None
     assert monitor.report(shop("b" * 64))["sessionStatus"] is None
+
+
+def test_replaced_snapshot_clears_previously_observed_status():
+    bridge = Bridge()
+
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(200, json={"st": 0, "data": {"shop_id": "123"}})
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+    asyncio.run(monitor.check(shop()))
+    assert monitor.report(shop())["compassSessionStatus"] == "valid"
+    bridge.revision = "b" * 64
+    asyncio.run(monitor.check(shop()))
+    assert monitor.report(shop())["sessionStatus"] is None
+    assert monitor.report(shop())["compassSessionStatus"] is None
+
+
+@pytest.mark.parametrize("status,payload,expected", [
+    (200, {"st": 0, "data": {"shop_id": "123"}}, "valid"),
+    (200, {"st": 0, "data": {"shop_id": "different"}}, None),
+    (200, {"st": 100704}, None),
+    (200, {"st": 1, "msg": "请先登录"}, "invalid"),
+    (503, {"st": 1, "msg": "请先登录"}, None),
+])
+def test_compass_checks_matching_shop_and_only_explicit_auth_failure(status, payload, expected):
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(status, json=payload)
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+
+    monitor = ShopSessionHealth(Bridge(), transport=httpx.MockTransport(handler))
+    asyncio.run(monitor.check(shop()))
+    result = monitor.report(shop())
+    assert result["sessionStatus"] == "valid"
+    assert result["compassSessionStatus"] == expected
+    assert bool(result["compassSessionCheckedAt"]) is (expected is not None)
+    assert "synthetic" not in repr(result)
+
+
+def test_compass_network_error_does_not_mark_expired_or_block_merchant():
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            raise httpx.ConnectError("network error")
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+
+    monitor = ShopSessionHealth(Bridge(), transport=httpx.MockTransport(handler))
+    asyncio.run(monitor.check(shop()))
+    assert monitor.report(shop())["sessionStatus"] == "valid"
+    assert monitor.report(shop())["compassSessionStatus"] is None
+
+
+def test_only_inconclusive_service_retries_and_abandoned_reservation_expires():
+    clock = [100.0]
+    calls = []
+
+    def handler(request):
+        calls.append(request.url.host)
+        if request.url.host == "compass.jinritemai.com":
+            raise httpx.ConnectError("network error")
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+
+    monitor = ShopSessionHealth(Bridge(), transport=httpx.MockTransport(handler), clock=lambda: clock[0])
+    target = shop()
+    assert monitor.due([target]) == target
+    asyncio.run(monitor.check(target))
+    clock[0] += 301
+    assert monitor.due([target]) == target
+    asyncio.run(monitor.check(target))
+    assert calls.count("fxg.jinritemai.com") == 1
+    assert calls.count("compass.jinritemai.com") == 2
+    clock[0] += 301
+    assert monitor.due([target]) == target
+    # A task cancelled before it starts cannot permanently block this shop.
+    clock[0] += 301
+    assert monitor.due([target]) == target
+
+
+def test_inconclusive_shops_do_not_starve_later_mapped_shops():
+    clock = [100.0]
+    monitor = ShopSessionHealth(Bridge(), clock=lambda: clock[0])
+    targets = [shop().model_copy(update={"local_shop_id": str(index), "platform_shop_id": str(index)})
+               for index in range(8)]
+    seen = []
+    for _ in range(8):
+        target = monitor.due(targets)
+        assert target is not None
+        seen.append(target.local_shop_id)
+        clock[0] += 60
+    assert seen == [str(index) for index in range(8)]

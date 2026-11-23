@@ -7,6 +7,7 @@ const assetModule = requireModuleDefinition('asset')
 const operatingDashboardModule = requireModuleDefinition('operating-dashboard')
 const productDataModule = requireModuleDefinition('product-data')
 const deviceModule = requireModuleDefinition('device')
+const workerShopsModule = requireModuleDefinition('worker-shops')
 const taskModule = requireModuleDefinition('task')
 const scheduleModule = requireModuleDefinition('schedule')
 const settingsModule = requireModuleDefinition('settings')
@@ -54,6 +55,12 @@ const router = createRouter({
       name: deviceModule.routeName,
       component: () => import('@/pages/devices/DeviceCenterPage.vue'),
       meta: { moduleCode: deviceModule.moduleCode },
+    },
+    {
+      path: workerShopsModule.routePath,
+      name: workerShopsModule.routeName,
+      component: () => import('@/pages/devices/WorkerShopsPage.vue'),
+      meta: { moduleCode: workerShopsModule.moduleCode },
     },
     {
       path: taskModule.routePath,

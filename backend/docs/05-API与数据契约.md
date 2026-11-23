@@ -594,5 +594,11 @@ Worker 的 `rpa-shop-inventory` 可在已有店铺摘要中提供 `sessionStatus
 观察时间，未确认或过期的成功结果不显示为当前有效。网络和平台未知错误不等同登录失效；商家身份验证成功不覆盖
 同一会话上已确认的类目预检失效，RPA 保存新的会话后重新判断。此状态上报不包含 Cookie 或 Session 内容。
 
+Worker 0.5.11 还可成对上报 `compassSessionStatus`、`compassSessionCheckedAt`，来自本机对罗盘店铺身份的只读验证，
+与抖店状态独立；网络故障、身份不匹配及不明确的业务拒绝均不认定为失效。`GET /api/v1/devices/{device_id}/local-shops`
+返回 `compass_session_status` 与 `compass_status_observed_at`，旧 Worker 的罗盘状态为 `unknown`。
+`GET /api/v1/devices/local-shop-overview` 按现有设备权限返回各设备及其本机店铺状态，不返回快照版本或 Session。
+同一店铺出现在多台设备时，每台设备的状态分别保留。新的明确罗盘验证优先于旧快照标志；无新验证时旧标志兼容既有选品。
+
 现行类目预检仍使用受限的服务器签名接口：Worker 为签名经 HTTPS 临时传递本店 Cookie，再由 Worker 本机请求平台；
 这与店铺状态上报是两条不同路径，不能表述为所有现有请求都不经过中控接触 Cookie。
