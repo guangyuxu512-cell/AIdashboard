@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from urllib.parse import parse_qsl, urlsplit
 
@@ -44,6 +45,33 @@ def _safe_scalar(value):
     return None
 
 
+def _project_unit_rules(value):
+    """Keep only fully understood per-unit bounds; retain unknown as a sentinel."""
+    unknown = [{"present": True}]
+    if value is None:
+        return None
+    if not isinstance(value, list):
+        return unknown
+    if not value:
+        return []
+    result, seen = [], set()
+    for entry in value:
+        if (not isinstance(entry, dict) or set(entry) != {"unit_id", "min", "max"}
+                or type(entry["unit_id"]) is not int or entry["unit_id"] <= 0
+                or entry["unit_id"] in seen):
+            return unknown
+        minimum, maximum = entry["min"], entry["max"]
+        for bound in (minimum, maximum):
+            if bound is not None and (type(bound) not in (int, float)
+                    or (type(bound) is float and not math.isfinite(bound))):
+                return unknown
+        if minimum is not None and maximum is not None and minimum > maximum:
+            return unknown
+        seen.add(entry["unit_id"])
+        result.append({"unit_id": entry["unit_id"], "min": minimum, "max": maximum})
+    return result
+
+
 def _project(value, kind):
     if not isinstance(value, dict):
         return None
@@ -71,7 +99,7 @@ def _project(value, kind):
         elif (kind, key) == ("module", "unit_linkage"):
             output[key] = None if child is None else ({} if child == {} else {"present": True})
         elif (kind, key) == ("validation", "unit_rules"):
-            output[key] = None if child is None else ([] if child == [] else [{"present": True}])
+            output[key] = _project_unit_rules(child)
         else:
             output[key] = _safe_scalar(child)
     return output

@@ -281,6 +281,30 @@ def test_direct_delivery_requires_new_worker_and_central_keeps_only_receipt(read
                 PrecheckDeliveryAcknowledgement(status="success", payload_sha256="b" * 64))
 
 
+def test_central_result_preserves_supported_per_unit_bounds(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+    with Session(engine) as session:
+        service = WorkerPrecheckService(session, auth)
+        task = service.submit(principal, submission(product="unit-rule-central"))
+        task.status = "running"
+        session.commit()
+        rules = [{"unit_id": 6, "min": 1, "max": 1825},
+                 {"unit_id": 7, "min": 0.033, "max": 60.833},
+                 {"unit_id": 10, "min": 0.003, "max": 5.069}]
+        result = {"kind": "douyin.category_schema", "category_id": task.input_json["category_id"],
+                  "device_id": str(device_id), "local_shop_id": task.input_json["local_shop_id"],
+                  "platform_shop_id": task.input_json["platform_shop_id"], "http_status": 200, "platform_code": 0,
+                  "items": [{"id": "2988", "required": False, "additions": {"ui_type": "measure",
+                      "measure_templates": [{"template_id": 182, "value_modules": [{"module_id": 432,
+                          "value_required": True, "validate_rule": {"unit_rules": rules}}]}]}}]}
+        terminal = PrecheckTerminal(status="success", result=result)
+        accepted = accept_precheck_terminal(session, device_id, task.task_id, terminal)
+        actual = accepted.result_json["items"][0]["additions"]["measure_templates"][0]["value_modules"][0]
+        assert actual["validate_rule"]["unit_rules"] == rules
+        assert accepted.result_json["items"][0]["required"] is False and actual["value_required"] is True
+        assert accept_precheck_terminal(session, device_id, task.task_id, terminal).status == "success"
+
+
 def test_direct_context_checks_real_worker_credential(ready_precheck):
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -627,6 +651,64 @@ def test_schema_hints_are_gated_without_changing_existing_requests(ready_prechec
         # Repeated submissions of an already assigned task remain idempotent;
         # the signing guard, rather than a replacement task, blocks downgrade.
         assert service.submit(principal, request("hints-new-worker", require_schema_hints=True)).task_id == upgraded.task_id
+        assert "/product/tproduct/getSchema" in sign(session, signer, legacy)["url"]
+
+
+def test_schema_unit_rules_gate_preserves_legacy_idempotency_and_rechecks_before_signing(ready_precheck):
+    engine, principal, auth, device_id = ready_precheck
+
+    class Signer:
+        calls = 0
+        def sign(self, request):
+            self.calls += 1
+            return DouyinSignResult(ok=True, a_bogus="synthetic-signature", duration_ms=1)
+
+    def request(name, **extra):
+        return PrecheckSubmission.model_validate({"kind": "douyin.category_schema", "delivery": "product",
+            "context": {"product_id": name, "revision": 1, "attempt": 1},
+            "input": {"category_id": "1000009182", "title": "商品", **extra}})
+
+    def sign(session, signer, task):
+        task.status, task.lease_until = "running", datetime.now(UTC) + timedelta(minutes=1)
+        session.commit()
+        return sign_current_precheck(session, auth, signer, device_id, task.task_id,
+                                     PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+
+    with Session(engine) as session:
+        service, signer = WorkerPrecheckService(session, auth), Signer()
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.2"
+        session.commit()
+        legacy = service.submit(principal, request("unit-rules-legacy", require_schema_hints=True))
+        assert "_require_schema_unit_rules" not in legacy.input_json
+        assert service.submit(principal, request("unit-rules-legacy", require_schema_hints=True,
+                                                require_schema_unit_rules=False)).task_id == legacy.task_id
+        with pytest.raises(PrecheckConflict):
+            service.submit(principal, request("unit-rules-legacy", require_schema_hints=True,
+                                              require_schema_unit_rules=True))
+        session.rollback()
+        with pytest.raises(PrecheckUnavailable):
+            service.submit(principal, request("unit-rules-old-worker", require_schema_unit_rules=True))
+        session.rollback()
+        assert "/product/tproduct/getSchema" in sign(session, signer, legacy)["url"]
+        capability = session.get(DeviceSkillCapability, (device_id, "douyin.category_schema"))
+        capability.skill_version = "2.0.3"
+        session.commit()
+        upgraded = service.submit(principal, request("unit-rules-new-worker", require_schema_hints=True,
+                                                      require_schema_unit_rules=True))
+        assert upgraded.input_json["_require_schema_hints"] is True
+        assert upgraded.input_json["_require_schema_unit_rules"] is True
+        assert "/product/tproduct/getSchema" in sign(session, signer, upgraded)["url"]
+        signed_calls = signer.calls
+        with Session(engine) as other:
+            other.get(DeviceSkillCapability, (device_id, "douyin.category_schema")).skill_version = "2.0.2"
+            other.commit()
+        with pytest.raises(PrecheckUnavailable):
+            sign_current_precheck(session, auth, signer, device_id, upgraded.task_id,
+                                  PrecheckSignInput(cookie="session=synthetic", user_agent="synthetic-agent"))
+        assert signer.calls == signed_calls
+        assert service.submit(principal, request("unit-rules-new-worker", require_schema_hints=True,
+                                                 require_schema_unit_rules=True)).task_id == upgraded.task_id
         assert "/product/tproduct/getSchema" in sign(session, signer, legacy)["url"]
 
 

@@ -23,7 +23,7 @@ from app.modules.sessions.application_auth import ApplicationAuthenticationError
 from app.modules.tasks.models import Task
 from app.modules.users.models import User
 from app.modules.workers.models import DeviceRuntime, DeviceSkillCapability
-from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, supports_full_category_tree, supports_schema_hints, validate_terminal_result
+from app.modules.workers.precheck_contract import PRECHECK_KIND, PrecheckDeliveryAcknowledgement, PrecheckSignInput, PrecheckSubmission, PrecheckTerminal, RpaInventoryReport, mapped_shop_id, supports_category_lookup, supports_full_category_tree, supports_schema_hints, supports_schema_unit_rules, validate_terminal_result
 from app.modules.workers.precheck_models import ApplicationWorkerPrecheck, WorkerRpaShopInventory
 from app.modules.workers.session_health import merge_session_observations, worker_session_observation
 
@@ -383,7 +383,8 @@ class WorkerPrecheckService:
                     or (data.input.operation != "schema" and not supports_category_lookup(skill_version))
                     or ((data.input.full_category_tree or data.input.require_schema_metadata)
                         and not supports_full_category_tree(skill_version))
-                    or (data.input.require_schema_hints and not supports_schema_hints(skill_version))):
+                    or (data.input.require_schema_hints and not supports_schema_hints(skill_version))
+                    or (data.input.require_schema_unit_rules and not supports_schema_unit_rules(skill_version))):
                 continue
             for shop in inventory.shops:
                 local_id, platform_id = shop.get("localShopId"), shop.get("platformShopId")
@@ -435,6 +436,7 @@ class WorkerPrecheckService:
                         **({"_full_category_tree": True} if data.input.full_category_tree else {}),
                         **({"_require_schema_metadata": True} if data.input.require_schema_metadata else {}),
                         **({"_require_schema_hints": True} if data.input.require_schema_hints else {}),
+                        **({"_require_schema_unit_rules": True} if data.input.require_schema_unit_rules else {}),
                         **({"image_url": data.input.image_url} if data.input.image_url is not None else {}),
                         **({"_session_revision": session_revision} if session_revision else {}),
                         **({"_platform_retry_chain": True} if bounded_retry else {}),
@@ -620,12 +622,14 @@ def acknowledge_product_delivery(session: Session, device_id: UUID, task_id: UUI
     return task
 
 
-def _require_current_category_capability(session: Session, device_id: UUID, *, require_hints: bool = False) -> None:
+def _require_current_category_capability(session: Session, device_id: UUID, *, require_hints: bool = False,
+                                         require_unit_rules: bool = False) -> None:
     # The hint guarantee is checked again at signing, even if this SQLAlchemy
     # session has already cached an earlier capability observation.
     capability = (session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND), populate_existing=True)
-                  if require_hints else session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND)))
-    supports = supports_schema_hints if require_hints else supports_full_category_tree
+                  if require_hints or require_unit_rules else session.get(DeviceSkillCapability, (device_id, PRECHECK_KIND)))
+    supports = (supports_schema_unit_rules if require_unit_rules else
+                supports_schema_hints if require_hints else supports_full_category_tree)
     if capability is None or not supports(capability.skill_version):
         raise PrecheckUnavailable()
 
@@ -663,9 +667,11 @@ def sign_current_precheck(session: Session, authenticator: ApplicationAuthentica
     if operation not in {"schema", "tree", "search", "predict"}:
         raise PrecheckInvalidResult()
     if operation == "schema" and (task.input_json.get("_require_schema_metadata") is True
-                                   or task.input_json.get("_require_schema_hints") is True):
+                                   or task.input_json.get("_require_schema_hints") is True
+                                   or task.input_json.get("_require_schema_unit_rules") is True):
         _require_current_category_capability(session, device_id,
-            require_hints=task.input_json.get("_require_schema_hints") is True)
+            require_hints=task.input_json.get("_require_schema_hints") is True,
+            require_unit_rules=task.input_json.get("_require_schema_unit_rules") is True)
     lid = {"schema": "029388877158", "tree": "197362053948",
            "search": "165756507732", "predict": "209821032275"}[operation]
     params = {"appid": "1", "_bid": "ffa_goods", "_lid": lid}
