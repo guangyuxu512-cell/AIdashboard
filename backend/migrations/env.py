@@ -28,13 +28,6 @@ from app.modules.operating_dashboard.models import (
     OperatingDataCollectionJob,
     ShopOperatingDailyMetric,
 )
-from app.modules.product_data.models import (
-    ShopProductDataCollectionBatch,
-    ShopProductDataProduct,
-    ShopProductDataSeries,
-    ShopProductDataGeneration,
-    ShopProductDataMetricSnapshot,
-)
 from app.modules.schedules.models import Schedule, ScheduleRun, ScheduleShop
 from app.modules.schedules.operations_models import OperationsSchedule, OperationsScheduleRun
 from app.modules.shops.models import Shop
@@ -55,11 +48,6 @@ _MODELS = (
     AutomationParameterPreset,
     Asset,
     AuditLog,
-    ShopProductDataCollectionBatch,
-    ShopProductDataProduct,
-    ShopProductDataSeries,
-    ShopProductDataGeneration,
-    ShopProductDataMetricSnapshot,
     Device,
     DeviceProviderInventory,
     DeviceRuntime,

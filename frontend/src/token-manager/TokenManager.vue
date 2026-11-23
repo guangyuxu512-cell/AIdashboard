@@ -22,7 +22,7 @@ const labels: Record<string, string> = {
   access: '当前身份', 'human-auth': '登录身份', 'access-management': '用户与团队',
   assets: '资产', users: '用户', devices: '设备', 'notification-channels': '通知',
   'operating-dashboard': '经营看板',
-  'product-data': '商品数据', tasks: '任务', schedules: '定时计划',
+  tasks: '任务', schedules: '定时计划',
 }
 const names: Record<string, string> = {
   'Get Current Actor': '查看当前身份', 'Get Current Human User': '查看登录身份', 'List My Teams': '查看可用团队',

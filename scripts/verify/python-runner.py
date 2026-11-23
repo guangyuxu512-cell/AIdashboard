@@ -12,7 +12,6 @@ ROOT = Path(__file__).resolve().parents[2]
 def envelope_probe():
     # Reuse the formal test application's dependency overrides, not DB/auth I/O.
     from tests.test_api_v1 import request
-    from product_data_contracts import product_data_contract_observations
     observations = []
     for name, query in (
         ("missing_timezone", "occurrence_date=2026-08-24"),
@@ -26,7 +25,6 @@ def envelope_probe():
             "expected": {"status": 422, "required": required, "code": "VALIDATION_ERROR", "valid_details": True},
             "actual": {"status": response.status_code, "required": [key for key in required if isinstance(body.get(key), str) and body[key]],
                        "code": body.get("code"), "valid_details": body.get("details") is None or isinstance(body["details"], (dict, list))}})
-    observations.extend(product_data_contract_observations())
     print(json.dumps([row for row in observations if row["expected"] != row["actual"]]))
 
 

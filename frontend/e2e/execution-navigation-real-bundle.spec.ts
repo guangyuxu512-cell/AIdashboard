@@ -81,6 +81,7 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
     '/settings/ai-models',
     '/products',
     '/product-selection',
+    '/product-data',
   ]) {
     await page.goto(`/#${oldPath}`)
     await expect(page).toHaveURL(/#\/devices$/)
@@ -90,6 +91,7 @@ test('the Real bundle keeps execution navigation and removes retired pages', asy
     await expect(nav.getByText('AI 素材', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('商品库', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('选品库', { exact: true })).toHaveCount(0)
+    await expect(nav.getByText('商品数据', { exact: true })).toHaveCount(0)
     await expect(nav.getByText('自动化中心', { exact: true })).toBeVisible()
   }
 

@@ -56,6 +56,14 @@ jobs:
           export BACKEND_DATABASE_URL='postgresql+psycopg://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_feat_retire_selection_upgrade'
           python tests/integration/verify_selection_retirement_upgrade.py
 
+      - name: Verify retired product data preserves Worker and schedules
+        working-directory: backend
+        run: |
+          python -c "import psycopg; c=psycopg.connect('postgresql://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_ci', autocommit=True); c.execute('CREATE DATABASE control_center_feat_retire_product_data_upgrade'); c.close()"
+          export BACKEND_DATABASE_URL='postgresql+psycopg://control_center_ci:control_center_ci@127.0.0.1:5432/control_center_feat_retire_product_data_upgrade'
+          export BACKEND_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          python tests/integration/verify_product_data_retirement_upgrade.py
+
       - name: Run API token integration tests in an isolated PostgreSQL database
         working-directory: backend
         run: |
