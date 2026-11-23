@@ -200,68 +200,72 @@ def claim_parallel(engine, device_id, kind):
         return task
 
 
-def test_five_basics_coexist_with_prechecks_and_exclusive_rank_drains(devices):
+def test_five_mixed_selection_tasks_coexist_with_prechecks_and_exclusive_task_drains(devices):
     engine, team_id, user_id, ids = devices
     device, now = ids[0], datetime.now(UTC)
     with Session(engine) as session:
-        basics = [enqueue_basic(session, team_id, user_id, device, f'{team_id}-shop-{i}',
-                                now + timedelta(microseconds=i)) for i in range(6)]
+        operations = ['rank', 'categories', 'basic', 'rank', 'categories', 'basic']
+        selections = [enqueue_basic(session, team_id, user_id, device, f'{team_id}-shop-{i}',
+                      now + timedelta(microseconds=i), operation=operation)
+                      for i, operation in enumerate(operations)]
         prechecks = [enqueue(session, team_id, user_id, device, f'{team_id}-pre-{i}',
                              now + timedelta(microseconds=20 + i)) for i in range(2)]
-        rank = enqueue_basic(session, team_id, user_id, device, f'{team_id}-rank',
-                             now + timedelta(microseconds=30), operation='rank')
+        ordinary_id = enqueue(session, team_id, user_id, device, None,
+                              now + timedelta(microseconds=30), skill='system.fixture')
         later = enqueue(session, team_id, user_id, device, f'{team_id}-later', now + timedelta(microseconds=31))
         session.commit()
-    claimed = [claim_parallel(engine, device, 'basic') for _ in range(5)]
-    assert all(claimed) and {task.task_id for task in claimed} == set(basics[:5])
-    assert claim_parallel(engine, device, 'basic') is None
+    claimed = [claim_parallel(engine, device, 'selection') for _ in range(5)]
+    assert all(claimed) and {task.task_id for task in claimed} == set(selections[:5])
+    assert claim_parallel(engine, device, 'selection') is None
     assert {claim_parallel(engine, device, 'precheck').task_id for _ in range(2)} == set(prechecks)
-    assert claim_parallel(engine, device, 'precheck') is None  # later work must not pass rank
+    assert claim_parallel(engine, device, 'precheck') is None  # later work must not pass the exclusive task
     with Session(engine) as session:
         for task in claimed:
             session.get(Task, task.task_id).status = 'success'
         for task_id in prechecks:
             session.get(Task, task_id).status = 'success'
         session.commit()
-    assert claim_parallel(engine, device, 'basic').task_id == basics[5]
+    assert claim_parallel(engine, device, 'selection').task_id == selections[5]
     assert claim_parallel(engine, device, 'precheck') is None
     with Session(engine) as session:
-        session.get(Task, basics[5]).status = 'success'
+        session.get(Task, selections[5]).status = 'success'
         session.commit()
     with Session(engine, expire_on_commit=False) as session:
         ordinary = TaskRepository(session).claim_next(device_id=device, now=now,
             lease_until=now + timedelta(minutes=1))
         session.commit()
-        assert ordinary.task_id == rank
+        assert ordinary.task_id == ordinary_id
     assert claim_parallel(engine, device, 'precheck') is None
     with Session(engine) as session:
-        session.get(Task, rank).status = 'success'
+        session.get(Task, ordinary_id).status = 'success'
         session.commit()
     assert claim_parallel(engine, device, 'precheck').task_id == later
 
 
-def test_basic_same_shop_across_devices_has_only_one_claim(devices):
+def test_mixed_selection_same_shop_across_devices_has_only_one_claim(devices):
     engine, team_id, user_id, ids = devices
     shop, now = f'{team_id}-shared-basic', datetime.now(UTC)
     with Session(engine) as session:
-        for device in ids[:2]:
-            enqueue_basic(session, team_id, user_id, device, shop, now)
+        for index, device in enumerate(ids[:2]):
+            enqueue_basic(session, team_id, user_id, device, shop, now,
+                          operation='rank' if index == 0 else 'basic')
         session.commit()
     barrier = Barrier(2)
     def race(device):
         barrier.wait(timeout=10)
-        return claim_parallel(engine, device, 'basic')
+        return claim_parallel(engine, device, 'selection')
     with ThreadPoolExecutor(max_workers=2) as pool:
         claims = list(pool.map(race, ids[:2]))
     assert sum(task is not None for task in claims) == 1
 
 
-def test_original_claim_and_parallel_claim_share_basic_shop_limit(devices):
+def test_original_and_parallel_claim_share_mixed_selection_shop_limit(devices):
     engine, team_id, user_id, ids = devices
     shop, now = f'{team_id}-mixed-basic', datetime.now(UTC)
     with Session(engine) as session:
-        for device in ids[:2]:
-            enqueue_basic(session, team_id, user_id, device, shop, now)
+        for index, device in enumerate(ids[:2]):
+            enqueue_basic(session, team_id, user_id, device, shop, now,
+                          operation='categories' if index == 0 else 'basic')
         session.commit()
     barrier = Barrier(2)
     def race(index):

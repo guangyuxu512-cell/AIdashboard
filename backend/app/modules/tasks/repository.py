@@ -503,15 +503,15 @@ class TaskRepository:
         if candidate.skill_id == 'douyin.compass_selection':
             payload = self.session.scalar(select(Task.input_json).where(Task.task_id == candidate.task_id))
             shops = payload.get(LOCAL_SHOPS_KEY, []) if isinstance(payload, dict) else []
-            if (payload and payload.get('operation') == 'basic' and isinstance(shops, list)
+            if (payload and payload.get('operation') in ('categories', 'rank', 'basic') and isinstance(shops, list)
                     and len(shops) == 1 and isinstance(shops[0], dict)):
                 platform = shops[0].get('platform_shop_id')
                 if isinstance(platform, str) and platform:
                     basic_shop = Task.input_json[LOCAL_SHOPS_KEY][0]['platform_shop_id'].astext
-                    is_basic = and_(Task.skill_id == 'douyin.compass_selection',
-                                    Task.input_json['operation'].astext == 'basic')
+                    is_selection = and_(Task.skill_id == 'douyin.compass_selection',
+                                        Task.input_json['operation'].astext.in_(['categories', 'rank', 'basic']))
                     if not self._shop_has_capacity(platform, 'worker-compass-basic-shop:',
-                                                   is_basic, basic_shop, 1):
+                                                   is_selection, basic_shop, 1):
                         return None
         statement = (
             update(Task)
@@ -538,34 +538,35 @@ class TaskRepository:
         Workers. A new Worker uses this endpoint only while draining parallel
         prechecks or Compass basic tasks.
         """
-        if kind not in {'precheck', 'basic'}:
+        if kind not in {'precheck', 'basic', 'selection'}:
             return None
-        if kind == 'basic' and (not local_context_supported or not operations_delivery_supported):
+        if kind in {'basic', 'selection'} and (not local_context_supported or not operations_delivery_supported):
             return None
         active = self.session.execute(select(Task.skill_id, Task.input_json).where(
             Task.target_device_id == device_id, Task.status == TaskStatus.RUNNING.value)).all()
-        prechecks, basics = [], []
+        prechecks, selections = [], []
         for skill, payload in active:
             if not isinstance(payload, dict):
                 return None
             if skill == PRECHECK_KIND and payload.get('platform_shop_id'):
                 prechecks.append(payload['platform_shop_id'])
-            elif (skill == 'douyin.compass_selection' and payload.get('operation') == 'basic'
+            elif (skill == 'douyin.compass_selection' and payload.get('operation') in ('categories', 'rank', 'basic')
                   and isinstance(payload.get(LOCAL_SHOPS_KEY), list)
                   and len(payload[LOCAL_SHOPS_KEY]) == 1
                   and isinstance(payload[LOCAL_SHOPS_KEY][0], dict)
                   and isinstance(payload[LOCAL_SHOPS_KEY][0].get('platform_shop_id'), str)
                   and payload[LOCAL_SHOPS_KEY][0]['platform_shop_id']):
-                basics.append(payload[LOCAL_SHOPS_KEY][0]['platform_shop_id'])
+                selections.append(payload[LOCAL_SHOPS_KEY][0]['platform_shop_id'])
             else:
                 return None
-        if (kind == 'precheck' and len(prechecks) >= 15) or (kind == 'basic' and len(basics) >= 5):
+        if (kind == 'precheck' and len(prechecks) >= 15) or (kind in {'basic', 'selection'} and len(selections) >= 5):
             return None
 
         op = Task.input_json['operation'].astext
         precheck_shop = Task.input_json['platform_shop_id'].astext
         basic_shop = Task.input_json[LOCAL_SHOPS_KEY][0]['platform_shop_id'].astext
         is_basic = and_(Task.skill_id == 'douyin.compass_selection', op == 'basic')
+        is_selection = and_(Task.skill_id == 'douyin.compass_selection', op.in_(['categories', 'rank', 'basic']))
         eligible = [Task.target_device_id == device_id, Task.status == TaskStatus.PENDING.value,
                     ~Task.skill_id.like('yingdao.%'), ~Task.shop_links.any()]
         if not local_context_supported:
@@ -573,7 +574,7 @@ class TaskRepository:
         if not operations_delivery_supported:
             eligible.append(Task.skill_id != 'douyin.compass_selection')
         # An older exclusive task drains both streams before it runs.
-        parallel = or_(Task.skill_id == PRECHECK_KIND, is_basic)
+        parallel = or_(Task.skill_id == PRECHECK_KIND, is_selection)
         barrier = self.session.execute(select(Task.created_at, Task.task_id).where(
             *eligible, ~func.coalesce(parallel, False),
             *([Task.skill_id != 'douyin.compass_selection'] if kind == 'precheck' and self.session.scalar(
@@ -598,9 +599,9 @@ class TaskRepository:
                 predicates.append(precheck_shop.not_in(global_full))
             shop_column, global_limit, prefix = precheck_shop, 3, 'worker-precheck-shop:'
         else:
-            predicates.extend((is_basic, basic_shop.is_not(None), basic_shop != ''))
+            predicates.extend((is_basic if kind == 'basic' else is_selection, basic_shop.is_not(None), basic_shop != ''))
             active_shops = list(self.session.scalars(select(basic_shop).where(
-                is_basic, Task.status == TaskStatus.RUNNING.value)).all())
+                is_selection, Task.status == TaskStatus.RUNNING.value)).all())
             if active_shops:
                 predicates.append(basic_shop.not_in([shop for shop in active_shops if shop]))
             shop_column, global_limit, prefix = basic_shop, 1, 'worker-compass-basic-shop:'
@@ -608,7 +609,7 @@ class TaskRepository:
             *predicates).order_by(Task.created_at, Task.task_id).with_for_update(skip_locked=True).limit(1)).first()
         if candidate is None or not candidate.shop:
             return None
-        same_kind = Task.skill_id == PRECHECK_KIND if kind == 'precheck' else is_basic
+        same_kind = Task.skill_id == PRECHECK_KIND if kind == 'precheck' else is_selection
         if not self._shop_has_capacity(candidate.shop, prefix, same_kind, shop_column, global_limit):
             return None
         statement = (update(Task).where(Task.task_id == candidate.task_id,
