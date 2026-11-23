@@ -4,6 +4,22 @@ import { SCHEDULE_LIST_FIXTURE } from '../fixtures/schedule-list.fixture'
 import { mapScheduleListItemDto } from './schedule-mapper'
 
 describe('schedule mapper', () => {
+  it('names a known skill in schedules without replacing its ID or custom name', () => {
+    const dto = {
+      ...SCHEDULE_LIST_FIXTURE[0]!,
+      execution_type: 'business_skill' as const,
+      skill_id: 'douyin.compass_selection',
+      execution_display_name: 'douyin.compass_selection',
+    }
+    expect(mapScheduleListItemDto(dto)).toMatchObject({
+      skillId: 'douyin.compass_selection',
+      executionTypeDisplay: '业务技能',
+      executionName: '罗盘选品',
+    })
+    expect(mapScheduleListItemDto({ ...dto, execution_display_name: '自定义名称' }).executionName)
+      .toBe('自定义名称')
+  })
+
   it('maps daily rule, timezone and latest Task status', () => {
     const result = mapScheduleListItemDto(SCHEDULE_LIST_FIXTURE[0]!)
 

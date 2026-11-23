@@ -23,6 +23,21 @@ function catalogItem(
 }
 
 describe('mapBusinessSkillCatalogItem', () => {
+  it('shows a Chinese name without changing the selected skill identifier', () => {
+    const item = mapBusinessSkillCatalogItem(catalogItem({
+      skill_id: 'douyin.compass_selection',
+      display_name: 'douyin.compass_selection',
+      availability: 'available',
+      unavailable_reason: null,
+      input_schema: { type: 'object', properties: {}, additionalProperties: false },
+    }))
+    expect(item).toMatchObject({
+      skillId: 'douyin.compass_selection',
+      displayName: '罗盘选品',
+      configurable: true,
+    })
+  })
+
   it('keeps an old Worker item visible but not configurable without a schema', () => {
     expect(mapBusinessSkillCatalogItem(catalogItem())).toMatchObject({
       availability: 'schema_unavailable',

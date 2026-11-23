@@ -137,6 +137,24 @@ describe('device mapper, query and mutation', () => {
     expect('available' in capability).toBe(false)
   })
 
+  it('gives a reported capability a readable name without changing its identifier', () => {
+    const capability = mapDeviceSkillCapabilityDto({
+      device_id: '00000000-0000-0000-0000-000000000001',
+      skill_id: 'douyin.category_schema',
+      display_name: 'douyin.category_schema',
+      runtime: 'python',
+      provider: null,
+      version: '2.0.3',
+      classification: 'business',
+      input_schema: null,
+      updated_at: '2026-11-23T12:00:00Z',
+    })
+    expect(capability).toMatchObject({
+      skillId: 'douyin.category_schema',
+      displayName: '商品类目与预检',
+    })
+  })
+
   it('creates and updates a mock device record without inventing runtime data', async () => {
     const source = createMockDeviceDataSource()
     const created = await source.create({

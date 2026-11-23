@@ -1,5 +1,7 @@
 import dayjs from 'dayjs'
 
+import { formatSkillName } from '@/entities/business-skill/model/display'
+
 import type {
   DeviceListItemViewModel,
   DeviceSaveInput,
@@ -61,7 +63,7 @@ export function mapDeviceSkillCapabilityDto(
   return {
     deviceId: dto.device_id,
     skillId: dto.skill_id,
-    displayName: dto.display_name,
+    displayName: formatSkillName(dto.skill_id, dto.display_name),
     runtime: dto.runtime,
     provider: dto.provider,
     version: dto.version,
