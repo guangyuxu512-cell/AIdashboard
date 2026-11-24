@@ -256,11 +256,13 @@ class Worker:
                          else self.settings.compass_basic_shop_interval_seconds)
                 maximum = (self.settings.compass_page_max_interval_seconds if next_page
                            else self.settings.compass_shop_max_interval_seconds)
-                remaining = previous[0] + random.uniform(lower, max(lower, maximum)) - loop.time()
+                deadline = previous[0] + random.uniform(lower, max(lower, maximum))
+                remaining = deadline - loop.time()
                 if remaining > 0:
-                    self._selection_shop_waiting[shop_id] = loop.time() + remaining
+                    self._selection_shop_waiting[shop_id] = deadline
                     try:
-                        await asyncio.sleep(remaining)
+                        while (remaining := deadline - loop.time()) > 0:
+                            await asyncio.sleep(remaining)
                     finally:
                         self._selection_shop_waiting.pop(shop_id, None)
             # A probe can run during the waiting interval, but must stop
