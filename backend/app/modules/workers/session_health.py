@@ -5,6 +5,7 @@ from typing import Any, Literal
 
 def worker_session_observation(
     shop: dict[str, Any], *, now: datetime | None = None, compass: bool = False,
+    include_expired_valid: bool = False,
 ) -> tuple[Literal["valid", "invalid"], datetime] | None:
     status = shop.get("compassSessionStatus" if compass else "sessionStatus")
     raw_time = shop.get("compassSessionCheckedAt" if compass else "sessionCheckedAt")
@@ -21,7 +22,7 @@ def worker_session_observation(
     current = now or datetime.now(UTC)
     if checked_at > current + timedelta(minutes=5):
         return None
-    if status == "valid" and checked_at < current - timedelta(minutes=30):
+    if status == "valid" and not include_expired_valid and checked_at < current - timedelta(minutes=30):
         return None
     return status, checked_at
 

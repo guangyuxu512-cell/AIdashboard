@@ -15,8 +15,9 @@ from app.rpa_session_bridge import LocalShop
 
 
 # At most one store is checked per inventory cycle. Successful checks are
-# reused for 30 minutes; inconclusive checks are retried no sooner than 5.
-_CONFIRMED_INTERVAL = 30 * 60
+# reused for 30 minutes; start revalidation early enough to avoid an expiry
+# gap while the inventory loop visits the other shops.
+_CONFIRMED_INTERVAL = 15 * 60
 _UNKNOWN_INTERVAL = 5 * 60
 _VALID_AGE = timedelta(minutes=30)
 _MAX_BYTES = 256 * 1024
@@ -132,7 +133,7 @@ class ShopSessionHealth:
             return None
         return shop.local_shop_id, shop.platform_shop_id, shop.session_revision, shop.rpa_helper_digest
 
-    def due(self, shops: list[LocalShop]) -> LocalShop | None:
+    def due(self, shops: list[LocalShop], *, excluded_platform_ids: frozenset[str] = frozenset()) -> LocalShop | None:
         keys = {key for shop in shops if (key := self._key(shop)) is not None}
         refresh_keys = {key for shop in shops if (key := self._refresh_key(shop)) is not None}
         # A removed or replaced snapshot cannot keep its former status.
@@ -144,6 +145,8 @@ class ShopSessionHealth:
         now = self.clock()
         candidates = []
         for shop in shops:
+            if shop.platform_shop_id in excluded_platform_ids:
+                continue
             key = self._key(shop)
             if key is not None and (key not in self._pending or self._pending[key][0] <= now):
                 due = {kind for kind in ("merchant", "compass")

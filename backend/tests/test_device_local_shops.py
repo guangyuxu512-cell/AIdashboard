@@ -16,7 +16,8 @@ from app.modules.devices.api import get_device_authorized_actor, get_device_serv
 from app.modules.devices.schemas import DeviceShopOverviewRead
 from app.modules.devices.service import DeviceService
 from app.modules.workers.auth import get_worker_principal
-from app.modules.workers.precheck_contract import LocalShopSummary
+from app.modules.workers.precheck_contract import LocalShopSummary, RpaInventoryReport
+from app.modules.workers.precheck_service import save_rpa_inventory
 
 
 def test_local_inventory_uses_only_matching_worker_observations():
@@ -117,6 +118,7 @@ def test_current_worker_observation_is_used_and_stale_valid_is_unknown():
     result = DeviceService(session, repository=repository).get_local_shops(Mock(), uuid4())
     assert [item.session_status for item in result.shops] == ["valid", "invalid", "unknown"]
     assert result.shops[0].status_observed_at == now
+    assert result.shops[2].status_observed_at == now - timedelta(minutes=31)
     assert "sessionRevision" not in result.model_dump_json()
 
 
@@ -142,6 +144,36 @@ def test_compass_status_is_separate_and_current_observation_controls_legacy_elig
     assert [shop.compass_session_status for shop in result.shops] == ["valid", "invalid", "unknown"]
     assert [shop.compass_session_verified for shop in result.shops] == [True, False, True]
     assert result.shops[0].compass_status_observed_at == now
+    assert result.shops[2].compass_status_observed_at == now - timedelta(minutes=31)
+
+
+def test_inventory_keeps_last_check_and_verified_flag_only_for_same_snapshot():
+    device_id, install = uuid4(), uuid4()
+    old_time = datetime.now(UTC) - timedelta(minutes=40)
+    base = {"localShopId": "a", "platformShopId": "1", "shopName": "A", "platform": "douyin",
+            "sessionStored": True, "sessionRevision": "a" * 64}
+    old = {**base, "sessionStatus": "valid", "sessionCheckedAt": old_time.isoformat(),
+           "compassSessionStatus": "valid", "compassSessionCheckedAt": old_time.isoformat(),
+           "compassSessionVerified": True}
+    inventory = SimpleNamespace(installation_id=install, shops=[old])
+    session = Mock()
+    session.get.return_value = SimpleNamespace(enabled=True, deleted_at=None)
+    session.scalar.return_value = inventory
+
+    def report(shop):
+        return RpaInventoryReport.model_validate({"available": True, "installation_id": install, "shops": [shop]})
+
+    save_rpa_inventory(session, device_id, report(base))
+    assert inventory.shops[0]["compassSessionVerified"] is True
+    assert inventory.shops[0]["sessionCheckedAt"] == old_time.isoformat()
+    assert inventory.shops[0]["compassSessionCheckedAt"] == old_time.isoformat()
+    # An explicit new observation or snapshot still replaces old evidence.
+    save_rpa_inventory(session, device_id, report({**base, "compassSessionVerified": False}))
+    assert inventory.shops[0]["compassSessionVerified"] is False
+    save_rpa_inventory(session, device_id, report({**base, "sessionRevision": "b" * 64}))
+    assert inventory.shops[0]["compassSessionVerified"] is None
+    assert inventory.shops[0]["sessionCheckedAt"] is None
+    assert inventory.shops[0]["compassSessionCheckedAt"] is None
 
 
 def test_overview_uses_only_actor_scoped_devices():

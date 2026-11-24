@@ -2,6 +2,7 @@ import asyncio
 import logging
 import random
 from datetime import UTC, datetime
+from uuid import UUID
 
 import httpx
 
@@ -23,6 +24,7 @@ from app.runtime_events import (
     _SENSITIVE_MESSAGE,
 )
 from app.result_outbox import OutboxError, ResultOutbox, TerminalDelivery
+from app.rpa_session_bridge import LocalShop
 from app.shop_session_health import ShopSessionHealth
 from app.skills import SkillRegistry, registry
 from app.skills.registry import SkillClassification
@@ -34,11 +36,26 @@ logger = logging.getLogger(__name__)
 _PRECHECK_KIND = "douyin.category_schema"
 _PRECHECK_DEVICE_LIMIT = 15
 _COMPASS_KIND = "douyin.compass_selection"
+# Do not start a background check near the end of a selection interval.
+_HEALTH_MIN_SELECTION_GAP = 25.0
 
 
 def _is_compass_selection(task: WorkerTask) -> bool:
     return (task.skill_id == _COMPASS_KIND and task.input.get('operation') in {'categories', 'rank', 'basic'}
             and len(task.local_shops) == 1)
+
+
+def _health_task_scope(task: WorkerTask) -> tuple[str, bool] | None:
+    """Known platform shop and whether the task is a Compass selection."""
+    if _is_compass_selection(task):
+        shop_id = task.local_shops[0].platform_shop_id
+        return (shop_id, True) if shop_id else None
+    if task.skill_id == _PRECHECK_KIND:
+        shop_id = task.input.get("platform_shop_id")
+        return (shop_id, False) if isinstance(shop_id, str) and shop_id else None
+    # Other tasks may have their own local side effects: retain exclusive
+    # behavior when their exact shop scope is not known to this runtime.
+    return None
 
 
 class Worker:
@@ -71,9 +88,13 @@ class Worker:
         self._base_update_pending = False
         self.shop_session_health = ShopSessionHealth(rpa_bridge) if rpa_bridge is not None else None
         self._shop_health_probe: asyncio.Task[None] | None = None
+        self._shop_health_probe_shop: str | None = None
+        self._shop_health_probe_is_refresh = False
+        self._pending_shop_refresh: dict[tuple[str, str | None], LocalShop] = {}
         self._last_rpa_inventory = None
         self._rpa_inventory_report_lock = asyncio.Lock()
         self._active_task_ids = set()
+        self._active_health_scopes: dict[UUID, tuple[str, bool] | None] = {}
         self._next_capability_check = 0.0
         self.result_outbox = ResultOutbox(settings.runtime_root / "result-outbox")
         self.started_at = datetime.now(UTC)
@@ -84,6 +105,7 @@ class Worker:
         self._terminal_delivery_lock = asyncio.Lock()
         self._selection_shop_locks: dict[str, asyncio.Lock] = {}
         self._selection_shop_last: dict[str, tuple[float, tuple | None, int | None]] = {}
+        self._selection_shop_waiting: dict[str, float] = {}
         self._next_parallel_kind = 'precheck'
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._heartbeat_consecutive_failures = 0
@@ -149,10 +171,9 @@ class Worker:
                     else:
                         task = await self.client.claim()
                     if task is not None:
-                        # Verification never adds a competing platform request
-                        # when actual work starts on this Worker.
                         self._active_task_ids.add(task.task_id)
-                        await self._cancel_shop_health_probe()
+                        self._active_health_scopes[task.task_id] = _health_task_scope(task)
+                        await self._preempt_health_for_task(task)
                         if task.skill_id == _PRECHECK_KIND:
                             prechecks.add(asyncio.create_task(self._execute_claimed_task(task)))
                             # Fill available slots immediately instead of adding
@@ -237,7 +258,14 @@ class Worker:
                            else self.settings.compass_shop_max_interval_seconds)
                 remaining = previous[0] + random.uniform(lower, max(lower, maximum)) - loop.time()
                 if remaining > 0:
-                    await asyncio.sleep(remaining)
+                    self._selection_shop_waiting[shop_id] = loop.time() + remaining
+                    try:
+                        await asyncio.sleep(remaining)
+                    finally:
+                        self._selection_shop_waiting.pop(shop_id, None)
+            # A probe can run during the waiting interval, but must stop
+            # before a same-shop selection request actually starts.
+            await self._cancel_shop_probe_for(shop_id)
             logger.info('Compass selection started shop=%s task=%s', shop_id, task.task_id)
             try:
                 return await self._prepare_and_execute(task)
@@ -438,13 +466,24 @@ class Worker:
                 inventory = await self.rpa_bridge.list_shops()
                 self._last_rpa_inventory = inventory
                 await self._report_rpa_inventory(inventory)
-                if (self.shop_session_health is not None and not self._active_task_ids
+                if (self.shop_session_health is not None
                         and (self._shop_health_probe is None or self._shop_health_probe.done())):
-                    missing = self.shop_session_health.missing_session_due(inventory.shops)
-                    shop = self.shop_session_health.due(inventory.shops) if missing is None else None
+                    missing = None
+                    if not self._active_task_ids:
+                        missing = self._take_pending_shop_refresh(inventory.shops)
+                        if missing is None:
+                            missing = self.shop_session_health.missing_session_due(inventory.shops)
+                    excluded = frozenset(shop.platform_shop_id for shop in inventory.shops
+                                         if shop.platform_shop_id and not self._health_shop_available(shop.platform_shop_id))
+                    shop = (self.shop_session_health.due(inventory.shops, excluded_platform_ids=excluded)
+                            if missing is None else None)
                     if missing is not None:
+                        self._shop_health_probe_shop = missing.platform_shop_id
+                        self._shop_health_probe_is_refresh = True
                         self._shop_health_probe = asyncio.create_task(self.shop_session_health.request_refresh(missing))
                     elif shop is not None:
+                        self._shop_health_probe_shop = shop.platform_shop_id
+                        self._shop_health_probe_is_refresh = False
                         self._shop_health_probe = asyncio.create_task(self._verify_local_shop(inventory, shop))
             except asyncio.CancelledError:
                 raise
@@ -475,16 +514,57 @@ class Worker:
             # An older probe may not replace a newly discovered RPA snapshot.
             if self._last_rpa_inventory is inventory:
                 await self._report_rpa_inventory(inventory)
-                if needs_refresh and not self._active_task_ids:
-                    await self.shop_session_health.request_refresh(shop)
+                if needs_refresh:
+                    if self._active_task_ids:
+                        self._pending_shop_refresh[(shop.local_shop_id, shop.platform_shop_id)] = shop
+                    else:
+                        self._shop_health_probe_is_refresh = True
+                        await self.shop_session_health.request_refresh(shop)
         except asyncio.CancelledError:
             raise
         except Exception:
             # Status is advisory; retry on a later inventory cycle.
             pass
 
+    def _take_pending_shop_refresh(self, shops: list[LocalShop]) -> LocalShop | None:
+        current = {(shop.local_shop_id, shop.platform_shop_id): shop for shop in shops}
+        for key, previous in tuple(self._pending_shop_refresh.items()):
+            self._pending_shop_refresh.pop(key, None)
+            shop = current.get(key)
+            if (shop is not None and shop.session_revision == previous.session_revision
+                    and shop.rpa_helper_digest == previous.rpa_helper_digest):
+                return shop
+        return None
+
+    def _health_shop_available(self, shop_id: str) -> bool:
+        now = asyncio.get_running_loop().time()
+        for task_id in self._active_task_ids:
+            scope = self._active_health_scopes.get(task_id)
+            if scope is None:
+                return False
+            if scope[0] == shop_id:
+                deadline = self._selection_shop_waiting.get(shop_id, 0)
+                if not scope[1] or deadline - now < _HEALTH_MIN_SELECTION_GAP:
+                    return False
+        return True
+
+    async def _preempt_health_for_task(self, task: WorkerTask) -> None:
+        probe = self._shop_health_probe
+        if probe is None or probe.done():
+            return
+        scope = self._active_health_scopes.get(task.task_id)
+        if self._shop_health_probe_is_refresh or scope is None or (scope[0] == self._shop_health_probe_shop
+                             and not self._health_shop_available(scope[0])):
+            await self._cancel_shop_health_probe()
+
+    async def _cancel_shop_probe_for(self, shop_id: str) -> None:
+        if self._shop_health_probe_shop == shop_id:
+            await self._cancel_shop_health_probe()
+
     async def _cancel_shop_health_probe(self) -> None:
         probe, self._shop_health_probe = self._shop_health_probe, None
+        self._shop_health_probe_shop = None
+        self._shop_health_probe_is_refresh = False
         if probe is not None:
             if not probe.done():
                 probe.cancel()
@@ -495,6 +575,7 @@ class Worker:
             await self._execute_task(task)
         finally:
             self._active_task_ids.discard(task.task_id)
+            self._active_health_scopes.pop(task.task_id, None)
 
     async def _refresh_capabilities_if_due(self) -> None:
         if self.capability_runtime is None:
