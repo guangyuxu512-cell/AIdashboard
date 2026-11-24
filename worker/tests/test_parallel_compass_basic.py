@@ -143,6 +143,37 @@ def test_rank_pages_are_fast_but_other_same_shop_tasks_wait_and_other_shops_run(
     asyncio.run(scenario())
 
 
+def test_selection_wait_rechecks_deadline_after_early_wakeup(tmp_path, monkeypatch):
+    async def scenario():
+        settings = WorkerSettings(server_url='https://central.test', device_id=uuid4(), device_token='synthetic',
+            runtime_root=tmp_path, compass_basic_shop_interval_seconds=0.1, compass_shop_max_interval_seconds=0.1)
+        worker = Worker(settings, client=None, executor=None)
+        loop = asyncio.get_running_loop()
+        started = loop.time()
+        worker._selection_shop_last['shop'] = (started, None, None)
+        task = WorkerTask(task_id=uuid4(), skill_id='douyin.compass_selection', input={'operation': 'basic'},
+            local_shops=[{'local_shop_id': 'shop', 'platform': 'douyin', 'platform_shop_id': 'shop'}],
+            lease_until=datetime.now(UTC) + timedelta(minutes=1))
+        original_sleep = asyncio.sleep
+        sleeps = []
+
+        async def early_sleep(delay):
+            sleeps.append(delay)
+            await original_sleep(0 if len(sleeps) == 1 else delay + 0.02)
+
+        async def execute(_task):
+            assert loop.time() - started >= 0.1
+            return ExecutionResult(status=ExecutionStatus.SUCCESS, result={})
+
+        monkeypatch.setattr('app.worker.random.uniform', lambda a, b: a)
+        monkeypatch.setattr('app.worker.asyncio.sleep', early_sleep)
+        worker._prepare_and_execute = execute
+        await worker._execute_with_selection_interval(task)
+        assert len(sleeps) >= 2
+
+    asyncio.run(scenario())
+
+
 def test_parallel_claim_is_safe_with_an_older_backend(tmp_path):
     async def scenario():
         settings = WorkerSettings(server_url='https://central.test', device_id=uuid4(),
