@@ -6,8 +6,8 @@ import {
   DeviceEnabledStatusTag,
   DeviceIdentity,
   formatRelativeTime,
+  workerShopSessionStatusMeta,
   type DeviceLocalShopInventoryDto,
-  type DeviceLocalShopDto,
   type DeviceListItemViewModel,
   type WorkerCredentialReadDto,
 } from '@/entities/device'
@@ -39,13 +39,6 @@ defineProps<{
   workerCredentialError?: string | null
   workerCredentialSubmitting?: boolean
 }>()
-
-const sessionLabels: Record<DeviceLocalShopDto['session_status'], string> = {
-  valid: '登录有效',
-  invalid: '登录失效',
-  reauthorization_required: '未保存登录态',
-  unknown: '未确认',
-}
 
 defineEmits<{
   'update:show': [value: boolean]
@@ -129,16 +122,16 @@ defineEmits<{
             <dt>{{ shop.shop_name }}</dt>
             <dd>
               <template v-if="shop.platform === 'douyin'">
-                抖店：{{ sessionLabels[shop.session_status] }}
+                抖店：{{ workerShopSessionStatusMeta(shop.session_status, shop.status_observed_at).label }}
                 <small v-if="shop.status_observed_at">
                   · {{ formatRelativeTime(shop.status_observed_at) }}{{ shop.session_status === 'reauthorization_required' ? '上报' : '验证' }}
                 </small>
-                · 罗盘：{{ sessionLabels[shop.compass_session_status ?? 'unknown'] }}
+                · 罗盘：{{ workerShopSessionStatusMeta(shop.compass_session_status ?? 'unknown', shop.compass_status_observed_at).label }}
                 <small v-if="shop.compass_status_observed_at">
                   · {{ formatRelativeTime(shop.compass_status_observed_at) }}验证
                 </small>
               </template>
-              <template v-else>{{ sessionLabels[shop.session_status] }}</template>
+              <template v-else>{{ workerShopSessionStatusMeta(shop.session_status, shop.status_observed_at).label }}</template>
             </dd>
           </div>
         </dl>

@@ -491,6 +491,11 @@ def save_rpa_inventory(session: Session, device_id: UUID, data: RpaInventoryRepo
         for shop in data.shops:
             row = shop.model_dump(mode="json", by_alias=True)
             old = previous.get((shop.local_shop_id, shop.platform_shop_id, shop.session_revision))
+            if (old and shop.session_revision and row["compassSessionVerified"] is None
+                    and type(old.get("compassSessionVerified")) is bool):
+                # A temporary inability to read the flag is not evidence that
+                # this exact previously verified snapshot became unverified.
+                row["compassSessionVerified"] = old["compassSessionVerified"]
             for compass, status_field, time_field, checked_at in (
                 (False, "sessionStatus", "sessionCheckedAt", shop.session_checked_at),
                 (True, "compassSessionStatus", "compassSessionCheckedAt", shop.compass_session_checked_at),
@@ -499,7 +504,10 @@ def save_rpa_inventory(session: Session, device_id: UUID, data: RpaInventoryRepo
                     # A bad clock must not make unrelated inventory unavailable.
                     checked_at = None
                     row[status_field], row[time_field] = None, None
-                old_observation = worker_session_observation(old, now=now, compass=compass) if old else None
+                # Keep the last check time for this exact snapshot even when
+                # it is too old to claim the session is currently valid.
+                old_observation = (worker_session_observation(old, now=now, compass=compass,
+                                   include_expired_valid=True) if old else None)
                 if old_observation and (checked_at is None or old_observation[1] > checked_at):
                     row[status_field], row[time_field] = old_observation[0], old_observation[1].isoformat()
             shops.append(row)

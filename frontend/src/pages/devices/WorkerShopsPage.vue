@@ -4,12 +4,12 @@ import dayjs from 'dayjs'
 import type { DataTableColumns } from 'naive-ui'
 import { computed, h, ref, watch } from 'vue'
 
-import { deviceApi, type DeviceLocalShopDto, type DeviceShopOverviewDto } from '@/entities/device'
+import { deviceApi, workerShopSessionStatusMeta, type DeviceLocalShopDto, type DeviceShopOverviewDto } from '@/entities/device'
 import DataTable from '@/shared/components/DataTable.vue'
 import FilterBar from '@/shared/components/FilterBar.vue'
 import ManagementListSection from '@/shared/components/ManagementListSection.vue'
 import PaginationBar from '@/shared/components/PaginationBar.vue'
-import StatusTag, { type StatusTone } from '@/shared/components/StatusTag.vue'
+import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
 import { useAuthStore } from '@/stores/auth'
@@ -38,13 +38,8 @@ watch([keyword, () => auth.activeTeamId, pageSize], () => { page.value = 1 })
 watch(filtered, (items) => { page.value = Math.min(page.value, Math.max(1, Math.ceil(items.length / pageSize.value))) })
 const visibleRows = computed(() => filtered.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value))
 
-const labels: Record<SessionStatus, { label: string; tone: StatusTone }> = {
-  valid: { label: '有效', tone: 'success' },
-  invalid: { label: '失效', tone: 'error' },
-  reauthorization_required: { label: '未保存', tone: 'warning' },
-  unknown: { label: '未确认', tone: 'neutral' },
-}
-const statusCell = (status: SessionStatus) => h(StatusTag, labels[status])
+const statusCell = (status: SessionStatus, checkedAt?: string | null) =>
+  h(StatusTag, workerShopSessionStatusMeta(status, checkedAt))
 const formatTime = (value?: string | null) => value && dayjs(value).isValid()
   ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '—'
 const columns: DataTableColumns<ShopRow> = [
@@ -57,12 +52,12 @@ const columns: DataTableColumns<ShopRow> = [
     return h(StatusTag, { label: online ? '在线' : '不可用', tone: online ? 'success' : 'neutral' })
   } },
   { title: '抖店', key: 'session_status', width: 110,
-    render: (row) => row.platform === 'douyin' ? statusCell(row.session_status) : '—' },
+    render: (row) => row.platform === 'douyin' ? statusCell(row.session_status, row.status_observed_at) : '—' },
   { title: '抖店验证时间', key: 'status_observed_at', minWidth: 170,
     render: (row) => row.platform !== 'douyin' || row.session_status === 'reauthorization_required'
       ? '—' : formatTime(row.status_observed_at) },
   { title: '罗盘', key: 'compass_session_status', width: 110,
-    render: (row) => row.platform === 'douyin' ? statusCell(row.compass_session_status ?? 'unknown') : '—' },
+    render: (row) => row.platform === 'douyin' ? statusCell(row.compass_session_status ?? 'unknown', row.compass_status_observed_at) : '—' },
   { title: '罗盘验证时间', key: 'compass_status_observed_at', minWidth: 170,
     render: (row) => row.platform === 'douyin' ? formatTime(row.compass_status_observed_at) : '—' },
 ]

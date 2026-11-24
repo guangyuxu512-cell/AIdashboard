@@ -40,6 +40,8 @@ describe('Worker shop overview', () => {
     expect(columns.find((col) => col.key === 'session_status')!.render(rows[0]).props.label).toBe('有效')
     expect(columns.find((col) => col.key === 'compass_session_status')!.render(rows[0]).props.label).toBe('未确认')
     expect(columns.find((col) => col.key === 'compass_session_status')!.render(rows[1]).props.label).toBe('失效')
+    const stale = { ...rows[0], session_status: 'unknown', status_observed_at: '2026-11-23T05:00:00Z' }
+    expect(columns.find((col) => col.key === 'session_status')!.render(stale).props.label).toBe('待复验')
     expect(columns.find((col) => col.key === 'online')!.render(rows[1]).props.label).toBe('不可用')
     const nonDouyin = { ...rows[0], platform: 'pdd' }
     expect(columns.find((col) => col.key === 'session_status')!.render(nonDouyin)).toBe('—')

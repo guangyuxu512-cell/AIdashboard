@@ -147,6 +147,17 @@ class DeviceService:
                     (state, observed_at) if observed_at else None, reported,
                 ) or ("unknown", None)
                 compass_state, compass_at = worker_session_observation(shop, now=now, compass=True) or ("unknown", None)
+                # An old success is not a current validation. Keep its time
+                # visible so an unchecked snapshot is distinguishable from a
+                # previously working one awaiting revalidation.
+                if state == "unknown":
+                    previous_check = worker_session_observation(shop, now=now, include_expired_valid=True)
+                    if previous_check and previous_check[0] == "valid":
+                        observed_at = previous_check[1]
+                if compass_state == "unknown":
+                    previous_check = worker_session_observation(shop, now=now, compass=True, include_expired_valid=True)
+                    if previous_check and previous_check[0] == "valid":
+                        compass_at = previous_check[1]
                 previous = shop.get("compassSessionVerified")
                 # Preserve the old snapshot flag for older Workers; a recent local
                 # observation is more authoritative for downstream selection.

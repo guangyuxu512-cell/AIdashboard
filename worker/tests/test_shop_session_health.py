@@ -59,6 +59,28 @@ def test_only_matching_identity_reports_valid_without_exporting_session():
     assert monitor.report(shop("b" * 64))["sessionStatus"] is None
 
 
+def test_busy_shop_exclusion_keeps_previous_observation_and_rechecks_before_expiry():
+    clock = [100.0]
+    now = [datetime(2026, 11, 24, tzinfo=UTC)]
+
+    def handler(request):
+        if request.url.host == "compass.jinritemai.com":
+            return httpx.Response(200, json={"st": 0, "data": {"shop_id": "123"}})
+        return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
+
+    monitor = ShopSessionHealth(Bridge(), transport=httpx.MockTransport(handler),
+                                clock=lambda: clock[0], now=lambda: now[0])
+    first = shop()
+    second = shop().model_copy(update={"local_shop_id": "local-b", "platform_shop_id": "456"})
+    asyncio.run(monitor.check(first))
+    clock[0] += 16 * 60
+    now[0] += timedelta(minutes=16)
+    assert monitor.due([first, second], excluded_platform_ids=frozenset({"123"})) == second
+    assert monitor.report(first)["sessionStatus"] == "valid"
+    assert monitor.report(first)["compassSessionStatus"] == "valid"
+    assert monitor.due([first, second]) == first
+
+
 def test_no_saved_snapshot_never_starts_a_check():
     target = shop().model_copy(update={"session_stored": False, "session_revision": None})
     monitor = ShopSessionHealth(Bridge())

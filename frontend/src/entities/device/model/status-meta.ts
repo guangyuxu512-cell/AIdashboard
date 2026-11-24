@@ -1,5 +1,6 @@
 import type { StatusTone } from '@/shared/components/StatusTag.vue'
 
+import type { DeviceLocalShopDto } from '../api/contracts'
 import type {
   DeviceCapability,
   DeviceCapabilityAvailability,
@@ -19,6 +20,21 @@ export const DEVICE_STATUS_META = {
   error: { label: '异常', tone: 'error' },
   unavailable: { label: '未接入', tone: 'neutral' },
 } satisfies Record<DeviceRuntimeStatus, DeviceStatusMeta>
+
+const SHOP_SESSION_STATUS_META = {
+  valid: { label: '有效', tone: 'success' },
+  invalid: { label: '失效', tone: 'error' },
+  reauthorization_required: { label: '未保存', tone: 'warning' },
+  unknown: { label: '未确认', tone: 'neutral' },
+} satisfies Record<DeviceLocalShopDto['session_status'], DeviceStatusMeta>
+
+export function workerShopSessionStatusMeta(
+  status: DeviceLocalShopDto['session_status'], checkedAt?: string | null,
+): DeviceStatusMeta {
+  return status === 'unknown' && checkedAt
+    ? { label: '待复验', tone: 'warning' }
+    : SHOP_SESSION_STATUS_META[status]
+}
 
 export const DEVICE_ENABLED_STATUS_META = {
   enabled: { label: '已启用', tone: 'success' },
