@@ -9,9 +9,14 @@ import type {
   DeviceUpdateDto,
   WorkerCredentialReadDto,
   WorkerTokenIssuedReadDto,
+  SourcingAgentPresenceDto,
 } from './contracts'
 
 export const deviceApi = {
+  async getSourcingOverview(): Promise<SourcingAgentPresenceDto[]> {
+    const response = await httpClient.get<{ items: SourcingAgentPresenceDto[] }>('/api/v1/devices/sourcing-account-overview')
+    return response.data.items
+  },
   async getShopOverview(): Promise<DeviceShopOverviewDto[]> {
     const response = await httpClient.get<DeviceShopOverviewDto[]>('/api/v1/devices/local-shop-overview')
     return response.data

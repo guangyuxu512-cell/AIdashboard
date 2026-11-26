@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQuery } from '@tanstack/vue-query'
 import dayjs from 'dayjs'
-import type { DataTableColumns } from 'naive-ui'
+import { NTab, type DataTableColumns } from 'naive-ui'
 import { computed, h, ref, watch } from 'vue'
 
 import { deviceApi, workerShopSessionStatusMeta, type DeviceLocalShopDto, type DeviceShopOverviewDto } from '@/entities/device'
@@ -12,12 +12,16 @@ import PaginationBar from '@/shared/components/PaginationBar.vue'
 import StatusTag from '@/shared/components/StatusTag.vue'
 import AppButton from '@/shared/ui/AppButton.vue'
 import AppInput from '@/shared/ui/AppInput.vue'
+import AppTabs from '@/shared/ui/AppTabs.vue'
 import { useAuthStore } from '@/stores/auth'
+import SourcingAccountsSection from './SourcingAccountsSection.vue'
 
 type SessionStatus = DeviceLocalShopDto['session_status']
 type ShopRow = DeviceLocalShopDto & { device: DeviceShopOverviewDto; rowKey: string }
 
 const auth = useAuthStore()
+const tab = ref('shops')
+watch(() => auth.isSuperAccount, (allowed) => { if (!allowed) tab.value = 'shops' })
 const keyword = ref('')
 const page = ref(1)
 const pageSize = ref(20)
@@ -65,6 +69,10 @@ const columns: DataTableColumns<ShopRow> = [
 
 <template>
   <div class="page-container worker-shops-page">
+    <AppTabs v-if="auth.isSuperAccount" v-model="tab">
+      <NTab name="shops">抖店</NTab><NTab name="sourcing">1688 账号</NTab>
+    </AppTabs>
+    <template v-if="tab === 'shops'">
     <FilterBar>
       <AppInput v-model="keyword" width="md" clearable placeholder="搜索店铺或设备" />
       <template #actions>
@@ -78,6 +86,8 @@ const columns: DataTableColumns<ShopRow> = [
         viewport="fill" @retry="query.refetch()" />
       <PaginationBar v-model:page="page" v-model:page-size="pageSize" :item-count="filtered.length" />
     </ManagementListSection>
+    </template>
+    <SourcingAccountsSection v-else-if="auth.isSuperAccount" />
   </div>
 </template>
 

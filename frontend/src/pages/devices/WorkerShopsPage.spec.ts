@@ -6,7 +6,7 @@ import DataTable from '@/shared/components/DataTable.vue'
 import WorkerShopsPage from './WorkerShopsPage.vue'
 
 const mocks = vi.hoisted(() => ({
-  auth: null as unknown as { currentUser: { userId: string }; activeTeamId: string | null },
+  auth: null as unknown as { currentUser: { userId: string }; activeTeamId: string | null; isSuperAccount: boolean },
   query: null as unknown,
   options: null as unknown as { queryKey: { value: unknown } },
 }))
@@ -16,7 +16,7 @@ vi.mock('@tanstack/vue-query', () => ({
 }))
 
 beforeEach(() => {
-  mocks.auth = reactive({ currentUser: { userId: 'user-1' }, activeTeamId: null })
+  mocks.auth = reactive({ currentUser: { userId: 'user-1' }, activeTeamId: null, isSuperAccount: false })
   const shop = { local_shop_id: 'local-1', platform_shop_id: '123', shop_name: '同一家店',
     platform: 'douyin', session_status: 'valid', status_observed_at: '2026-11-23T05:00:00Z',
     compass_session_status: 'unknown', compass_status_observed_at: null }
@@ -53,5 +53,12 @@ describe('Worker shop overview', () => {
     expect(mocks.options.queryKey.value).toEqual(['devices', 'shop-overview', 'user-1', null])
     mocks.auth.activeTeamId = 'team-2'
     expect(mocks.options.queryKey.value).toEqual(['devices', 'shop-overview', 'user-1', 'team-2'])
+  })
+
+  it('only offers the cross-device 1688 overview to the super account', () => {
+    const wrapper = shallowMount(WorkerShopsPage, { global: { renderStubDefaultSlot: true } })
+    expect(wrapper.text()).not.toContain('1688 账号')
+    mocks.auth.isSuperAccount = true
+    return wrapper.vm.$nextTick().then(() => { expect(wrapper.text()).toContain('1688 账号') })
   })
 })

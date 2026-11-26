@@ -14,6 +14,9 @@ from app.modules.devices.schemas import (
 )
 from app.modules.devices.service import DeviceService
 from app.modules.devices.models import Device
+from app.modules.api_tokens.api import require_human_administrator
+from app.modules.token_management.api import get_token_management_service
+from app.modules.token_management.service import TokenManagementService
 from app.modules.workers.schemas import (
     BusinessSkillCatalogItemRead,
     DeviceRuntimeRead,
@@ -93,6 +96,15 @@ def list_local_shop_overview(
     service: Annotated[DeviceService, Depends(get_device_service)],
 ) -> list[DeviceShopOverviewRead]:
     return service.list_shop_overview(actor)
+
+
+@router.get('/sourcing-account-overview')
+async def sourcing_account_overview(
+    _actor: Annotated[ActorContext, Depends(require_human_administrator)],
+    bridge: Annotated[TokenManagementService, Depends(get_token_management_service)],
+) -> Response:
+    # These installations have no central Team binding, so only an administrator may view all.
+    return await bridge.forward('operations', 'GET', 'api/v1/sourcing/worker/overview', b'')
 
 
 @router.get("/{device_id}", response_model=DeviceRead)
