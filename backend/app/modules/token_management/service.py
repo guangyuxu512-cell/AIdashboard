@@ -28,6 +28,8 @@ _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 
 
 def allowed_path(service: str, method: str, path: str) -> bool:
+    if service == 'operations' and method == 'GET' and path == 'api/v1/sourcing/worker/overview':
+        return True
     rules = _SCOPED_RULES if service in {"product", "operations"} else (
         _COLLECTOR_RULES if service == "collector" else ()
     )

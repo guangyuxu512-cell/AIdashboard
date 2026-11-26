@@ -61,6 +61,15 @@ def test_each_service_uses_its_own_server_credential_and_returns_no_cookie(app_c
         assert f"synthetic-{service}-credential" not in response.text
 
 
+def test_sourcing_overview_reuses_operations_credential_without_exposing_it(app_client):
+    client, calls, _, _ = app_client
+    response = client.get('/api/v1/devices/sourcing-account-overview')
+    assert response.status_code == 200 and response.json() == {'items': []}
+    assert calls[-1].url.path.endswith('/_operations/api/v1/sourcing/worker/overview')
+    assert calls[-1].headers['authorization'] == 'Bearer synthetic-operations-credential'
+    assert 'set-cookie' not in response.headers
+
+
 def test_cross_origin_mutations_and_unlisted_paths_never_reach_upstream(app_client):
     client, calls, _, _ = app_client
     target = f"{BASE}/product/api/v1/tokens"
@@ -93,6 +102,7 @@ def test_missing_human_session_is_denied_and_bridge_is_not_an_ai_permission(app_
     client, calls, app, _ = app_client
     del app.dependency_overrides[require_human_administrator]
     assert client.get(f"{BASE}/product/api/v1/tokens").status_code == 401
+    assert client.get('/api/v1/devices/sourcing-account-overview').status_code == 401
     assert not any("/token-management/" in item["id"] for item in permissions_catalog(app))
     assert calls == []
 
@@ -103,6 +113,7 @@ def test_api_token_and_non_super_account_are_denied(app_client):
     app.dependency_overrides[get_human_principal] = lambda: SimpleNamespace(api_token_id="synthetic-token")
     app.dependency_overrides[get_super_account] = lambda: SimpleNamespace()
     assert client.get(f"{BASE}/product/api/v1/tokens").status_code == 403
+    assert client.get('/api/v1/devices/sourcing-account-overview').status_code == 403
     app.dependency_overrides[get_human_principal] = lambda: SimpleNamespace(api_token_id=None)
 
     def deny_member():
@@ -110,6 +121,7 @@ def test_api_token_and_non_super_account_are_denied(app_client):
 
     app.dependency_overrides[get_super_account] = deny_member
     assert client.get(f"{BASE}/product/api/v1/tokens").status_code == 403
+    assert client.get('/api/v1/devices/sourcing-account-overview').status_code == 403
     assert calls == []
 
 
