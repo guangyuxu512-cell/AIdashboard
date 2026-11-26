@@ -80,3 +80,20 @@ export interface WorkerCredentialReadDto {
 export interface WorkerTokenIssuedReadDto extends WorkerCredentialReadDto {
   token: string
 }
+export type SourcingAccountPresenceDto = {
+  accountId: string
+  name: string
+  sessionStatus: 'unverified' | 'valid' | 'expired' | 'needs_verification'
+  sessionCheckedAt: number | null
+  workStatus: 'idle' | 'working'
+}
+
+export type SourcingAgentPresenceDto = {
+  reporterId: string
+  installationId: string
+  deviceName: string
+  appVersion: string
+  lastSeenAt: number
+  online: boolean
+  accounts: SourcingAccountPresenceDto[]
+}

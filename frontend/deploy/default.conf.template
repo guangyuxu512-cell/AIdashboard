@@ -99,7 +99,7 @@ server {
     }
 
     location ^~ /token-admin/_operations/ {
-        if ($uri !~ "^/token-admin/_operations/api/v1/(tokens(/permissions|/[0-9a-f]{32}(/reveal)?)?|product-groups)$") { return 404; }
+        if ($uri !~ "^/token-admin/_operations/api/v1/(tokens(/permissions|/[0-9a-f]{32}(/reveal)?)?|product-groups|sourcing/worker/overview)$") { return 404; }
         rewrite ^/token-admin/_operations(/api/v1/.*)$ $1 break;
         proxy_pass http://127.0.0.1:18521$uri$is_args$args;
         proxy_set_header Authorization $http_authorization;
@@ -112,6 +112,17 @@ server {
     location = /operations {
         absolute_redirect off;
         return 308 /operations/;
+    }
+
+    # Stream signed 1688 release archives without buffering them in the gateway.
+    location ^~ /operations/api/v1/sourcing/worker/releases/ {
+        rewrite ^/operations(/api/v1/.*)$ $1 break;
+        proxy_pass http://127.0.0.1:18521$uri$is_args$args;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header Cookie "";
+        proxy_hide_header Set-Cookie;
+        proxy_buffering off;
+        access_log off;
     }
 
     # The independent service keeps its own authentication and data.
