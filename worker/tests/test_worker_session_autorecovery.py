@@ -8,7 +8,7 @@ import pytest
 
 from app.config import WorkerSettings
 from app.contracts import ExecutionResult, LocalShopContext, WorkerTask
-from app.rpa_session_bridge import LocalCookie, LocalSession, LocalShop
+from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop
 from app.shop_session_health import ShopSessionHealth
 from app.worker import Worker
 
@@ -31,6 +31,8 @@ class Bridge:
         self.revisions = {shop.local_shop_id: shop.session_revision for shop in shops}
         self.refreshes = []
         self.refreshed = asyncio.Event()
+        self.status = None
+        self.auto_finish = True
 
     async def list_shops(self):
         # Inventory is re-created on every read, just like the real bridge.
@@ -45,10 +47,12 @@ class Bridge:
                                 domain="fxg.jinritemai.com", path="/")])
 
     async def session_refresh_status(self, *args):
-        return None
+        return self.status
 
     async def request_session_refresh(self, *args):
         self.refreshes.append(args)
+        if self.auto_finish:
+            self.status = LocalRefreshStatus("retryable", datetime.now(UTC))
         self.refreshed.set()
         return True
 
@@ -222,6 +226,92 @@ def test_saved_replacement_is_verified_again_before_status_becomes_valid(tmp_pat
         assert worker.shop_session_health.due([replacement]) == replacement
         await worker._verify_local_shop(bridge.inventory, replacement)
         assert worker.shop_session_health.report(replacement)["sessionStatus"] == "valid"
+        assert len(bridge.refreshes) == 1
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("skill,kind", [
+    ("douyin.category_schema", "merchant"),
+    ("douyin.merchant_products", "merchant"),
+    ("douyin.compass_selection", "compass"),
+])
+@pytest.mark.parametrize("condition", ["same", "changed", "synthetic"])
+def test_real_task_expiry_is_bound_and_survives_restart(tmp_path, skill, kind, condition):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        params = ({"local_shop_id": "a", "platform_shop_id": "123"} if skill == "douyin.category_schema"
+                  else {"operation": "list" if skill == "douyin.merchant_products" else "rank"})
+        if condition == "synthetic" and skill == "douyin.category_schema":
+            params["skip_expired_session"] = True
+        task = make_task(skill, shop, input_data=params)
+        calls = []
+
+        async def revision(local, platform):
+            calls.append(1)
+            return "b" * 64 if condition == "changed" and len(calls) > 1 else "a" * 64
+
+        bridge.session_revision = revision
+
+        async def execute(_task):
+            return ExecutionResult(status="failed", error_code="SHOP_SESSION_EXPIRED",
+                                   result={"http_status": None if condition == "synthetic" else 200})
+
+        async def noop(*args):
+            pass
+
+        async def deliver():
+            return True
+
+        worker._send_immediate_heartbeat = noop
+        worker._execute_with_selection_interval = execute
+        worker._renew_lease = lambda _task: asyncio.Event().wait()
+        worker._deliver_pending_terminals = deliver
+        await worker._execute_task(task)
+        # Synthetic skip exists only on precheck; other skills represent a real
+        # explicit platform error even if their result has no HTTP metadata.
+        expected = condition == "same" or (condition == "synthetic" and skill != "douyin.category_schema")
+        assert bool(worker.session_recovery_outbox.pending()) is expected
+        if not expected:
+            assert worker.shop_session_health.report(shop)["sessionStatus"] is None
+            return
+        restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        restarted._restore_session_recoveries([shop])
+        status = restarted.shop_session_health.report(shop)
+        assert status["compassSessionStatus" if kind == "compass" else "sessionStatus"] == "invalid"
+        assert restarted._take_pending_shop_refresh([shop]) == shop
+        await restarted.shop_session_health.request_refresh(shop)
+        assert bridge.refreshes[0][-1] is (kind == "compass")
+        replacement = shop.model_copy(update={"session_revision": "c" * 64})
+        restarted._restore_session_recoveries([replacement])
+        assert restarted.session_recovery_outbox.pending() == []
+        assert restarted.shop_session_health.report(replacement)["sessionStatus"] is None
+
+    asyncio.run(scenario())
+
+
+def test_other_shop_continues_while_same_shop_waits_for_asynchronous_rpa(tmp_path):
+    async def scenario():
+        shop, other = make_shop(), make_shop("b", "456", "b" * 64)
+        bridge = Bridge([shop, other])
+        bridge.auto_finish = False
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        running = uuid4()
+        worker._active_task_ids.add(running)
+        worker._active_health_scopes[running] = ("456", True)
+        worker.shop_session_health.record_explicit_failure(shop, "merchant")
+        refresh = asyncio.create_task(worker._run_shop_refresh(shop))
+        await asyncio.wait_for(bridge.refreshed.wait(), timeout=2)
+        same_task = make_task("douyin.merchant_products", shop, input_data={"operation": "list"})
+        other_task = make_task("douyin.merchant_products", other, input_data={"operation": "list"})
+        waiting = asyncio.create_task(worker._wait_for_shop_refresh(same_task))
+        await asyncio.wait_for(worker._wait_for_shop_refresh(other_task), timeout=1)
+        assert not waiting.done()
+        bridge.revisions["a"] = "c" * 64
+        await asyncio.wait_for(refresh, timeout=5)
+        await asyncio.wait_for(waiting, timeout=1)
         assert len(bridge.refreshes) == 1
 
     asyncio.run(scenario())

@@ -110,6 +110,12 @@ def test_busy_shop_does_not_block_other_shop_checks(tmp_path):
                 pass
 
         class Health:
+            def missing_session_due(self, shops):
+                return None
+
+            def invalid_session_due(self, shops):
+                return None
+
             def due(self, all_shops, *, excluded_platform_ids=frozenset()):
                 assert len(all_shops) == 2
                 assert excluded_platform_ids == {"123"}

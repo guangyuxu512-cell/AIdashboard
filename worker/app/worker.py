@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import random
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
@@ -64,6 +64,20 @@ def _health_task_scope(task: WorkerTask) -> tuple[str, bool] | None:
     return None
 
 
+def _session_task_scope(task: WorkerTask) -> tuple[str, str, str] | None:
+    if task.skill_id == _PRECHECK_KIND:
+        local, platform, kind = task.input.get('local_shop_id'), task.input.get('platform_shop_id'), 'merchant'
+    elif task.skill_id in {_MERCHANT_KIND, _COMPASS_KIND} and len(task.local_shops) == 1:
+        source = task.local_shops[0]
+        if source.platform != 'douyin':
+            return None
+        local, platform = source.local_shop_id, source.platform_shop_id
+        kind = 'compass' if task.skill_id == _COMPASS_KIND else 'merchant'
+    else:
+        return None
+    return (local, platform, kind) if isinstance(local, str) and local and isinstance(platform, str) and platform else None
+
+
 class Worker:
     def __init__(
         self,
@@ -100,12 +114,16 @@ class Worker:
         self._session_rechecks: dict[tuple[str, str], set[str]] = {}
         self._recent_session_rechecks: dict[tuple[str, str, str, str], tuple[str | None, float]] = {}
         self._rpa_inventory_wakeup = asyncio.Event()
+        self._refresh_done: dict[str, asyncio.Event] = {}
         self._last_rpa_inventory = None
         self._rpa_inventory_report_lock = asyncio.Lock()
         self._active_task_ids = set()
         self._active_health_scopes: dict[UUID, tuple[str, bool] | None] = {}
         self._next_capability_check = 0.0
         self.result_outbox = ResultOutbox(settings.runtime_root / "result-outbox")
+        # A task acknowledgement must not erase independently pending local
+        # recovery evidence. This outbox contains only shop IDs and revision.
+        self.session_recovery_outbox = ResultOutbox(settings.runtime_root / "session-recovery-outbox")
         # 0.5.18 cannot deserialize merchant deliveries. Keep the new format
         # separate so rolling back never blocks existing Worker tasks.
         self.merchant_outbox = ResultOutbox(settings.runtime_root / "result-outbox-merchant-v1")
@@ -250,6 +268,7 @@ class Worker:
         return None
 
     async def _execute_with_selection_interval(self, task: WorkerTask) -> ExecutionResult:
+        await self._wait_for_shop_refresh(task)
         if not _is_parallel_shop_task(task):
             return await self._prepare_and_execute(task)
         shop_id = task.local_shops[0].platform_shop_id or task.local_shops[0].local_shop_id
@@ -485,6 +504,7 @@ class Worker:
             try:
                 inventory = await self.rpa_bridge.list_shops()
                 self._last_rpa_inventory = inventory
+                self._restore_session_recoveries(inventory.shops)
                 try:
                     await self._report_rpa_inventory(inventory)
                 except Exception:
@@ -493,12 +513,16 @@ class Worker:
                 if (self.shop_session_health is not None
                         and (self._shop_health_probe is None or self._shop_health_probe.done())):
                     missing = None
-                    if not self._active_task_ids:
-                        missing = self._take_pending_shop_refresh(inventory.shops)
+                    eligible = [shop for shop in inventory.shops if shop.platform_shop_id
+                                and self._refresh_shop_available(shop.platform_shop_id)]
+                    if not self._refresh_done:
+                        missing = self._take_pending_shop_refresh(
+                            inventory.shops, excluded=frozenset(shop.platform_shop_id for shop in inventory.shops
+                                if shop.platform_shop_id and not self._refresh_shop_available(shop.platform_shop_id)))
                         if missing is None:
-                            missing = self.shop_session_health.missing_session_due(inventory.shops)
+                            missing = self.shop_session_health.missing_session_due(eligible)
                         if missing is None:
-                            missing = self.shop_session_health.invalid_session_due(inventory.shops)
+                            missing = self.shop_session_health.invalid_session_due(eligible)
                     excluded = frozenset(shop.platform_shop_id for shop in inventory.shops
                                          if shop.platform_shop_id and not self._health_shop_available(shop.platform_shop_id))
                     urgent = self._take_session_recheck(inventory.shops, excluded) if missing is None else None
@@ -510,7 +534,7 @@ class Worker:
                     if missing is not None:
                         self._shop_health_probe_shop = missing.platform_shop_id
                         self._shop_health_probe_is_refresh = True
-                        self._shop_health_probe = asyncio.create_task(self.shop_session_health.request_refresh(missing))
+                        self._shop_health_probe = asyncio.create_task(self._run_shop_refresh(missing))
                     elif shop is not None:
                         self._shop_health_probe_shop = shop.platform_shop_id
                         self._shop_health_probe_is_refresh = False
@@ -540,7 +564,7 @@ class Worker:
                     item.cancel()
             await asyncio.gather(stop, wake, return_exceptions=True)
 
-    def _queue_session_recheck(self, task: WorkerTask, result: ExecutionResult) -> None:
+    def _queue_session_recheck(self, task: WorkerTask, result: ExecutionResult, verified_revision: str | None = None) -> None:
         if self.shop_session_health is None or result.status is not ExecutionStatus.FAILED:
             return
         explicit = result.error_code == 'SHOP_SESSION_EXPIRED'
@@ -549,20 +573,18 @@ class Worker:
         # that rejection; rate-limit these probes independently per shop.
         if not explicit and not (task.skill_id == _MERCHANT_KIND and result.error_code == 'PLATFORM_BUSINESS_REJECTED'):
             return
-        if task.skill_id == _PRECHECK_KIND:
-            local, platform, kind = task.input.get('local_shop_id'), task.input.get('platform_shop_id'), 'merchant'
-        elif task.skill_id in {_MERCHANT_KIND, _COMPASS_KIND} and len(task.local_shops) == 1:
-            source = task.local_shops[0]
-            if source.platform != 'douyin':
-                return
-            local, platform = source.local_shop_id, source.platform_shop_id
-            kind = 'compass' if task.skill_id == _COMPASS_KIND else 'merchant'
-        else:
+        scope = _session_task_scope(task)
+        if scope is None:
             return
-        if not isinstance(local, str) or not local or not isinstance(platform, str) or not platform:
-            return
+        local, platform, kind = scope
         current = next((s for s in (self._last_rpa_inventory.shops if self._last_rpa_inventory else [])
                         if (s.local_shop_id, s.platform_shop_id) == (local, platform)), None)
+        if (explicit and verified_revision and current is not None
+                and current.session_revision == verified_revision):
+            if self.shop_session_health.record_explicit_failure(current, kind):
+                self._pending_shop_refresh[(local, platform)] = current
+                self._rpa_inventory_wakeup.set()
+            return
         revision = current.session_revision if current else None
         key = (local, platform, kind, 'explicit' if explicit else 'business')
         now = asyncio.get_running_loop().time()
@@ -585,6 +607,31 @@ class Worker:
             self._session_rechecks.pop(key, None)
             return shop, kinds
         return None
+
+    def _restore_session_recoveries(self, shops: list[LocalShop]) -> None:
+        if self.shop_session_health is None:
+            return
+        current = {(shop.local_shop_id, shop.platform_shop_id): shop for shop in shops}
+        try:
+            for item in self.session_recovery_outbox.pending():
+                data = item.result or {}
+                key = (data.get('local_shop_id'), data.get('platform_shop_id'))
+                revision = data.get('snapshot_revision')
+                kind = data.get('kind')
+                expected_kind = 'compass' if item.skill_id == _COMPASS_KIND else 'merchant'
+                if (item.skill_id not in {_PRECHECK_KIND, _MERCHANT_KIND, _COMPASS_KIND}
+                        or item.error_code != 'SHOP_SESSION_EXPIRED' or kind != expected_kind
+                        or not isinstance(revision, str) or len(revision) != 64):
+                    continue
+                shop = current.get(key)
+                if shop is None or not shop.session_revision:
+                    continue
+                if shop.session_revision != revision:
+                    self.session_recovery_outbox.acknowledge(item)
+                elif self.shop_session_health.record_explicit_failure(shop, kind):
+                    self._pending_shop_refresh[key] = shop
+        except OutboxError:
+            logger.error('Worker session recovery evidence requires local attention')
 
     async def _report_rpa_inventory(self, inventory) -> None:
         async with self._rpa_inventory_report_lock:
@@ -619,11 +666,11 @@ class Worker:
                     (item.local_shop_id, item.platform_shop_id, item.session_revision, item.rpa_helper_digest)
                     == (shop.local_shop_id, shop.platform_shop_id, shop.session_revision, shop.rpa_helper_digest)), None) if latest else None
                 if needs_refresh and current is not None:
-                    if self._active_task_ids:
+                    if not self._refresh_shop_available(current.platform_shop_id):
                         self._pending_shop_refresh[(current.local_shop_id, current.platform_shop_id)] = current
                     else:
                         self._shop_health_probe_is_refresh = True
-                        await self.shop_session_health.request_refresh(current)
+                        await self._run_shop_refresh(current)
         except asyncio.CancelledError:
             if priority_kinds:
                 self._session_rechecks.setdefault((shop.local_shop_id, shop.platform_shop_id), set()).update(priority_kinds)
@@ -635,15 +682,77 @@ class Worker:
             if self._session_rechecks:
                 self._rpa_inventory_wakeup.set()
 
-    def _take_pending_shop_refresh(self, shops: list[LocalShop]) -> LocalShop | None:
+    def _take_pending_shop_refresh(self, shops: list[LocalShop], *, excluded: frozenset[str] = frozenset()) -> LocalShop | None:
         current = {(shop.local_shop_id, shop.platform_shop_id): shop for shop in shops}
         for key, previous in tuple(self._pending_shop_refresh.items()):
-            self._pending_shop_refresh.pop(key, None)
             shop = current.get(key)
+            if shop is None:
+                self._pending_shop_refresh.pop(key, None)
+                continue
+            if shop.platform_shop_id in excluded:
+                continue  # A busy shop stays queued until its tasks finish.
+            self._pending_shop_refresh.pop(key, None)
             if (shop is not None and shop.session_revision == previous.session_revision
                     and shop.rpa_helper_digest == previous.rpa_helper_digest):
                 return shop
         return None
+
+    def _refresh_shop_available(self, shop_id: str) -> bool:
+        return all((scope := self._active_health_scopes.get(task_id)) is not None and scope[0] != shop_id
+                   for task_id in self._active_task_ids)
+
+    async def _wait_for_shop_refresh(self, task: WorkerTask) -> None:
+        scope = _health_task_scope(task)
+        while True:
+            events = ([self._refresh_done[scope[0]]] if scope is not None and scope[0] in self._refresh_done
+                      else list(self._refresh_done.values()) if scope is None else [])
+            if not events:
+                return
+            await asyncio.gather(*(event.wait() for event in events))
+
+    async def _run_shop_refresh(self, shop: LocalShop) -> None:
+        shop_id = shop.platform_shop_id
+        if not shop_id:
+            return
+        if not self._refresh_shop_available(shop_id):
+            self._pending_shop_refresh[(shop.local_shop_id, shop_id)] = shop
+            return
+        done = asyncio.Event()
+        self._refresh_done[shop_id] = done
+        started = datetime.now(UTC)
+        try:
+            if not await self.shop_session_health.request_refresh(shop):
+                return
+            # RPA accepts asynchronously. Keep same-shop tasks waiting until
+            # its new snapshot or terminal result is observed, with a bound.
+            deadline = asyncio.get_running_loop().time() + 210
+            while asyncio.get_running_loop().time() < deadline:
+                try:
+                    revision = await self.rpa_bridge.session_revision(shop.local_shop_id, shop_id)
+                    status = await self.rpa_bridge.session_refresh_status(shop.local_shop_id, shop_id,
+                                                                          shop.session_revision or 'missing')
+                    if ((revision or 'missing') != (shop.session_revision or 'missing')
+                            or status is not None and status.observed_at >= started - timedelta(seconds=1)):
+                        break
+                except Exception:
+                    pass
+                await asyncio.sleep(3)
+        finally:
+            self._refresh_done.pop(shop_id, None)
+            done.set()
+            self._rpa_inventory_wakeup.set()
+
+    async def _task_snapshot_revision(self, task: WorkerTask) -> str | None:
+        if ((task.skill_id == _PRECHECK_KIND and task.input.get('skip_expired_session') is True)
+                or self.rpa_bridge is None):
+            return None
+        scope = _session_task_scope(task)
+        if scope is None:
+            return None
+        try:
+            return await asyncio.wait_for(self.rpa_bridge.session_revision(scope[0], scope[1]), timeout=2)
+        except Exception:
+            return None
 
     def _health_shop_available(self, shop_id: str) -> bool:
         now = asyncio.get_running_loop().time()
@@ -662,12 +771,14 @@ class Worker:
         if probe is None or probe.done():
             return
         scope = self._active_health_scopes.get(task.task_id)
-        if self._shop_health_probe_is_refresh or scope is None or (scope[0] == self._shop_health_probe_shop
+        if self._shop_health_probe_is_refresh:
+            return  # The claimed task waits for the RPA outcome instead.
+        if scope is None or (scope[0] == self._shop_health_probe_shop
                              and not self._health_shop_available(scope[0])):
             await self._cancel_shop_health_probe()
 
     async def _cancel_shop_probe_for(self, shop_id: str) -> None:
-        if self._shop_health_probe_shop == shop_id:
+        if self._shop_health_probe_shop == shop_id and not self._shop_health_probe_is_refresh:
             await self._cancel_shop_health_probe()
 
     async def _cancel_shop_health_probe(self) -> None:
@@ -717,7 +828,7 @@ class Worker:
             logger.warning("Capability update unavailable; retaining verified release when possible")
 
     async def _update_base_if_idle(self) -> bool:
-        if self.base_updater is None or self._active_task_ids:
+        if self.base_updater is None or self._active_task_ids or self._refresh_done:
             return False
         now = asyncio.get_running_loop().time()
         if now < self._next_base_check:
@@ -788,6 +899,7 @@ class Worker:
                 ),
             },
         )
+        revision_before = await self._task_snapshot_revision(task)
         execution_task = asyncio.create_task(self._execute_with_selection_interval(task))
         lease_task = asyncio.create_task(self._renew_lease(task))
         try:
@@ -817,11 +929,29 @@ class Worker:
                 if result.status is ExecutionStatus.FAILED else None,
                 error_message=safe_message if result.status is ExecutionStatus.FAILED else None,
             )
+            real_precheck_failure = (task.skill_id != _PRECHECK_KIND or result.result
+                                     and result.result.get('http_status') in (200, 401))
+            revision_after = (await self._task_snapshot_revision(task)
+                              if revision_before and result.error_code == 'SHOP_SESSION_EXPIRED'
+                              and real_precheck_failure else None)
+            verified_revision = revision_before if revision_before == revision_after else None
+            if verified_revision:
+                local, platform, kind = _session_task_scope(task)
+                try:
+                    self.session_recovery_outbox.store(TerminalDelivery(
+                        task_id=task.task_id, skill_id=task.skill_id, status='failed',
+                        result={'local_shop_id': local, 'platform_shop_id': platform,
+                                'kind': kind, 'snapshot_revision': verified_revision},
+                        error_code='SHOP_SESSION_EXPIRED', error_message='店铺登录状态已失效'))
+                except (OSError, OutboxError):
+                    # Never lose the task result because the separate recovery
+                    # journal cannot currently be written.
+                    logger.error('Worker could not persist session recovery evidence')
             # Once execution has returned, make its result durable before any
             # event flush, inventory report or completion network operation.
             outbox = self.merchant_outbox if delivery.skill_id == _MERCHANT_KIND else self.result_outbox
             outbox.store(delivery)
-            self._queue_session_recheck(task, result)
+            self._queue_session_recheck(task, result, verified_revision)
             terminal_metadata = {
                 "phase": (
                     "succeeded"
