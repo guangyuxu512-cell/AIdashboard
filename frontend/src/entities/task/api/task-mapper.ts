@@ -1,15 +1,15 @@
 import dayjs from 'dayjs'
 
+import { formatSkillName } from '@/entities/business-skill/model/display'
+
 import type { TaskListItemViewModel } from '../model/types'
 import type { TaskListItemReadDto } from './contracts'
 
 export function mapTaskListItemDto(
   dto: TaskListItemReadDto,
 ): TaskListItemViewModel {
-  const executionName =
-    dto.execution_display_name.trim() ||
-    dto.skill_display_name?.trim() ||
-    dto.skill_id
+  const displayName = dto.execution_display_name.trim() || dto.skill_display_name?.trim()
+  const executionName = formatSkillName(dto.skill_id, displayName)
   return {
     taskId: dto.task_id,
     deviceId: dto.target_device_id,
