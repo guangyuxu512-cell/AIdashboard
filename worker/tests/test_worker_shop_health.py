@@ -313,7 +313,7 @@ def test_refresh_discovered_during_other_work_is_deferred_until_idle(tmp_path):
             async def check(self, _shop):
                 return True
 
-            async def request_refresh(self, shop):
+            async def request_refresh(self, shop, **_kwargs):
                 refreshed.append(shop.platform_shop_id)
                 return False
 
@@ -452,4 +452,215 @@ def test_many_shops_are_checked_promptly_without_waiting_one_minute_each(tmp_pat
         assert set(checked) == {shop.platform_shop_id for shop in shops}
         assert bridge.list_calls == 1  # Reuse the validated snapshot within one inventory period.
 
+    asyncio.run(scenario())
+
+
+def test_inventory_report_validates_new_session_before_reporting(tmp_path):
+    async def scenario():
+        stop = asyncio.Event()
+        installation = uuid4()
+        old = LocalShop(localShopId='local-a', platformShopId='123', shopName='A',
+                        platform='douyin', sessionStored=True, sessionRevision='a' * 64)
+        new = old.model_copy(update={'session_revision': 'b' * 64})
+        class Bridge:
+            revision = old.session_revision
+            async def list_shops(self):
+                return SimpleNamespace(installation_id=installation, shops=[old if self.revision == old.session_revision else new])
+            async def session_revision(self, *_args):
+                return self.revision
+            async def read_session(self, local, platform):
+                return LocalSession(localShopId=local, platformShopId=platform, platform='douyin',
+                    userAgent='synthetic-agent', cookies=[LocalCookie(name='test',
+                        value='synthetic-old' if self.revision == old.session_revision else 'synthetic-new',
+                                                                      domain='jinritemai.com', path='/')])
+        bridge = Bridge()
+        reports = []
+        class Client:
+            async def report_rpa_inventory(self, payload):
+                item = payload['shops'][0]
+                reports.append((item['sessionRevision'], item['sessionStatus'], item.get('compassSessionStatus')))
+                if item['sessionRevision'] == old.session_revision and item['sessionStatus'] == 'valid':
+                    bridge.revision = new.session_revision
+                    worker._force_inventory_read = True
+                    worker._rpa_inventory_wakeup.set()
+                if item['sessionRevision'] == new.session_revision:
+                    stop.set()
+        def handler(request):
+            return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                    if request.url.host == 'compass.jinritemai.com' else
+                    httpx.Response(200, json={'code': 0, 'data': {'id': '123'}}))
+        worker = Worker(WorkerSettings(server_url='https://test.invalid', device_id=uuid4(),
+            device_token='synthetic', runtime_root=tmp_path), Client(), object(), rpa_bridge=bridge)
+        worker.shop_session_health = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+        await asyncio.wait_for(worker._rpa_inventory_loop(stop), timeout=5)
+        await worker._cancel_shop_health_probe()
+        new_reports = [(merchant, compass) for revision, merchant, compass in reports if revision == new.session_revision]
+        assert new_reports and all(report == ('valid', 'valid') for report in new_reports)
+    asyncio.run(scenario())
+
+
+def test_prepublish_probe_preempted_by_same_shop_is_retried(tmp_path):
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        installation = uuid4()
+        old = LocalShop(localShopId='local-a', platformShopId='123', shopName='A',
+                        platform='douyin', sessionStored=True, sessionRevision='a' * 64)
+        new = old.model_copy(update={'session_revision': 'b' * 64})
+        previous = SimpleNamespace(installation_id=installation, shops=[old])
+        current = SimpleNamespace(installation_id=installation, shops=[new])
+        class Bridge:
+            async def session_revision(self, *_args): return new.session_revision
+            async def read_session(self, local, platform):
+                started.set()
+                await release.wait()
+                return LocalSession(localShopId=local, platformShopId=platform, platform='douyin',
+                    userAgent='test', cookies=[LocalCookie(name='test', value='synthetic', domain='jinritemai.com', path='/')])
+        class Client:
+            async def report_rpa_inventory(self, _payload): pass
+        def handler(request):
+            return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                    if request.url.host == 'compass.jinritemai.com' else
+                    httpx.Response(200, json={'code': 0, 'data': {'id': '123'}}))
+        bridge = Bridge()
+        worker = Worker(WorkerSettings(server_url='https://test.invalid', device_id=uuid4(),
+            device_token='synthetic', runtime_root=tmp_path), Client(), object(), rpa_bridge=bridge)
+        worker.shop_session_health = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+        worker._last_rpa_inventory = previous
+        prepublish = asyncio.create_task(worker._preverify_changed_sessions(previous, current))
+        await started.wait()
+        task = WorkerTask(task_id=uuid4(), skill_id='douyin.merchant_products', input={'operation': 'list'},
+                          lease_until=datetime.now(UTC) + timedelta(minutes=1),
+                          local_shops=[LocalShopContext(local_shop_id='local-a', platform='douyin', platform_shop_id='123')])
+        worker._active_task_ids.add(task.task_id)
+        worker._active_health_scopes[task.task_id] = ('123', True)
+        await worker._preempt_health_for_task(task)
+        await prepublish
+        assert worker._session_rechecks == {('local-a', '123'): {'merchant', 'compass'}}
+        worker._last_rpa_inventory = current
+        worker._active_task_ids.clear()
+        worker._active_health_scopes.clear()
+        release.set()
+        selected = worker._take_session_recheck(current.shops, frozenset())
+        assert worker.shop_session_health.prioritize(*selected)
+        await worker._verify_local_shop(current, selected[0], priority_kinds=selected[1])
+        assert worker.shop_session_health.report(new)['sessionStatus'] == 'valid'
+        assert worker.shop_session_health.report(new)['compassSessionStatus'] == 'valid'
+    asyncio.run(scenario())
+
+
+def test_prepublish_timeout_keeps_probe_running_and_reports_later(tmp_path, monkeypatch):
+    async def scenario():
+        monkeypatch.setattr('app.worker._HEALTH_PREPUBLISH_SHOP_SECONDS', 0.05)
+        started, release = asyncio.Event(), asyncio.Event()
+        installation = uuid4()
+        old = LocalShop(localShopId='local-a', platformShopId='123', shopName='A',
+                        platform='douyin', sessionStored=True, sessionRevision='a' * 64)
+        new = old.model_copy(update={'session_revision': 'b' * 64})
+        previous = SimpleNamespace(installation_id=installation, shops=[old])
+        current = SimpleNamespace(installation_id=installation, shops=[new])
+        class Bridge:
+            async def session_revision(self, *_args): return new.session_revision
+            async def read_session(self, local, platform):
+                started.set()
+                await release.wait()
+                return LocalSession(localShopId=local, platformShopId=platform, platform='douyin',
+                    userAgent='test', cookies=[LocalCookie(name='test', value='synthetic', domain='jinritemai.com', path='/')])
+        reports = []
+        class Client:
+            async def report_rpa_inventory(self, payload): reports.append(payload)
+        def handler(request):
+            return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                    if request.url.host == 'compass.jinritemai.com' else
+                    httpx.Response(200, json={'code': 0, 'data': {'id': '123'}}))
+        bridge = Bridge()
+        worker = Worker(WorkerSettings(server_url='https://test.invalid', device_id=uuid4(),
+            device_token='synthetic', runtime_root=tmp_path), Client(), object(), rpa_bridge=bridge)
+        worker.shop_session_health = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+        worker._last_rpa_inventory = previous
+        prepublish = asyncio.create_task(worker._preverify_changed_sessions(previous, current))
+        await started.wait()
+        other = WorkerTask(task_id=uuid4(), skill_id='douyin.merchant_products', input={'operation': 'list'},
+                           lease_until=datetime.now(UTC) + timedelta(minutes=1))
+        worker._active_task_ids.add(other.task_id)
+        worker._active_health_scopes[other.task_id] = ('456', True)
+        await worker._preempt_health_for_task(other)
+        await prepublish
+        probe = worker._shop_health_probe
+        assert probe is not None and not probe.done()
+        worker._last_rpa_inventory = current
+        release.set()
+        await probe
+        assert reports[-1]['shops'][0]['sessionStatus'] == 'valid'
+        assert reports[-1]['shops'][0]['compassSessionStatus'] == 'valid'
+    asyncio.run(scenario())
+
+
+def test_new_snapshot_waiting_on_same_shop_task_wakes_when_task_finishes(tmp_path):
+    async def scenario():
+        installation = uuid4()
+        old = LocalShop(localShopId='local-a', platformShopId='123', shopName='A',
+                        platform='douyin', sessionStored=True, sessionRevision='a' * 64)
+        new = old.model_copy(update={'session_revision': 'b' * 64})
+        previous = SimpleNamespace(installation_id=installation, shops=[old])
+        current = SimpleNamespace(installation_id=installation, shops=[new])
+        class Bridge:
+            async def session_revision(self, *_args): return new.session_revision
+        worker = Worker(WorkerSettings(server_url='https://test.invalid', device_id=uuid4(),
+            device_token='synthetic', runtime_root=tmp_path), object(), object(), rpa_bridge=Bridge())
+        task = WorkerTask(task_id=uuid4(), skill_id='douyin.merchant_products', input={'operation': 'list'},
+                          lease_until=datetime.now(UTC) + timedelta(minutes=1))
+        worker._last_rpa_inventory = previous
+        worker._active_task_ids.add(task.task_id)
+        worker._active_health_scopes[task.task_id] = ('123', True)
+        await worker._preverify_changed_sessions(previous, current)
+        assert worker._session_rechecks == {('local-a', '123'): {'merchant', 'compass'}}
+        worker._last_rpa_inventory = current
+        async def done(_task): pass
+        worker._execute_task = done
+        await worker._execute_claimed_task(task)
+        assert worker._rpa_inventory_wakeup.is_set()
+        assert worker._take_session_recheck(current.shops, frozenset()) == (new, {'merchant', 'compass'})
+    asyncio.run(scenario())
+
+
+def test_throttled_shop_does_not_starve_another_shop(tmp_path):
+    async def scenario():
+        stop = asyncio.Event()
+        first = LocalShop(localShopId='a', platformShopId='123', shopName='A',
+                          platform='douyin', sessionStored=True, sessionRevision='a' * 64)
+        changed = first.model_copy(update={'session_revision': 'b' * 64})
+        other = LocalShop(localShopId='b', platformShopId='456', shopName='B',
+                          platform='douyin', sessionStored=True, sessionRevision='c' * 64)
+        inventory = SimpleNamespace(installation_id=uuid4(), shops=[changed, other])
+        class Bridge:
+            async def session_revision(self, local, _platform):
+                return changed.session_revision if local == 'a' else other.session_revision
+            async def read_session(self, local, platform):
+                return LocalSession(localShopId=local, platformShopId=platform, platform='douyin',
+                    userAgent=platform, cookies=[LocalCookie(name='test', value='synthetic',
+                                                            domain='jinritemai.com', path='/')])
+        bridge = Bridge()
+        def handler(request):
+            shop_id = request.headers['user-agent']
+            if shop_id == '123': return httpx.Response(503, json={'message': 'temporary'})
+            return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': shop_id}})
+                    if request.url.host == 'compass.jinritemai.com' else
+                    httpx.Response(200, json={'code': 0, 'data': {'id': shop_id}}))
+        class Client:
+            async def report_rpa_inventory(self, payload):
+                second = next(item for item in payload['shops'] if item['localShopId'] == 'b')
+                if second['sessionStatus'] == 'valid': stop.set()
+        worker = Worker(WorkerSettings(server_url='https://test.invalid', device_id=uuid4(),
+            device_token='synthetic', runtime_root=tmp_path), Client(), object(), rpa_bridge=bridge)
+        worker.shop_session_health = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+        await worker.shop_session_health.check(changed)  # Both A services are in unknown cooldown.
+        worker._last_rpa_inventory = inventory
+        worker._force_inventory_read = False
+        worker._next_inventory_read = asyncio.get_running_loop().time() + 60
+        worker._session_rechecks[('a', '123')] = {'merchant', 'compass'}
+        await asyncio.wait_for(worker._rpa_inventory_loop(stop), timeout=3)
+        await worker._cancel_shop_health_probe()
+        if worker._health_wakeup_handle: worker._health_wakeup_handle.cancel()
+        assert worker.shop_session_health.report(other)['sessionStatus'] == 'valid'
+        assert worker.shop_session_health.report(changed)['sessionStatus'] is None
     asyncio.run(scenario())

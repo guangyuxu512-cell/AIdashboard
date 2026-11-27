@@ -10,7 +10,7 @@ import pytest
 
 from app.rpa_session_bridge import (
     BridgeDiscovery, RpaAutoBridge, RpaBridgeError, RpaLocalBridge, TrustedRpaInstallation,
-    _stored_session_revisions, discover_rpa, helper_tree_digest,
+    _stored_session_identity, _stored_session_revisions, discover_rpa, helper_tree_digest,
 )
 
 
@@ -69,6 +69,46 @@ def test_locked_sqlite_is_unavailable_instead_of_empty(tmp_path):
         connection.rollback()
         connection.close()
     assert _stored_session_revisions(str(database)) == {}
+
+
+def test_session_identity_binds_saved_snapshot_to_current_installation_and_shop(tmp_path):
+    database = tmp_path / 'shop-manager.db'
+    installation = str(uuid4())
+    with sqlite3.connect(database) as connection:
+        connection.execute('CREATE TABLE app_settings (key TEXT,value TEXT)')
+        connection.execute('INSERT INTO app_settings VALUES (?,?)', ('observability.installation_id', installation))
+        connection.execute('CREATE TABLE shops (local_shop_id TEXT,platform TEXT,platform_shop_id TEXT,archived_at TEXT)')
+        connection.execute('INSERT INTO shops VALUES (?,?,?,NULL)', ('local-1', 'douyin', 'shop-1'))
+        connection.execute('CREATE TABLE worker_shop_sessions (local_shop_id TEXT,platform_shop_id TEXT,captured_at TEXT,encrypted_payload TEXT)')
+        connection.execute('INSERT INTO worker_shop_sessions VALUES (?,?,?,?)', ('local-1', 'shop-1', 'time', 'synthetic-encrypted'))
+    identity = _stored_session_identity(str(database), 'local-1', 'shop-1')
+    assert identity[0] == installation
+    assert len(identity[1]) == 64
+    assert 'synthetic-encrypted' not in repr(identity)
+    assert _stored_session_identity(str(database), 'local-1', 'wrong-shop') is None
+    with sqlite3.connect(database) as connection:
+        connection.execute('UPDATE shops SET archived_at=?', ('today',))
+    assert _stored_session_identity(str(database), 'local-1', 'shop-1') is None
+
+
+def test_refresh_launch_requires_the_expected_rpa_installation(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    installation = uuid4()
+    calls = []
+    class LocalBridge:
+        discovery = SimpleNamespace(installation_id=installation)
+        async def request_session_refresh(self, *args):
+            calls.append(args)
+            return True
+    bridge = RpaAutoBridge(tmp_path, lambda: frozenset())
+    monkeypatch.setattr(bridge, '_bridge', lambda: LocalBridge())
+    with pytest.raises(RpaBridgeError, match='RPA_IDENTITY_MISMATCH'):
+        asyncio.run(bridge.request_session_refresh('a', '1', 'a' * 64, False,
+                                                   expected_installation_id=str(uuid4())))
+    assert calls == []
+    assert asyncio.run(bridge.request_session_refresh('a', '1', 'a' * 64, False,
+                                                      expected_installation_id=str(installation)))
+    assert len(calls) == 1
 
 
 def test_discovery_rejects_tampered_helper_dependency(tmp_path):
