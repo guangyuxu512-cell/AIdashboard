@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import type { DeviceListItemViewModel } from '@/entities/device'
-import type { ActiveTaskSummaryReadDto } from '@/entities/task'
+import type { ActiveTaskSummaryReadDto, TaskReadDto } from '@/entities/task'
 
 import { resolveDeviceCurrentExecution } from './device-current-execution'
 
@@ -40,6 +40,23 @@ describe('resolveDeviceCurrentExecution', () => {
       latestMessage: '测试应用已开始运行',
       taskId: 'task-1',
     })
+  })
+
+  it('uses Chinese skill names for active and refreshed tasks', () => {
+    const active = {
+      task_id: 'task-1', target_device_id: 'device-1',
+      skill_id: 'douyin.compass_selection', execution_display_name: 'douyin.compass_selection',
+      status: 'running', started_at: null, created_at: '2026-08-22T00:59:00Z',
+      latest_event: null,
+    } satisfies ActiveTaskSummaryReadDto
+    expect(resolveDeviceCurrentExecution(device, active, null).name).toBe('罗盘选品')
+
+    const refreshed = {
+      task_id: 'task-2', target_device_id: 'device-1',
+      skill_id: 'douyin.category_schema', execution_display_name: 'douyin.category_schema',
+      status: 'pending', started_at: null, created_at: '2026-08-22T00:59:00Z',
+    } as TaskReadDto
+    expect(resolveDeviceCurrentExecution(device, null, refreshed).name).toBe('商品类目与预检')
   })
 
   it('shows a real device without an active task as idle', () => {

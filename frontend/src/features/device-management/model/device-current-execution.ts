@@ -1,3 +1,4 @@
+import { formatSkillName } from '@/entities/business-skill/model/display'
 import type { DeviceListItemViewModel } from '@/entities/device'
 import type { ActiveTaskSummaryReadDto, TaskReadDto } from '@/entities/task'
 
@@ -23,7 +24,7 @@ export function resolveDeviceCurrentExecution(
     return {
       status: activeTask.status,
       label: activeTask.status === 'pending' ? '待执行' : '执行中',
-      name: displayName,
+      name: formatSkillName(activeTask.skill_id, displayName),
       tone: activeTask.status === 'pending' ? 'warning' : 'info',
       taskId: activeTask.task_id,
       appName: eventAppName,
@@ -38,7 +39,7 @@ export function resolveDeviceCurrentExecution(
     return {
       status: refreshTask.status,
       label: refreshTask.status === 'pending' ? '待执行' : '执行中',
-      name: refreshTask.execution_display_name || refreshTask.skill_id,
+      name: formatSkillName(refreshTask.skill_id, refreshTask.execution_display_name),
       tone: refreshTask.status === 'pending' ? 'warning' : 'info',
       taskId: refreshTask.task_id,
       appName: null,

@@ -3,6 +3,7 @@ import dayjs from 'dayjs'
 import { NCollapse, NCollapseItem } from 'naive-ui'
 import { computed, nextTick, ref, watch } from 'vue'
 
+import { formatSkillName } from '@/entities/business-skill/model/display'
 import { TaskStatusTag } from '@/entities/task'
 import DetailDrawer from '@/shared/components/DetailDrawer.vue'
 import EmptyState from '@/shared/components/EmptyState.vue'
@@ -128,7 +129,7 @@ watch(
       <dl class="task-runtime__facts">
         <div>
           <dt>执行对象</dt>
-          <dd>{{ runtime.task.value.execution_display_name }}</dd>
+          <dd>{{ formatSkillName(runtime.task.value.skill_id, runtime.task.value.execution_display_name) }}</dd>
         </div>
         <div>
           <dt>状态</dt>
