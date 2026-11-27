@@ -16,6 +16,7 @@ from app.modules.workers.shop_context import LOCAL_SHOPS_KEY
 
 
 SELECTION_SKILL = 'douyin.compass_selection'
+MERCHANT_SKILL = 'douyin.merchant_products'
 
 
 class SelectionDeliveryUnavailable(AppError):
@@ -58,7 +59,7 @@ def _owned_task(session: Session, device_id: UUID, task_id: UUID, *, lock: bool 
     task = session.scalar(statement)
     device = session.get(Device, device_id)
     shops = task.input_json.get(LOCAL_SHOPS_KEY, []) if task and isinstance(task.input_json, dict) else []
-    if (task is None or task.target_device_id != device_id or task.skill_id != SELECTION_SKILL
+    if (task is None or task.target_device_id != device_id or task.skill_id not in {SELECTION_SKILL, MERCHANT_SKILL}
             or task.status not in ('running', 'lost', 'success', 'failed')
             or device is None or not device.enabled or device.deleted_at is not None
             or not isinstance(shops, list) or len(shops) != 1 or not isinstance(shops[0], dict)
@@ -66,7 +67,8 @@ def _owned_task(session: Session, device_id: UUID, task_id: UUID, *, lock: bool 
         raise SelectionDeliveryNotFound()
     try:
         UUID(task.input_json['correlation_id'])
-        if task.input_json['operation'] not in ('categories', 'rank', 'basic'):
+        allowed = ('categories', 'rank', 'basic') if task.skill_id == SELECTION_SKILL else ('list',)
+        if task.input_json['operation'] not in allowed:
             raise ValueError('invalid operation')
     except (KeyError, TypeError, ValueError):
         raise SelectionDeliveryNotFound() from None
@@ -76,7 +78,7 @@ def _owned_task(session: Session, device_id: UUID, task_id: UUID, *, lock: bool 
 def delivery_context(session: Session, settings: Settings, device_id: UUID, task_id: UUID) -> dict:
     task = _owned_task(session, device_id, task_id)
     shop = task.input_json[LOCAL_SHOPS_KEY][0]
-    return {'task_id': str(task_id), 'device_id': str(device_id), 'origin': _destination(settings),
+    return {'task_id': str(task_id), 'device_id': str(device_id), 'skill_id': task.skill_id, 'origin': _destination(settings),
             'correlation_id': task.input_json['correlation_id'], 'operation': task.input_json['operation'],
             'local_shop_id': shop['local_shop_id'], 'platform_shop_id': shop['platform_shop_id']}
 

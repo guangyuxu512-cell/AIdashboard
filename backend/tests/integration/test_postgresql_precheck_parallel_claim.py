@@ -200,6 +200,50 @@ def claim_parallel(engine, device_id, kind):
         return task
 
 
+def enqueue_merchant(session, team_id, user_id, device_id, shop, created):
+    task = Task(task_id=uuid4(), team_id=team_id, created_by_user_id=user_id,
+        target_device_id=device_id, skill_id='douyin.merchant_products', execution_display_name='fixture',
+        status='pending', input_json={'correlation_id': str(uuid4()), 'sync_id': str(uuid4()),
+            'operation': 'list', 'state': 'on_sale', 'page': 0,
+            '_worker_local_shops': [{'local_shop_id': shop, 'platform': 'douyin', 'platform_shop_id': shop}]},
+        created_at=created)
+    session.add(task)
+    return task.task_id
+
+
+def test_merchant_tasks_share_shop_capacity_and_prechecks_continue(devices):
+    engine, team_id, user_id, ids = devices
+    device, other, now = ids[0], ids[1], datetime.now(UTC)
+    shop_a, shop_b = f'{team_id}-a', f'{team_id}-b'
+    with Session(engine) as session:
+        merchant_a = enqueue_merchant(session, team_id, user_id, device, shop_a, now)
+        merchant_b = enqueue_merchant(session, team_id, user_id, device, shop_b, now + timedelta(microseconds=1))
+        precheck = enqueue(session, team_id, user_id, device, f'{team_id}-pre', now + timedelta(microseconds=2))
+        same_shop = enqueue_basic(session, team_id, user_id, other, shop_a, now + timedelta(microseconds=3))
+        session.commit()
+    assert claim_parallel(engine, device, 'selection').task_id == merchant_a
+    assert claim_parallel(engine, device, 'selection').task_id == merchant_b
+    assert claim_parallel(engine, device, 'precheck').task_id == precheck
+    assert claim_parallel(engine, other, 'selection') is None
+    with Session(engine) as session:
+        session.get(Task, merchant_a).status = 'success'
+        session.commit()
+    assert claim_parallel(engine, other, 'selection').task_id == same_shop
+
+
+def test_old_worker_cannot_claim_merchant_delivery(devices):
+    engine, team_id, user_id, ids = devices
+    now, device = datetime.now(UTC), ids[0]
+    with Session(engine) as session:
+        task_id = enqueue_merchant(session, team_id, user_id, device, f'{team_id}-shop', now)
+        session.commit()
+    with Session(engine, expire_on_commit=False) as session:
+        result = TaskRepository(session).claim_next(device_id=device, now=now,
+            lease_until=now + timedelta(minutes=1), merchant_delivery_supported=False)
+        session.commit()
+        assert result is None and session.get(Task, task_id).status == 'pending'
+
+
 def test_five_mixed_selection_tasks_coexist_with_prechecks_and_exclusive_task_drains(devices):
     engine, team_id, user_id, ids = devices
     device, now = ids[0], datetime.now(UTC)

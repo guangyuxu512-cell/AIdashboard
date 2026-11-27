@@ -393,6 +393,7 @@ class TaskRepository:
         parallel_kind: str | None = None,
         local_context_supported: bool = True,
         operations_delivery_supported: bool = True,
+        merchant_delivery_supported: bool = True,
     ) -> Task | None:
         # Ordinary RPA tasks remain exclusive. Prechecks may use five shops per
         # device and three slots per shop. Serialize this device's short claim
@@ -409,7 +410,8 @@ class TaskRepository:
         if parallel_kind is not None:
             return self._claim_parallel(device_id=device_id, now=now, lease_until=lease_until,
                                         kind=parallel_kind, local_context_supported=local_context_supported,
-                                        operations_delivery_supported=operations_delivery_supported)
+                                        operations_delivery_supported=operations_delivery_supported,
+                                        merchant_delivery_supported=merchant_delivery_supported)
         active = self.session.execute(
             select(Task.skill_id, Task.input_json["platform_shop_id"].astext).where(
                 Task.target_device_id == device_id,
@@ -435,6 +437,8 @@ class TaskRepository:
             eligible.append(~Task.input_json.has_key(LOCAL_SHOPS_KEY))
         if not operations_delivery_supported:
             eligible.append(Task.skill_id != 'douyin.compass_selection')
+        if not merchant_delivery_supported:
+            eligible.append(Task.skill_id != 'douyin.merchant_products')
         predicates = [
             Task.target_device_id == device_id,
             Task.status == TaskStatus.PENDING.value,
@@ -500,16 +504,20 @@ class TaskRepository:
             if not self._shop_has_capacity(candidate.platform_shop_id, 'worker-precheck-shop:',
                     Task.skill_id == PRECHECK_KIND, shop_column, 3):
                 return None
-        if candidate.skill_id == 'douyin.compass_selection':
+        if candidate.skill_id in {'douyin.compass_selection', 'douyin.merchant_products'}:
             payload = self.session.scalar(select(Task.input_json).where(Task.task_id == candidate.task_id))
             shops = payload.get(LOCAL_SHOPS_KEY, []) if isinstance(payload, dict) else []
-            if (payload and payload.get('operation') in ('categories', 'rank', 'basic') and isinstance(shops, list)
+            valid_operation = (payload.get('operation') in ('categories', 'rank', 'basic')
+                               if candidate.skill_id == 'douyin.compass_selection' else payload.get('operation') == 'list') if payload else False
+            if (valid_operation and isinstance(shops, list)
                     and len(shops) == 1 and isinstance(shops[0], dict)):
                 platform = shops[0].get('platform_shop_id')
                 if isinstance(platform, str) and platform:
                     basic_shop = Task.input_json[LOCAL_SHOPS_KEY][0]['platform_shop_id'].astext
-                    is_selection = and_(Task.skill_id == 'douyin.compass_selection',
-                                        Task.input_json['operation'].astext.in_(['categories', 'rank', 'basic']))
+                    is_selection = or_(and_(Task.skill_id == 'douyin.compass_selection',
+                                            Task.input_json['operation'].astext.in_(['categories', 'rank', 'basic'])),
+                                       and_(Task.skill_id == 'douyin.merchant_products',
+                                            Task.input_json['operation'].astext == 'list'))
                     if not self._shop_has_capacity(platform, 'worker-compass-basic-shop:',
                                                    is_selection, basic_shop, 1):
                         return None
@@ -531,7 +539,7 @@ class TaskRepository:
 
     def _claim_parallel(self, *, device_id: UUID, now: datetime, lease_until: datetime,
                         kind: str, local_context_supported: bool,
-                        operations_delivery_supported: bool) -> Task | None:
+                        operations_delivery_supported: bool, merchant_delivery_supported: bool = True) -> Task | None:
         """Claim one explicitly parallel-safe task under the locked device row.
 
         The old claim endpoints retain their exclusive semantics for older
@@ -550,7 +558,8 @@ class TaskRepository:
                 return None
             if skill == PRECHECK_KIND and payload.get('platform_shop_id'):
                 prechecks.append(payload['platform_shop_id'])
-            elif (skill == 'douyin.compass_selection' and payload.get('operation') in ('categories', 'rank', 'basic')
+            elif (((skill == 'douyin.compass_selection' and payload.get('operation') in ('categories', 'rank', 'basic'))
+                  or (skill == 'douyin.merchant_products' and payload.get('operation') == 'list'))
                   and isinstance(payload.get(LOCAL_SHOPS_KEY), list)
                   and len(payload[LOCAL_SHOPS_KEY]) == 1
                   and isinstance(payload[LOCAL_SHOPS_KEY][0], dict)
@@ -566,13 +575,16 @@ class TaskRepository:
         precheck_shop = Task.input_json['platform_shop_id'].astext
         basic_shop = Task.input_json[LOCAL_SHOPS_KEY][0]['platform_shop_id'].astext
         is_basic = and_(Task.skill_id == 'douyin.compass_selection', op == 'basic')
-        is_selection = and_(Task.skill_id == 'douyin.compass_selection', op.in_(['categories', 'rank', 'basic']))
+        is_selection = or_(and_(Task.skill_id == 'douyin.compass_selection', op.in_(['categories', 'rank', 'basic'])),
+                           and_(Task.skill_id == 'douyin.merchant_products', op == 'list'))
         eligible = [Task.target_device_id == device_id, Task.status == TaskStatus.PENDING.value,
                     ~Task.skill_id.like('yingdao.%'), ~Task.shop_links.any()]
         if not local_context_supported:
             eligible.append(~Task.input_json.has_key(LOCAL_SHOPS_KEY))
         if not operations_delivery_supported:
             eligible.append(Task.skill_id != 'douyin.compass_selection')
+        if not merchant_delivery_supported:
+            eligible.append(Task.skill_id != 'douyin.merchant_products')
         # An older exclusive task drains both streams before it runs.
         parallel = or_(Task.skill_id == PRECHECK_KIND, is_selection)
         barrier = self.session.execute(select(Task.created_at, Task.task_id).where(

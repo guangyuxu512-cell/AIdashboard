@@ -88,6 +88,11 @@ def _supports_operations_delivery(worker_version: str | None) -> bool:
     return bool(match and tuple(int(part) for part in match.groups()) >= (0, 5, 9))
 
 
+def _supports_merchant_delivery(worker_version: str | None) -> bool:
+    match = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)(?:[-+].*)?", worker_version or "")
+    return bool(match and tuple(int(part) for part in match.groups()) >= (0, 5, 19))
+
+
 class TaskService:
     def __init__(
         self,
@@ -108,7 +113,7 @@ class TaskService:
     def create(self, data: TaskCreate, actor: ActorContext) -> Task:
         team_id = actor.require_team_id()
         request_hash = None
-        if data.skill_id == 'douyin.compass_selection':
+        if data.skill_id in {'douyin.compass_selection', 'douyin.merchant_products'}:
             try:
                 correlation = str(UUID(data.input['correlation_id']))
                 if correlation != data.input['correlation_id']:
@@ -120,8 +125,8 @@ class TaskService:
                     sort_keys=True, separators=(',', ':'), allow_nan=False).encode('utf-8')).hexdigest()
             except (ValueError, TypeError):
                 raise TaskInputInvalidError('选品任务参数无效') from None
-            self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(
-                'operations-selection:' + correlation, 0))))
+            prefix = 'operations-selection:' if data.skill_id == 'douyin.compass_selection' else 'operations-merchant-products:'
+            self.session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(prefix + correlation, 0))))
             existing = self.session.scalar(select(Task).where(
                 Task.skill_id == data.skill_id, Task.input_json['correlation_id'].astext == correlation))
             if existing is not None:
@@ -246,13 +251,15 @@ class TaskService:
             runtime = self.repository.get_device_runtime(data.target_device_id)
             if runtime is None or runtime.connection_status != "online":
                 raise TaskWorkerOfflineError()
-        if data.skill_id == "douyin.compass_selection":
+        if data.skill_id in {"douyin.compass_selection", "douyin.merchant_products"}:
             runtime = self.repository.get_device_runtime(data.target_device_id)
-            if runtime is None or not _supports_operations_delivery(runtime.worker_version):
-                raise TaskInputInvalidError("该设备的 Worker 尚不支持选品结果回传")
+            supported = (_supports_merchant_delivery if data.skill_id == 'douyin.merchant_products'
+                         else _supports_operations_delivery)
+            if runtime is None or not supported(runtime.worker_version):
+                raise TaskInputInvalidError("该设备的 Worker 尚不支持此结果回传")
             if (len(local_shops) != 1 or local_shops[0].get("platform") != "douyin"
                     or not local_shops[0].get("platform_shop_id")):
-                raise TaskInputInvalidError("选品需要选择一家具备平台身份的本机店铺")
+                raise TaskInputInvalidError("任务需要选择一家具备平台身份的本机店铺")
             if not self.settings.operations_selection_origin:
                 raise TaskInputInvalidError("运营中心结果接收服务未配置")
         capability = self.repository.get_skill_capability(
@@ -609,6 +616,7 @@ class TaskService:
             parallel_kind=parallel_kind,
             local_context_supported=_supports_local_shop_context(getattr(runtime, "worker_version", None)),
             operations_delivery_supported=_supports_operations_delivery(getattr(runtime, "worker_version", None)),
+            merchant_delivery_supported=_supports_merchant_delivery(getattr(runtime, "worker_version", None)),
         )
 
     def renew(

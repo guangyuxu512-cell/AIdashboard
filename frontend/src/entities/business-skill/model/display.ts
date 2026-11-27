@@ -1,4 +1,5 @@
 const skillNames: Record<string, { label: string; oldNames?: string[] }> = {
+  'douyin.merchant_products': { label: '抖店商品管理' },
   'douyin.compass_selection': { label: '罗盘选品' },
   'douyin.category_schema': { label: '商品类目与预检' },
   'system.rpa_inventory_diagnostic': { label: 'RPA 店铺连接诊断' },
