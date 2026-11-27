@@ -1,5 +1,6 @@
 import asyncio
 import json
+import itertools
 import sqlite3
 import sys
 from pathlib import Path
@@ -48,7 +49,26 @@ def test_session_revision_changes_when_rpa_saves_a_new_snapshot(tmp_path):
         connection.execute("UPDATE worker_shop_sessions SET encrypted_payload=?", ("synthetic-encrypted-b",))
     second = _stored_session_revisions(str(database))
     assert first[("local-1", "shop-1")] != second[("local-1", "shop-1")]
-    assert _stored_session_revisions(str(tmp_path / "missing.db")) == {}
+    assert _stored_session_revisions(str(tmp_path / "missing.db")) is None
+    legacy = tmp_path / "legacy.db"
+    with sqlite3.connect(legacy) as connection:
+        connection.execute("CREATE TABLE other_table (id INTEGER)")
+    assert _stored_session_revisions(str(legacy)) == {}
+
+
+def test_locked_sqlite_is_unavailable_instead_of_empty(tmp_path):
+    database = tmp_path / 'locked.db'
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute('CREATE TABLE worker_shop_sessions (local_shop_id TEXT, platform_shop_id TEXT, '
+                           'captured_at TEXT, encrypted_payload TEXT)')
+        connection.commit()
+        connection.execute('BEGIN EXCLUSIVE')
+        assert _stored_session_revisions(str(database)) is None
+    finally:
+        connection.rollback()
+        connection.close()
+    assert _stored_session_revisions(str(database)) == {}
 
 
 def test_discovery_rejects_tampered_helper_dependency(tmp_path):
@@ -76,6 +96,35 @@ def test_automatic_discovery_requires_signed_release_digest(tmp_path):
         RpaAutoBridge(data_dir, lambda: frozenset())._bridge()
     bridge = RpaAutoBridge(data_dir, lambda: frozenset({trust.helper_tree_sha256}))._bridge()
     assert bridge.discovery.installation_id
+
+
+def test_cached_discovery_keeps_allowlist_and_checks_tree_before_launch(tmp_path, monkeypatch):
+    root, data_dir, trust, _ = fixture_installation(tmp_path)
+    import app.rpa_session_bridge as module
+    original_digest = module.helper_tree_digest
+    hashes = []
+
+    def digest(path):
+        hashes.append(1)
+        return original_digest(path)
+
+    monkeypatch.setattr(module, 'helper_tree_digest', digest)
+    allowed = {trust.helper_tree_sha256}
+    auto = RpaAutoBridge(data_dir, lambda: frozenset(allowed))
+    assert auto._bridge() is auto._bridge()
+    assert len(hashes) == 2  # Discovery hashes twice only on the first use.
+    allowed.clear()
+    with pytest.raises(RpaBridgeError, match="RPA_HELPER_UNTRUSTED"):
+        auto._bridge()
+    allowed.add(trust.helper_tree_sha256)
+    (root / "resources/listing-worker/_internal/dependency.dll").write_bytes(b"tampered")
+
+    async def never_launch(*args, **kwargs):
+        raise AssertionError("changed helper must never launch")
+
+    monkeypatch.setattr(asyncio, 'create_subprocess_exec', never_launch)
+    with pytest.raises(RpaBridgeError, match="RPA_HELPER_UNTRUSTED"):
+        asyncio.run(auto.list_shops())
 
 
 @pytest.mark.parametrize("supports_compass", [True, False])
@@ -123,13 +172,69 @@ def test_identity_checked_and_session_remains_in_memory(tmp_path, monkeypatch, s
     assert inventory.shops[0].compass_session_verified is (True if supports_compass else None)
     assert len(inventory.shops[0].session_revision) == 64
     assert "synthetic-encrypted-a" not in inventory.model_dump_json()
+    import app.rpa_session_bridge as module
+    original_digest = module.helper_tree_digest
+    hashes = []
+    def count_digest(path):
+        hashes.append(1)
+        return original_digest(path)
+    with monkeypatch.context() as context:
+        context.setattr(module, 'helper_tree_digest', count_digest)
+        automatic = RpaAutoBridge(data_dir, lambda: frozenset({trust.helper_tree_sha256}))
+        assert asyncio.run(automatic.list_shops()).shops[0].session_stored
+        assert asyncio.run(automatic.list_shops()).shops[0].session_stored
+        assert len(hashes) == 4  # First discovery + check, then one check per launch.
     if supports_compass:
         first = {('a', '1'): 'a' * 64}
         second = {('a', '1'): 'b' * 64}
-        snapshots = iter([first, second])
+        snapshots = iter([first, second, second, second])
         monkeypatch.setattr('app.rpa_session_bridge._stored_session_revisions', lambda _path: next(snapshots))
         changed = asyncio.run(bridge.list_shops())
-        assert changed.shops[0].compass_session_verified is None
+        assert changed.shops[0].session_revision == 'b' * 64
+        assert changed.shops[0].compass_session_verified is True
+        snapshots = itertools.cycle([first, second])
+        with pytest.raises(RpaBridgeError, match="RPA_INVENTORY_UNAVAILABLE"):
+            asyncio.run(bridge.list_shops())
+        monkeypatch.setattr('app.rpa_session_bridge._stored_session_revisions', lambda _path: None)
+        with pytest.raises(RpaBridgeError, match="RPA_INVENTORY_UNAVAILABLE"):
+            asyncio.run(bridge.list_shops())
+        from app.rpa_session_bridge import _BridgeProcess
+        original_call = _BridgeProcess.call
+        async def mismatched_identity(self, data):
+            if data.get('type') == 'compass_status':
+                raise RpaBridgeError('RPA_SHOP_IDENTITY_MISMATCH')
+            return await original_call(self, data)
+        with monkeypatch.context() as context:
+            context.setattr('app.rpa_session_bridge._stored_session_revisions', lambda _path: first)
+            context.setattr(_BridgeProcess, 'call', mismatched_identity)
+            with pytest.raises(RpaBridgeError, match="RPA_INVENTORY_UNAVAILABLE"):
+                asyncio.run(bridge.list_shops())
+        calls = [0]
+        async def changed_mapping(self, data):
+            value = await original_call(self, data)
+            if data.get('type') == 'list_stored_shops':
+                calls[0] += 1
+                if calls[0] % 2 == 0:
+                    value['shops'][0]['platformShopId'] = 'different'
+            return value
+        with monkeypatch.context() as context:
+            context.setattr('app.rpa_session_bridge._stored_session_revisions', lambda _path: first)
+            context.setattr(_BridgeProcess, 'call', changed_mapping)
+            with pytest.raises(RpaBridgeError, match="RPA_INVENTORY_UNAVAILABLE"):
+                asyncio.run(bridge.list_shops())
+        current = [first]
+        calls = [0]
+        async def snapshot_saved_during_final_list(self, data):
+            value = await original_call(self, data)
+            if data.get('type') == 'list_stored_shops':
+                calls[0] += 1
+                if calls[0] == 2:
+                    current[0] = second
+            return value
+        with monkeypatch.context() as context:
+            context.setattr('app.rpa_session_bridge._stored_session_revisions', lambda _path: current[0])
+            context.setattr(_BridgeProcess, 'call', snapshot_saved_during_final_list)
+            assert asyncio.run(bridge.list_shops()).shops[0].session_revision == 'b' * 64
     session = asyncio.run(bridge.read_session("a", "1"))
     assert asyncio.run(bridge.request_session_refresh("a", "1", "a" * 64, True)) is True
     status = asyncio.run(bridge.session_refresh_status("a", "1", "a" * 64))

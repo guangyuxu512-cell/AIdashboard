@@ -81,6 +81,32 @@ def test_busy_shop_exclusion_keeps_previous_observation_and_rechecks_before_expi
     assert monitor.due([first, second]) == first
 
 
+def test_new_revision_does_not_jump_ahead_of_an_unchecked_shop():
+    monitor = ShopSessionHealth(Bridge(), clock=lambda: 100.0)
+    first = shop()
+    second = shop().model_copy(update={"local_shop_id": "local-b", "platform_shop_id": "456"})
+    assert monitor.due([first, second]) == first
+    changed = first.model_copy(update={"session_revision": "b" * 64})
+    assert monitor.has_due([changed, second])
+    assert monitor.due([changed, second]) == second
+    assert monitor.report(changed)["sessionStatus"] is None
+
+
+def test_temporarily_unreadable_revision_keeps_last_observation_without_logging_in():
+    bridge = Bridge()
+    monitor = ShopSessionHealth(bridge)
+    target = shop()
+    monitor.record_explicit_failure(target, 'merchant')
+    before = monitor.report(target)
+    bridge.revision = None
+    assert asyncio.run(monitor.check(target)) is False
+    assert monitor.take_snapshot_changed(target)
+    assert monitor.report(target) == before
+    assert bridge.refreshes == []
+    bridge.revision = target.session_revision
+    assert monitor.report(target)['sessionStatus'] == 'invalid'
+
+
 def test_no_saved_snapshot_never_starts_a_check():
     target = shop().model_copy(update={"session_stored": False, "session_revision": None})
     monitor = ShopSessionHealth(Bridge())

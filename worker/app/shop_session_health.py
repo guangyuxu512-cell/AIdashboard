@@ -55,6 +55,9 @@ class ShopSessionHealth:
         self._pending: dict[tuple[str, str, str, str | None], tuple[float, set[str]]] = {}
         self._refresh_attempts: dict[tuple[str, str, str, str | None], tuple[int, float]] = {}
         self._manual_blocked: set[tuple[str, str, str, str | None]] = set()
+        self._last_served: dict[tuple[str, str], int] = {}
+        self._served_sequence = 0
+        self._changed_snapshots: set[tuple[str, str, str, str | None]] = set()
 
     @staticmethod
     def _refresh_key(shop: LocalShop) -> tuple[str, str, str, str | None] | None:
@@ -180,8 +183,11 @@ class ShopSessionHealth:
         self._next_check = {key: value for key, value in self._next_check.items() if key[0] in keys}
         self._observations = {key: value for key, value in self._observations.items() if key[0] in keys}
         self._pending = {key: value for key, value in self._pending.items() if key in keys}
+        self._changed_snapshots.intersection_update(keys)
         self._refresh_attempts = {key: value for key, value in self._refresh_attempts.items() if key in refresh_keys}
         self._manual_blocked.intersection_update(refresh_keys)
+        identities = {(shop.local_shop_id, shop.platform_shop_id) for shop in shops if shop.platform_shop_id}
+        self._last_served = {key: value for key, value in self._last_served.items() if key in identities}
         now = self.clock()
         candidates = []
         for shop in shops:
@@ -193,16 +199,32 @@ class ShopSessionHealth:
                        if self._next_check.get((key, kind), 0) <= now}
                 if not due:
                     continue
-                candidates.append((min(self._next_check.get((key, kind), 0) for kind in due), shop, key, due))
+                candidates.append((min(self._next_check.get((key, kind), 0) for kind in due),
+                                   self._last_served.get((shop.local_shop_id, shop.platform_shop_id), 0),
+                                   shop, key, due))
         if candidates:
             # Unchecked/longest-waiting shops take priority over retries, so a
             # handful of unavailable shops cannot starve the rest of a fleet.
-            _, shop, key, due = min(candidates, key=lambda candidate: candidate[0])
+            _, _, shop, key, due = min(candidates, key=lambda candidate: (candidate[0], candidate[1]))
+            self._served_sequence += 1
+            self._last_served[(shop.local_shop_id, shop.platform_shop_id)] = self._served_sequence
             for kind in due:
                 self._next_check[(key, kind)] = now + _UNKNOWN_INTERVAL
             self._pending[key] = (now + _UNKNOWN_INTERVAL, due)
             return shop
         return None
+
+    def has_due(self, shops: list[LocalShop], *, excluded_platform_ids: frozenset[str] = frozenset()) -> bool:
+        """Check for other due shops without reserving or changing a probe."""
+        now = self.clock()
+        for shop in shops:
+            if shop.platform_shop_id in excluded_platform_ids:
+                continue
+            key = self._key(shop)
+            if key is not None and (key not in self._pending or self._pending[key][0] <= now):
+                if any(self._next_check.get((key, kind), 0) <= now for kind in ('merchant', 'compass')):
+                    return True
+        return False
 
     def report(self, shop: LocalShop) -> dict[str, str | None]:
         key = self._key(shop)
@@ -228,7 +250,12 @@ class ShopSessionHealth:
         kinds = reserved[1] if reserved else {"merchant", "compass"}
         results: dict[str, Literal["valid", "invalid"] | None] = {kind: None for kind in kinds}
         try:
-            if await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id) != shop.session_revision:
+            before = await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id)
+            if before is None:
+                self._changed_snapshots.add(key)
+                return False  # Unreadable is not proof that the snapshot changed.
+            if before != shop.session_revision:
+                self._changed_snapshots.add(key)
                 for kind in ("merchant", "compass"):
                     self._observations.pop((key, kind), None)
                 return False
@@ -249,12 +276,21 @@ class ShopSessionHealth:
                     except Exception:
                         # One unavailable service must not hide the other service's status.
                         pass
-            if await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id) != shop.session_revision:
+            after = await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id)
+            if after is None:
+                self._changed_snapshots.add(key)
+                results = {kind: None for kind in kinds}
+            elif after != shop.session_revision:
+                self._changed_snapshots.add(key)
                 for kind in ("merchant", "compass"):
                     self._observations.pop((key, kind), None)
                 results = {kind: None for kind in kinds}
         except asyncio.CancelledError:
             raise
+        except RpaBridgeError as error:
+            if error.code in {'RPA_SHOP_IDENTITY_MISMATCH', 'RPA_NOT_READY', 'RPA_HELPER_UNTRUSTED'}:
+                self._changed_snapshots.add(key)
+            return False
         except Exception:
             # Network, risk control, parsing and bridge failures are not proof
             # that the login expired. Never log a platform response or Session.
@@ -269,6 +305,13 @@ class ShopSessionHealth:
                 self._observations[(key, kind)] = SessionObservation(result, self.now())
         confirmed_invalid = any(result == "invalid" for result in results.values())
         return confirmed_invalid and self._refresh_available(shop)
+
+    def take_snapshot_changed(self, shop: LocalShop) -> bool:
+        key = self._key(shop)
+        if key is not None and key in self._changed_snapshots:
+            self._changed_snapshots.remove(key)
+            return True
+        return False
 
 
 async def _check_identity(client: httpx.AsyncClient, cookies: httpx.Cookies, user_agent: str,

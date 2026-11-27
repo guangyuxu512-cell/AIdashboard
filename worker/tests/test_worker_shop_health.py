@@ -402,3 +402,54 @@ def test_compass_observation_falls_back_to_previous_server_without_losing_mercha
         assert "compassSessionStatus" not in bodies[2]["shops"][0]
 
     asyncio.run(scenario())
+
+
+def test_many_shops_are_checked_promptly_without_waiting_one_minute_each(tmp_path, monkeypatch):
+    async def scenario():
+        monkeypatch.setattr("app.worker._HEALTH_BETWEEN_SHOPS_SECONDS", 0.01)
+        shops = [LocalShop(localShopId=f"local-{n}", platformShopId=str(1000 + n), shopName=str(n),
+                           platform="douyin", sessionStored=True, sessionRevision=f"{n + 1:064x}")
+                 for n in range(35)]
+        inventory = SimpleNamespace(installation_id=uuid4(), shops=shops)
+        stop = asyncio.Event()
+        checked = []
+
+        class Bridge:
+            list_calls = 0
+
+            async def list_shops(self):
+                self.list_calls += 1
+                return inventory
+
+            async def session_revision(self, local, platform):
+                return next(shop.session_revision for shop in shops if shop.local_shop_id == local)
+
+            async def read_session(self, local, platform):
+                return LocalSession(localShopId=local, platformShopId=platform, platform="douyin",
+                    userAgent=platform, cookies=[LocalCookie(name="test", value="synthetic",
+                                                           domain="jinritemai.com", path="/")])
+
+        class Client:
+            async def report_rpa_inventory(self, payload):
+                if all(shop.get("sessionStatus") == "valid" and shop.get("compassSessionStatus") == "valid"
+                       for shop in payload["shops"]):
+                    stop.set()
+
+        def identity(request):
+            shop_id = request.headers["user-agent"]
+            checked.append(shop_id)
+            return (httpx.Response(200, json={"st": 0, "data": {"shop_id": shop_id}})
+                    if request.url.host == "compass.jinritemai.com" else
+                    httpx.Response(200, json={"code": 0, "data": {"id": shop_id}}))
+
+        bridge = Bridge()
+        worker = Worker(WorkerSettings(server_url="https://test.invalid", device_id=uuid4(),
+            device_token="synthetic", runtime_root=tmp_path), Client(), object(), rpa_bridge=bridge)
+        worker.shop_session_health = ShopSessionHealth(bridge, transport=httpx.MockTransport(identity))
+        await asyncio.wait_for(worker._rpa_inventory_loop(stop), timeout=5)
+        await worker._cancel_shop_health_probe()
+        assert len(checked) == 70
+        assert set(checked) == {shop.platform_shop_id for shop in shops}
+        assert bridge.list_calls == 1  # Reuse the validated snapshot within one inventory period.
+
+    asyncio.run(scenario())
