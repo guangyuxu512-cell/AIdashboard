@@ -5,7 +5,7 @@ from datetime import datetime
 import json
 from pathlib import Path
 import re
-from typing import Any, Generic, Literal, Mapping, Protocol, TypeVar
+from typing import Any, ClassVar, Generic, Literal, Mapping, Protocol, TypeVar
 from uuid import UUID
 
 from pydantic import (
@@ -38,6 +38,7 @@ class SkillResult(BaseModel):
     """Small JSON result returned through the existing Task result contract."""
 
     model_config = ConfigDict(extra="forbid")
+    max_result_bytes: ClassVar[int] = MAX_SKILL_RESULT_BYTES
 
     summary: str = Field(min_length=1, max_length=1_000)
     data: dict[str, JsonValue] = Field(default_factory=dict)
@@ -49,9 +50,9 @@ class SkillResult(BaseModel):
             ensure_ascii=False,
             separators=(",", ":"),
         ).encode("utf-8")
-        if len(encoded) > MAX_SKILL_RESULT_BYTES:
+        if len(encoded) > self.max_result_bytes:
             raise ValueError(
-                f"Skill result exceeds {MAX_SKILL_RESULT_BYTES} bytes",
+                f"Skill result exceeds {self.max_result_bytes} bytes",
             )
         return self
 
