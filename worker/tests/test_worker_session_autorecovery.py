@@ -349,6 +349,26 @@ def test_snapshot_is_captured_after_refresh_wait(tmp_path):
     asyncio.run(scenario())
 
 
+def test_inconsistent_success_is_never_treated_as_expired(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        task = make_task("douyin.merchant_products", shop, input_data={"operation": "list"})
+
+        async def inconsistent(_task):
+            return ExecutionResult(status="success", error_code="SHOP_SESSION_EXPIRED")
+
+        worker._prepare_and_execute = inconsistent
+        result = await worker._execute_with_selection_interval(task)
+        worker._queue_session_recheck(task, result)
+        assert task.task_id not in worker._task_expiry_revisions
+        assert not worker._session_rechecks
+        assert not worker._pending_shop_refresh
+
+    asyncio.run(scenario())
+
+
 @pytest.mark.parametrize("acknowledgement", ["accepted", "lost"])
 def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path, acknowledgement):
     async def scenario():

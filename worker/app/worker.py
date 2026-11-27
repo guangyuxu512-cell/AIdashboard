@@ -861,7 +861,8 @@ class Worker:
         result = await self._prepare_and_execute(task)
         real_precheck_failure = (task.skill_id != _PRECHECK_KIND or result.result
                                  and result.result.get('http_status') in (200, 401))
-        if before and result.error_code == 'SHOP_SESSION_EXPIRED' and real_precheck_failure:
+        if (before and result.status is ExecutionStatus.FAILED
+                and result.error_code == 'SHOP_SESSION_EXPIRED' and real_precheck_failure):
             after = await self._task_snapshot_revision(task)
             if before == after:
                 self._task_expiry_revisions[task.task_id] = before
