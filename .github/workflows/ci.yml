@@ -121,6 +121,15 @@ jobs:
         env:
           VERIFY_WORKER_PYTHON: ${{ runner.temp }}/verify-worker/Scripts/python.exe
         run: pnpm verify --full --report=.dev-runtime/verify/ci.json
+      - name: Build and verify the packaged Worker runtime
+        shell: pwsh
+        env:
+          WORKER_BUILD_PYTHON: ${{ runner.temp }}/verify-worker/Scripts/python.exe
+        run: |
+          $publicKey = Join-Path $env:RUNNER_TEMP 'capability-public-key.txt'
+          [System.IO.File]::WriteAllText($publicKey, [Convert]::ToBase64String([byte[]]::new(32)))
+          ./scripts/build-worker.ps1 -SkipTests -CapabilityPublicKeyFile $publicKey
+          ./scripts/test-worker-package.ps1
       - name: Upload scoped verification report
         if: always()
         uses: actions/upload-artifact@v4
