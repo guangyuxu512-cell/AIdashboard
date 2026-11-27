@@ -165,6 +165,9 @@ def test_worker_update_never_starts_while_task_or_unreported_event_is_active(tmp
     worker._active_task_ids.add(uuid4())
     assert not asyncio.run(worker._update_base_if_idle()) and updater.calls == 0
     worker._active_task_ids.clear()
+    worker._refresh_done["shop"] = asyncio.Event()
+    assert not asyncio.run(worker._update_base_if_idle()) and updater.calls == 0
+    worker._refresh_done.clear()
     worker.event_reporter = SimpleNamespace(buffer=["unreported"], flush_once=lambda: None)
     async def blocked_flush():
         return False

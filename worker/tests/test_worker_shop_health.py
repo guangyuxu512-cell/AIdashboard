@@ -7,7 +7,7 @@ import httpx
 
 from app.client import WorkerApiClient
 from app.config import WorkerSettings
-from app.contracts import LocalShopContext, WorkerTask
+from app.contracts import ExecutionResult, LocalShopContext, WorkerTask
 from app.rpa_session_bridge import LocalCookie, LocalSession, LocalShop
 from app.shop_session_health import ShopSessionHealth
 from app.worker import Worker
@@ -31,6 +31,9 @@ def test_real_work_preempts_background_shop_verification(tmp_path):
 
         class Health:
             def missing_session_due(self, shops):
+                return None
+
+            def invalid_session_due(self, shops):
                 return None
 
             def due(self, shops, *, excluded_platform_ids=frozenset()):
@@ -107,6 +110,12 @@ def test_busy_shop_does_not_block_other_shop_checks(tmp_path):
                 pass
 
         class Health:
+            def missing_session_due(self, shops):
+                return None
+
+            def invalid_session_due(self, shops):
+                return None
+
             def due(self, all_shops, *, excluded_platform_ids=frozenset()):
                 assert len(all_shops) == 2
                 assert excluded_platform_ids == {"123"}
@@ -211,7 +220,7 @@ def test_selection_cancels_same_shop_probe_before_platform_request(tmp_path, mon
         async def execute(claimed):
             assert cancelled.is_set()
             assert asyncio.get_running_loop().time() - now >= 0.19
-            return SimpleNamespace()
+            return ExecutionResult(status="success")
 
         worker._prepare_and_execute = execute
         selection = asyncio.create_task(worker._execute_with_selection_interval(task))
@@ -276,7 +285,7 @@ def test_busy_selection_revalidates_same_shop_during_wait_without_overlapping(tm
             assert stopped.is_set()
             assert worker._shop_health_probe is None
             assert asyncio.get_running_loop().time() - now >= 0.29
-            return SimpleNamespace()
+            return ExecutionResult(status="success")
 
         worker._prepare_and_execute = execute
         selection = asyncio.create_task(worker._execute_with_selection_interval(task))
@@ -306,6 +315,7 @@ def test_refresh_discovered_during_other_work_is_deferred_until_idle(tmp_path):
 
             async def request_refresh(self, shop):
                 refreshed.append(shop.platform_shop_id)
+                return False
 
             def report(self, _shop):
                 return {}

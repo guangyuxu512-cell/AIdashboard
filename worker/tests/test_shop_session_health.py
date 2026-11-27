@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop
+from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop, RpaBridgeError
 from app.shop_session_health import ShopSessionHealth
 
 
@@ -152,7 +152,7 @@ def test_unavailable_rpa_can_accept_refresh_after_it_is_updated():
 
         async def request_session_refresh(self, local_id, platform_id, revision, require_compass):
             if not self.ready:
-                raise RuntimeError("old helper")
+                raise RpaBridgeError("RPA_HELPER_UNTRUSTED")
             return await super().request_session_refresh(local_id, platform_id, revision, require_compass)
 
     bridge = UpdatingBridge()
@@ -189,16 +189,14 @@ def test_unconfirmed_shop_stays_unknown_and_stops_when_rpa_requires_manual_verif
             return httpx.Response(200, json={"st": 10012})
         return httpx.Response(200, json={"code": 10008})
     monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
-    assert asyncio.run(monitor.check(target)) is True
+    assert asyncio.run(monitor.check(target)) is False
     assert monitor.report(target)["sessionStatus"] is None
     assert monitor.report(target)["compassSessionStatus"] is None
-    assert asyncio.run(monitor.request_refresh(target)) is True
-    assert bridge.refreshes == [("local-a", "123", "a" * 64, True)]
     bridge.status = LocalRefreshStatus("manual_required", datetime.now(UTC))
     clock[0] += 3600
     assert not asyncio.run(monitor.request_refresh(target))
     assert asyncio.run(monitor.check(target)) is False
-    assert len(bridge.refreshes) == 1
+    assert len(bridge.refreshes) == 0
 
 
 @pytest.mark.parametrize("case", ["network", "wrong_shop"])
@@ -214,7 +212,7 @@ def test_unconfirmed_shop_does_not_prepare_when_service_unreachable_or_identity_
     assert asyncio.run(monitor.check(target)) is False
 
 
-def test_unverified_compass_prepares_only_when_service_responds_not_on_network_failure():
+def test_unverified_compass_business_rejection_never_triggers_login():
     bridge = Bridge()
     clock = [100.0]
     target = shop().model_copy(update={"compass_session_verified": False})
@@ -223,14 +221,9 @@ def test_unverified_compass_prepares_only_when_service_responds_not_on_network_f
             return httpx.Response(200, json={"st": 100704})
         return httpx.Response(200, json={"code": 0, "data": {"id": "123"}})
     monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
-    assert asyncio.run(monitor.check(target)) is True
-    assert monitor.report(target)["compassSessionStatus"] is None
-    assert asyncio.run(monitor.request_refresh(target)) is True
-    assert bridge.refreshes == [("local-a", "123", "a" * 64, True)]
-    bridge.status = LocalRefreshStatus("manual_required", datetime.now(UTC))
-    clock[0] += 3600
-    assert not asyncio.run(monitor.request_refresh(target))
     assert asyncio.run(monitor.check(target)) is False
+    assert monitor.report(target)["compassSessionStatus"] is None
+    assert bridge.refreshes == []
     def failed(request):
         if request.url.host == "compass.jinritemai.com":
             raise httpx.ConnectError("offline")
@@ -238,6 +231,24 @@ def test_unverified_compass_prepares_only_when_service_responds_not_on_network_f
     offline = ShopSessionHealth(bridge, transport=httpx.MockTransport(failed))
     assert asyncio.run(offline.check(target)) is False
     assert offline.report(target)["compassSessionStatus"] is None
+
+
+def test_confirmed_invalid_retry_respects_backoff_and_snapshot_change():
+    bridge = Bridge()
+    clock = [100.0]
+    target = shop()
+    def handler(request):
+        if request.url.host == 'compass.jinritemai.com':
+            return httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+        return httpx.Response(200, json={'code': 1, 'msg': '请先登录'})
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
+    assert asyncio.run(monitor.check(target))
+    assert monitor.invalid_session_due([target]) == target
+    assert asyncio.run(monitor.request_refresh(target))
+    assert monitor.invalid_session_due([target]) is None
+    clock[0] += 301
+    assert monitor.invalid_session_due([target]) == target
+    assert monitor.invalid_session_due([shop('b' * 64)]) is None
 
 
 def test_busy_and_transient_rpa_failures_retry_but_do_not_mark_the_session_invalid():
