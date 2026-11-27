@@ -15,6 +15,7 @@ from app.rpa_session_bridge import LocalSession, RpaLocalBridge
 
 
 _MAX_PLATFORM_BYTES = 3 * 1024 * 1024
+_MAX_MERCHANT_PLATFORM_BYTES = 8 * 1024 * 1024
 
 
 class _NoQueryHttpxLogs(logging.Filter):
@@ -60,7 +61,7 @@ class CapabilityHost:
     ) -> tuple[int, object]:
         """Read one merchant page using only the supplied local shop session."""
         if (state not in {'on_sale', 'offline', 'forbidden', 'draft'} or type(page) is not int or page < 0
-                or type(page_size) is not int or not 1 <= page_size <= 20):
+                or type(page_size) is not int or not 1 <= page_size <= 100):
             raise ValueError('invalid merchant page')
         target = 'https://fxg.jinritemai.com/product/tproduct/list'
         cookies = httpx.Cookies()
@@ -103,7 +104,7 @@ class CapabilityHost:
                     content = bytearray()
                     async for chunk in response.aiter_bytes():
                         content.extend(chunk)
-                        if len(content) > _MAX_PLATFORM_BYTES:
+                        if len(content) > _MAX_MERCHANT_PLATFORM_BYTES:
                             raise ValueError('merchant response too large')
                     try:
                         payload = json.loads(content)

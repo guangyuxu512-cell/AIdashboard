@@ -1,8 +1,9 @@
 """Read a single merchant product page with one Worker-local RPA session."""
 from ipaddress import ip_address
+import math
 import re
-from typing import Literal
-from urllib.parse import parse_qsl, urlsplit
+from typing import ClassVar, Literal
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, ValidationError
 
@@ -19,14 +20,64 @@ class ProductPageInput(BusinessSkillInput):
     operation: str = Field(default='list', pattern=r'^list$')
     state: Literal['on_sale', 'offline', 'forbidden', 'draft']
     page: int = Field(ge=0, le=100000, strict=True)
-    page_size: int = Field(default=20, ge=1, le=20, strict=True)
+    page_size: int = Field(default=20, ge=1, le=100, strict=True)
+    include_raw: bool = Field(default=False, strict=True)
 
 
 INPUT_SCHEMA = ProductPageInput.model_json_schema(mode='validation')
 _SENSITIVE = {'cookie', 'cookies', 'authorization', 'token', 'mstoken', 'a_bogus', 'session',
               'sessionid', 'verifyfp', 'fp', '_lid', '__token'}
+_PRIVATE_KEYS = {'account', 'accounts', 'authorization', 'cookie', 'cookies', 'password', 'private', 'secret',
+                 'session', 'sessionid', 'token', 'mstoken', 'abogus', 'verifyfp', 'fp', 'lid',
+                 'apikey', 'accesskey', 'accesstoken', 'refreshtoken', 'loginidentifier',
+                 'svwebid', 'bdticketguardclientdata', 'odintt', 'ttwid', 'csrf', 'csrftoken',
+                 'xsrftoken', 'sidguard', 'passportauthstatus', 'signature',
+                 'preferredverificationchannel', '登录账号', '登录密码', '店铺列表'}
 _LOGIN_MESSAGES = {'未登录', '用户未登录', '请先登录', '请重新登录', '登录失效', '登录已失效',
                    '登录过期', '登录已过期', '登录状态失效', '登录状态已过期', '登录状态已失效'}
+
+
+class MerchantSkillResult(SkillResult):
+    # Product listings carry rich platform fields. Other skills retain the SDK's 64 KiB limit.
+    max_result_bytes: ClassVar[int] = 9 * 1024 * 1024
+
+
+def _is_private_key(key):
+    normalized = re.sub(r'[^a-z0-9\u4e00-\u9fff]', '', str(key).lower())
+    return (normalized in _PRIVATE_KEYS or any(part in normalized for part in
+            ('cookie', 'token', 'password', 'secret', 'session', 'authorization',
+             'credential', 'apikey', 'accesskey', 'abogus', 'verifyfp')))
+
+
+def _safe_product_data(value, secrets=(), depth=0):
+    """Retain business fields while keeping local login material off the wire."""
+    if depth > 60:
+        raise ValueError('merchant product nesting too deep')
+    if isinstance(value, dict):
+        return {str(key): _safe_product_data(child, secrets, depth + 1)
+                for key, child in value.items() if not _is_private_key(key)}
+    if isinstance(value, list):
+        return [_safe_product_data(child, secrets, depth + 1) for child in value]
+    if type(value) is int and abs(value) > 9_007_199_254_740_991:
+        return str(value)
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError('invalid merchant numeric field')
+    if isinstance(value, str):
+        if any(secret in value for secret in secrets):
+            return '[REDACTED]'
+        try:
+            parsed = urlsplit(value)
+            if (parsed.scheme in ('http', 'https') or value.startswith('//')) and parsed.netloc:
+                if parsed.username or parsed.password:
+                    return '[REDACTED]'
+                pairs = parse_qsl(parsed.query, keep_blank_values=True)
+                if any(_is_private_key(key) for key, _ in pairs):
+                    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
+                                       urlencode([(key, val) for key, val in pairs if not _is_private_key(key)]),
+                                       parsed.fragment))
+        except ValueError:
+            return '[REDACTED]'
+    return value
 
 
 def _public_url(value, *, platform_only=False):
@@ -56,7 +107,7 @@ def _public_url(value, *, platform_only=False):
         return None
 
 
-def _project(payload, params):
+def _project(payload, params, secrets=()):
     rows = payload.get('data')
     total = payload.get('total')
     if isinstance(total, str) and total.isascii() and total.isdecimal():
@@ -73,10 +124,14 @@ def _project(payload, params):
         if not isinstance(product_id, str) or not re.fullmatch(r'[0-9]{1,32}', product_id) or product_id in seen:
             raise ValueError('invalid merchant product id')
         seen.add(product_id)
-        name = row.get('name')
-        items.append({'product_id': product_id, 'name': name[:256] if isinstance(name, str) else '',
-                      'image_url': _public_url(row.get('img')),
-                      'product_url': _public_url(row.get('product_url'), platform_only=True)})
+        safe_row = _safe_product_data(row, secrets) if params.include_raw else row
+        name = safe_row.get('name')
+        item = {'product_id': product_id, 'name': name[:256] if isinstance(name, str) else '',
+                'image_url': _public_url(safe_row.get('img')),
+                'product_url': _public_url(safe_row.get('product_url'), platform_only=True)}
+        if params.include_raw:
+            item['platform_data'] = safe_row
+        items.append(item)
     return {'state': params.state, 'page': params.page, 'page_size': params.page_size,
             'total': total, 'items': items}
 
@@ -113,8 +168,11 @@ async def _run(host, task, params):
             raise SkillExecutionError('PLATFORM_REQUEST_FAILED', '抖店商品读取未完成', retryable=True)
         raise SkillExecutionError('PLATFORM_BUSINESS_REJECTED', '抖店拒绝了商品读取')
     try:
-        data = _project(payload, params)
-        return SkillResult(summary='抖店商品读取完成', data=data)
+        secrets = tuple({cookie.value.get_secret_value() for cookie in session.cookies
+                         if len(cookie.value.get_secret_value()) >= 12}) if params.include_raw else ()
+        data = _project(payload, params, secrets)
+        result_type = MerchantSkillResult if params.include_raw else SkillResult
+        return result_type(summary='抖店商品读取完成', data=data)
     except (ValueError, TypeError, RecursionError):
         raise SkillExecutionError('PLATFORM_RESPONSE_INVALID', '抖店商品返回格式无效') from None
 

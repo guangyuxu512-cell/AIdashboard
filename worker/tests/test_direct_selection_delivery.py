@@ -29,6 +29,7 @@ def test_merchant_results_are_durable_and_sent_only_to_the_matching_operations_e
 
     def operations(request):
         seen.append(request.url.path)
+        assert len(request.content) > 1024 * 1024
         if not online:
             return httpx.Response(503)
         return httpx.Response(200, json={'task_id': str(task_id), 'accepted': True,
@@ -41,7 +42,9 @@ def test_merchant_results_are_durable_and_sent_only_to_the_matching_operations_e
             api = WorkerApiClient(settings, client=c, operations_client=o)
             worker = Worker(settings, api, executor=None)
             worker.merchant_outbox.store(TerminalDelivery(task_id=task_id, skill_id='douyin.merchant_products',
-                result_delivery='operations', status='success', result={'data': {'items': []}}))
+                result_delivery='operations', status='success', result={'data': {'items': [
+                    {'product_id': str(i), 'platform_data': {'description': 'x' * 11000}}
+                    for i in range(100)]}}))
             assert not await worker._deliver_pending_terminals()
             assert worker.result_outbox.pending() == []  # 0.5.18 reads only this directory on rollback.
             assert [item.task_id for item in worker.merchant_outbox.pending()] == [task_id]

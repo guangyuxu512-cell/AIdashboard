@@ -100,7 +100,7 @@ def test_session_and_malformed_input_fail_safely_before_platform_request():
         lambda _request: pytest.fail('no platform call should occur')))
     assert asyncio.run(capability.execute(host, task())).error_code == 'RPA_SESSION_UNAVAILABLE'
     assert asyncio.run(capability.execute(host, task(page=-1))).error_code == 'SKILL_INPUT_INVALID'
-    assert asyncio.run(capability.execute(host, task(page_size=21))).error_code == 'SKILL_INPUT_INVALID'
+    assert asyncio.run(capability.execute(host, task(page_size=101))).error_code == 'SKILL_INPUT_INVALID'
     old_center_task = task().model_copy(update={'result_delivery': 'central'})
     assert asyncio.run(capability.execute(host, old_center_task)).error_code == 'OPERATIONS_DELIVERY_REQUIRED'
 
@@ -116,3 +116,42 @@ def test_capability_schema_is_accepted_by_existing_worker_and_backend():
         assert schema_module.analyze_business_skill_input_schema(module.INPUT_SCHEMA).status == 'available'
     finally:
         sys.modules.pop(schema_spec.name, None)
+
+
+def test_full_product_data_keeps_business_fields_and_removes_session_material():
+    payload = response()
+    payload['data'][0].update({
+        'stock_num': 12,
+        'sell_num_30d': 7,
+        'skus': [{'sku_id': 9876543210987654321, 'price': 39.5,
+                  'cookie': 'do-not-forward', 'access_token': 'do-not-forward',
+                  'session_data': 'do-not-forward'}],
+        'extra_url': 'https://example.test/item?color=red&token=do-not-forward',
+        'relative_url': '//example.test/item?color=red&msToken=do-not-forward',
+        'description': 'synthetic-cookie must not leave this computer',
+    })
+    host = CapabilityHost(uuid4(), None, Bridge(), transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json=payload)))
+    result = asyncio.run(capability.execute(host, task(include_raw=True, page_size=100)))
+    assert result.status == ExecutionStatus.SUCCESS
+    raw = result.result['data']['data']['items'][0]['platform_data']
+    assert raw['stock_num'] == 12 and raw['sell_num_30d'] == 7
+    assert raw['skus'] == [{'sku_id': '9876543210987654321', 'price': 39.5}]
+    assert raw['extra_url'] == 'https://example.test/item?color=red'
+    assert raw['relative_url'] == '//example.test/item?color=red'
+    assert raw['description'] == '[REDACTED]'
+    serialized = json.dumps(result.result)
+    assert 'synthetic-cookie' not in serialized and 'do-not-forward' not in serialized
+
+
+def test_full_page_can_exceed_normal_small_skill_result_limit():
+    payload = {'code': 0, 'total': 100, 'data': [
+        {'product_id': i + 1, 'name': f'商品{i}', 'description': 'a' * 11000}
+        for i in range(100)
+    ]}
+    host = CapabilityHost(uuid4(), None, Bridge(), transport=httpx.MockTransport(
+        lambda _request: httpx.Response(200, json=payload)))
+    result = asyncio.run(capability.execute(host, task(include_raw=True, page_size=100)))
+    assert result.status == ExecutionStatus.SUCCESS
+    assert len(json.dumps(result.result)) > 1024 * 1024
+    assert len(result.result['data']['data']['items']) == 100
