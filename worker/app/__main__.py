@@ -1,5 +1,23 @@
 import sys
 
+if sys.argv[1:] == ["--check-runtime-imports"]:
+    # Exercise the packaged runtime without reading configuration or starting a Worker.
+    import httpx
+    import pystray
+    from PIL import Image
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from pydantic_settings import BaseSettings
+    from app.main import run_worker
+    from app.skills.runner import main as skill_runner_main
+    from app.status_ui import main as status_ui_main
+
+    key = Ed25519PrivateKey.generate()
+    message = b"worker-runtime-check"
+    key.public_key().verify(key.sign(message), message)
+    Image.new("RGB", (1, 1))
+    _ = (httpx.Client, pystray.Icon, BaseSettings, run_worker, skill_runner_main, status_ui_main)
+    raise SystemExit(0)
+
 if len(sys.argv) == 3 and sys.argv[1] == "--check-version":
     from app.version import WORKER_VERSION
     raise SystemExit(0 if sys.argv[2] == WORKER_VERSION else 1)

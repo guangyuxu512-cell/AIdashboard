@@ -36,6 +36,42 @@ if (-not (Test-Path -LiteralPath $workerPython)) {
     throw 'Worker Python environment is missing.'
 }
 
+# SkipTests never skips dependency checks: a partially installed environment
+# can otherwise produce an executable that cannot start on another computer.
+$dependencyCheck = @'
+from importlib import import_module
+from importlib.metadata import PackageNotFoundError, version
+from pathlib import Path
+import tomllib
+from packaging.requirements import Requirement
+
+project = tomllib.loads(Path('pyproject.toml').read_text(encoding='utf-8'))['project']
+requirements = project['dependencies'] + [item for item in project['optional-dependencies']['dev'] if item.lower().startswith('pyinstaller')]
+problems = []
+for item in requirements:
+    requirement = Requirement(item)
+    if requirement.marker and not requirement.marker.evaluate():
+        continue
+    try:
+        installed = version(requirement.name)
+        if requirement.specifier and not requirement.specifier.contains(installed, prereleases=True):
+            problems.append(requirement.name)
+    except PackageNotFoundError:
+        problems.append(requirement.name)
+if problems:
+    raise SystemExit('Worker build dependencies missing or incompatible: ' + ', '.join(sorted(problems)))
+for module in ('cryptography.hazmat.primitives.asymmetric.ed25519', 'httpx', 'PIL.Image', 'pydantic_settings', 'pystray', 'PyInstaller'):
+    import_module(module)
+'@
+Push-Location $workerRoot
+try {
+    $dependencyCheck | & $workerPython -
+    if ($LASTEXITCODE -ne 0) { throw 'Worker build dependency check failed.' }
+}
+finally {
+    Pop-Location
+}
+
 if (-not (Test-Path -LiteralPath $CapabilityPublicKeyFile -PathType Leaf)) {
     throw 'Capability signing public key file is required for Worker release builds.'
 }
@@ -122,6 +158,16 @@ foreach ($commandFile in $commandFiles) {
     "$version`r`n",
     [System.Text.UTF8Encoding]::new($false)
 )
+
+# This starts no Worker and reads no device configuration. Check the actual
+# frozen runtime, including the crypto library used by signed updates.
+$runtimeCheck = Start-Process -FilePath (Join-Path $packageRoot 'ecommerce-worker.exe') `
+    -ArgumentList '--check-runtime-imports' -WindowStyle Hidden -PassThru
+if (-not $runtimeCheck.WaitForExit(60000)) {
+    Stop-Process -Id $runtimeCheck.Id -Force -ErrorAction SilentlyContinue
+    throw 'Worker packaged runtime check timed out.'
+}
+if ($runtimeCheck.ExitCode -ne 0) { throw 'Worker packaged runtime check failed.' }
 
 Compress-Archive -Path (Join-Path $packageRoot '*') -DestinationPath $zipPath -CompressionLevel Optimal
 if (-not (Test-Path -LiteralPath $zipPath -PathType Leaf)) {

@@ -38,7 +38,7 @@ $parseErrors = $null
 [void][System.Management.Automation.Language.Parser]::ParseFile((Join-Path $packageRoot 'worker-control.ps1'), [ref]$tokens, [ref]$parseErrors)
 if ($parseErrors.Count -gt 0) { throw 'Worker control script has a syntax error.' }
 $executable = Join-Path $packageRoot 'ecommerce-worker.exe'
-foreach ($arguments in @("--check-version $workerVersion", '--check-capability-trust')) {
+foreach ($arguments in @("--check-version $workerVersion", '--check-capability-trust', '--check-runtime-imports')) {
     $process = Start-Process -FilePath $executable -ArgumentList $arguments -WindowStyle Hidden -PassThru -Wait
     if ($process.ExitCode -ne 0) { throw 'Worker executable self-check failed.' }
 }
