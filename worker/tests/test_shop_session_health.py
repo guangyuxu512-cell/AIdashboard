@@ -1,5 +1,6 @@
 import asyncio
 from datetime import UTC, datetime, timedelta
+from uuid import uuid4
 
 import httpx
 import pytest
@@ -57,6 +58,93 @@ def test_only_matching_identity_reports_valid_without_exporting_session():
     assert "synthetic" not in repr(monitor.report(target))
     assert monitor.due([target]) is None
     assert monitor.report(shop("b" * 64))["sessionStatus"] is None
+
+
+def test_installation_change_after_outage_cannot_reuse_old_status():
+    bridge = Bridge()
+    def handler(request):
+        return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                if request.url.host == 'compass.jinritemai.com' else
+                httpx.Response(200, json={'code': 0, 'data': {'id': '123'}}))
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+    target = shop()
+    assert not monitor.set_installation(uuid4())
+    asyncio.run(monitor.check(target))
+    assert monitor.report(target)['sessionStatus'] == 'valid'
+    assert monitor.set_installation(uuid4())
+    assert monitor.report(target)['sessionStatus'] is None
+    assert monitor.report(target)['compassSessionStatus'] is None
+
+
+def test_inflight_old_installation_probe_cannot_write_into_new_installation():
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        class WaitingBridge(Bridge):
+            async def read_session(self, local_id, platform_id):
+                started.set()
+                await release.wait()
+                return await super().read_session(local_id, platform_id)
+        bridge = WaitingBridge()
+        def handler(request):
+            return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                    if request.url.host == 'compass.jinritemai.com' else
+                    httpx.Response(200, json={'code': 0, 'data': {'id': '123'}}))
+        monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+        target = shop()
+        monitor.set_installation(uuid4())
+        probe = asyncio.create_task(monitor.check(target))
+        await started.wait()
+        monitor.set_installation(uuid4())
+        release.set()
+        assert await probe is False
+        assert monitor.report(target)['sessionStatus'] is None
+        assert monitor.report(target)['compassSessionStatus'] is None
+        assert monitor.due([target]) == target
+    asyncio.run(scenario())
+
+
+def test_explicit_business_session_expiry_cannot_be_overwritten_by_generic_identity():
+    bridge = Bridge()
+    def handler(request):
+        return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                if request.url.host == 'compass.jinritemai.com' else
+                httpx.Response(200, json={'code': 0, 'data': {'id': '123'}}))
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler))
+    target = shop()
+    assert monitor.record_explicit_failure(target, 'merchant')
+    assert asyncio.run(monitor.check(target)) is True
+    assert monitor.report(target)['sessionStatus'] == 'invalid'
+    assert monitor.report(target)['compassSessionStatus'] == 'valid'
+
+
+@pytest.mark.parametrize('merchant_response', [
+    httpx.Response(503, json={'message': 'temporary'}),
+    httpx.Response(200, json={'code': 600002, 'message': 'platform rejected'}),
+])
+def test_unknown_response_is_throttled_per_shop_and_service_across_snapshots(merchant_response):
+    clock = [100.0]
+    bridge = Bridge()
+    calls = []
+    def handler(request):
+        calls.append(request.url.host)
+        return (httpx.Response(200, json={'st': 0, 'data': {'shop_id': '123'}})
+                if request.url.host == 'compass.jinritemai.com' else merchant_response)
+    monitor = ShopSessionHealth(bridge, transport=httpx.MockTransport(handler), clock=lambda: clock[0])
+    first, second = shop(), shop('b' * 64)
+    asyncio.run(monitor.check(first))
+    bridge.revision = second.session_revision
+    assert monitor.prioritize(second, {'merchant', 'compass'})
+    asyncio.run(monitor.check(second))
+    assert calls.count('fxg.jinritemai.com') == 1
+    assert calls.count('compass.jinritemai.com') == 2
+    assert monitor.report(second)['sessionStatus'] is None
+    assert monitor.report(second)['compassSessionStatus'] == 'valid'
+    assert monitor.due([second]) is None
+    clock[0] += 31
+    assert monitor.due([second]) == second
+    asyncio.run(monitor.check(second))
+    assert calls.count('fxg.jinritemai.com') == 2
+    assert bridge.refreshes == []
 
 
 def test_busy_shop_exclusion_keeps_previous_observation_and_rechecks_before_expiry():
