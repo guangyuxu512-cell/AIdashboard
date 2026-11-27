@@ -11,6 +11,51 @@ from app.contracts import ExecutionResult, ExecutionStatus, WorkerTask
 from app.worker import Worker
 
 
+def test_merchant_pages_share_same_shop_lock_and_other_shops_can_run(monkeypatch, tmp_path):
+    async def scenario():
+        settings = WorkerSettings(server_url='https://central.test', device_id=uuid4(), device_token='synthetic',
+            runtime_root=tmp_path, compass_basic_shop_interval_seconds=0.08,
+            compass_shop_max_interval_seconds=0.08, compass_page_min_interval_seconds=0.02,
+            compass_page_max_interval_seconds=0.02)
+        worker = Worker(settings, client=None, executor=None)
+        active, peaks, windows = Counter(), Counter(), []
+        total, peak_total = 0, 0
+        sync_id = str(uuid4())
+
+        def merchant(shop, state, page):
+            return WorkerTask(task_id=uuid4(), skill_id='douyin.merchant_products',
+                input={'operation': 'list', 'sync_id': sync_id, 'state': state, 'page': page},
+                local_shops=[{'local_shop_id': shop, 'platform': 'douyin', 'platform_shop_id': shop}],
+                lease_until=datetime.now(UTC) + timedelta(minutes=1))
+
+        async def execute(task):
+            nonlocal total, peak_total
+            shop = task.local_shops[0].platform_shop_id
+            active[shop] += 1
+            total += 1
+            peaks[shop] = max(peaks[shop], active[shop])
+            peak_total = max(peak_total, total)
+            begin = asyncio.get_running_loop().time()
+            await asyncio.sleep(0.015)
+            end = asyncio.get_running_loop().time()
+            windows.append((shop, task.input['state'], task.input['page'], begin, end))
+            active[shop] -= 1
+            total -= 1
+            return ExecutionResult(status=ExecutionStatus.SUCCESS, result={})
+
+        worker._prepare_and_execute = execute
+        monkeypatch.setattr('app.worker.random.uniform', lambda a, b: a)
+        await asyncio.gather(*(worker._execute_with_selection_interval(t) for t in (
+            merchant('shop-a', 'on_sale', 0), merchant('shop-a', 'on_sale', 1),
+            merchant('shop-a', 'offline', 0), merchant('shop-b', 'on_sale', 0))))
+        assert set(peaks.values()) == {1} and peak_total == 2
+        a = [row for row in windows if row[0] == 'shop-a']
+        assert [(row[1], row[2]) for row in a] == [('on_sale', 0), ('on_sale', 1), ('offline', 0)]
+        assert 0.018 <= a[1][3] - a[0][4] < 0.07
+        assert 0.018 <= a[2][3] - a[1][4] < 0.07
+    asyncio.run(scenario())
+
+
 def test_five_shops_run_mixed_selection_in_parallel_and_prechecks_continue(tmp_path):
     async def scenario():
         stop, delivered = asyncio.Event(), asyncio.Event()

@@ -50,7 +50,8 @@ class TerminalDelivery(BaseModel):
             raise ValueError("success cannot carry a failure")
         if self.status == "failed" and (not self.error_code or not self.error_message):
             raise ValueError("failure requires a safe code and message")
-        if self.result_delivery == "operations" and self.skill_id != "douyin.compass_selection":
+        if self.result_delivery == "operations" and self.skill_id not in {
+                "douyin.compass_selection", "douyin.merchant_products"}:
             raise ValueError("invalid operations delivery")
         _reject_sensitive_keys(self.result)
         _reject_sensitive_keys(self.provider_inventory)

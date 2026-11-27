@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 _PRECHECK_KIND = "douyin.category_schema"
 _PRECHECK_DEVICE_LIMIT = 15
 _COMPASS_KIND = "douyin.compass_selection"
+_MERCHANT_KIND = "douyin.merchant_products"
 # Do not start a background check near the end of a selection interval.
 _HEALTH_MIN_SELECTION_GAP = 25.0
 
@@ -45,9 +46,14 @@ def _is_compass_selection(task: WorkerTask) -> bool:
             and len(task.local_shops) == 1)
 
 
+def _is_parallel_shop_task(task: WorkerTask) -> bool:
+    return (_is_compass_selection(task) or task.skill_id == _MERCHANT_KIND
+            and task.input.get('operation') == 'list' and len(task.local_shops) == 1)
+
+
 def _health_task_scope(task: WorkerTask) -> tuple[str, bool] | None:
     """Known platform shop and whether the task is a Compass selection."""
-    if _is_compass_selection(task):
+    if _is_parallel_shop_task(task):
         shop_id = task.local_shops[0].platform_shop_id
         return (shop_id, True) if shop_id else None
     if task.skill_id == _PRECHECK_KIND:
@@ -97,6 +103,9 @@ class Worker:
         self._active_health_scopes: dict[UUID, tuple[str, bool] | None] = {}
         self._next_capability_check = 0.0
         self.result_outbox = ResultOutbox(settings.runtime_root / "result-outbox")
+        # 0.5.18 cannot deserialize merchant deliveries. Keep the new format
+        # separate so rolling back never blocks existing Worker tasks.
+        self.merchant_outbox = ResultOutbox(settings.runtime_root / "result-outbox-merchant-v1")
         self.started_at = datetime.now(UTC)
         self.worker_version = WORKER_VERSION
         self._skill_snapshot_synced = False
@@ -142,7 +151,7 @@ class Worker:
                         # unrouteable result block unrelated queued work. The
                         # durable outbox is preserved across tasks and updates.
                         try:
-                            pending = self.result_outbox.pending()
+                            pending = self.result_outbox.pending() + self.merchant_outbox.pending()
                             only_operations = bool(pending) and all(item.result_delivery == 'operations' for item in pending)
                         except OutboxError:
                             only_operations = False
@@ -179,7 +188,7 @@ class Worker:
                             # Fill available slots immediately instead of adding
                             # the ordinary idle-poll interval to every claim.
                             continue
-                        if _is_compass_selection(task):
+                        if _is_parallel_shop_task(task):
                             selections.add(asyncio.create_task(self._execute_claimed_task(task)))
                             continue
                         await self._execute_claimed_task(task)
@@ -238,16 +247,22 @@ class Worker:
         return None
 
     async def _execute_with_selection_interval(self, task: WorkerTask) -> ExecutionResult:
-        if not _is_compass_selection(task):
+        if not _is_parallel_shop_task(task):
             return await self._prepare_and_execute(task)
         shop_id = task.local_shops[0].platform_shop_id or task.local_shops[0].local_shop_id
         lock = self._selection_shop_locks.setdefault(shop_id, asyncio.Lock())
         async with lock:
             loop = asyncio.get_running_loop()
             rank_keys = ('industry_id', 'category_id', 'brand_type', 'price_bin', 'begin_date', 'end_date', 'date_type')
-            rank_scope = (tuple(task.input.get(key) for key in rank_keys)
-                          if task.input.get('operation') == 'rank' else None)
-            page = task.input.get('page_no') if rank_scope is not None else None
+            if task.skill_id == _MERCHANT_KIND:
+                rank_scope = (_MERCHANT_KIND, task.input.get('sync_id'))
+                page_value = task.input.get('page')
+                state_order = {'on_sale': 0, 'offline': 1, 'forbidden': 2, 'draft': 3}.get(task.input.get('state'))
+                page = state_order * 100001 + page_value if state_order is not None and type(page_value) is int else None
+            else:
+                rank_scope = (tuple(task.input.get(key) for key in rank_keys)
+                              if task.input.get('operation') == 'rank' else None)
+                page = task.input.get('page_no') if rank_scope is not None else None
             previous = self._selection_shop_last.get(shop_id)
             if previous is not None:
                 next_page = (rank_scope is not None and rank_scope == previous[1] and type(page) is int
@@ -268,12 +283,12 @@ class Worker:
             # A probe can run during the waiting interval, but must stop
             # before a same-shop selection request actually starts.
             await self._cancel_shop_probe_for(shop_id)
-            logger.info('Compass selection started shop=%s task=%s', shop_id, task.task_id)
+            logger.info('Shop task started shop=%s task=%s', shop_id, task.task_id)
             try:
                 return await self._prepare_and_execute(task)
             finally:
                 self._selection_shop_last[shop_id] = (loop.time(), rank_scope, page)
-                logger.info('Compass selection finished shop=%s task=%s', shop_id, task.task_id)
+                logger.info('Shop task finished shop=%s task=%s', shop_id, task.task_id)
 
     async def _wait_for_prechecks_or_stop(
         self, prechecks: set[asyncio.Task[None]], stop_event: asyncio.Event,
@@ -710,7 +725,8 @@ class Worker:
             )
             # Once execution has returned, make its result durable before any
             # event flush, inventory report or completion network operation.
-            self.result_outbox.store(delivery)
+            outbox = self.merchant_outbox if delivery.skill_id == _MERCHANT_KIND else self.result_outbox
+            outbox.store(delivery)
             terminal_metadata = {
                 "phase": (
                     "succeeded"
@@ -764,17 +780,18 @@ class Worker:
 
     async def _deliver_pending_terminals_locked(self) -> bool:
         try:
-            pending = self.result_outbox.pending()
+            pending = ([(self.result_outbox, item) for item in self.result_outbox.pending()]
+                       + [(self.merchant_outbox, item) for item in self.merchant_outbox.pending()])
         except OutboxError:
             logger.error("Worker terminal outbox requires local attention")
             return False
         operations_pending = False
-        for delivery in pending:
+        for outbox, delivery in pending:
             try:
                 if delivery.skill_id.startswith("yingdao."):
                     # Preserve old terminal evidence locally without replaying a
                     # retired task or blocking new Worker results.
-                    self.result_outbox.reject(delivery)
+                    outbox.reject(delivery)
                     continue
                 if delivery.skill_id == "douyin.category_schema":
                     if delivery.result_delivery == "product":
@@ -792,11 +809,12 @@ class Worker:
                             result=delivery.result, error_code=delivery.error_code,
                             error_message=delivery.error_message,
                         )
-                elif delivery.skill_id == 'douyin.compass_selection' and delivery.result_delivery == 'operations':
-                    digest = await self.client.deliver_operations_selection(
-                        delivery.task_id, status=delivery.status, result=delivery.result,
-                        error_code=delivery.error_code, error_message=delivery.error_message,
-                    )
+                elif delivery.skill_id in {'douyin.compass_selection', 'douyin.merchant_products'} and delivery.result_delivery == 'operations':
+                    kwargs = {'status': delivery.status, 'result': delivery.result,
+                              'error_code': delivery.error_code, 'error_message': delivery.error_message}
+                    if delivery.skill_id == 'douyin.merchant_products':
+                        kwargs['skill_id'] = delivery.skill_id
+                    digest = await self.client.deliver_operations_selection(delivery.task_id, **kwargs)
                     await self.client.acknowledge_operations_selection(
                         delivery.task_id, status=delivery.status, payload_sha256=digest,
                         error_code=delivery.error_code,
@@ -815,7 +833,7 @@ class Worker:
                     continue
                 if error.status_code in {400, 403, 404, 409, 422}:
                     try:
-                        self.result_outbox.reject(delivery)
+                        outbox.reject(delivery)
                     except OutboxError:
                         logger.error("Worker terminal rejection requires local attention")
                         return False
@@ -829,7 +847,7 @@ class Worker:
                     await self._mark_operations_delivery_pending(delivery)
                     continue
                 return False
-            self.result_outbox.acknowledge(delivery)
+            outbox.acknowledge(delivery)
         return not operations_pending
 
     async def _mark_operations_delivery_pending(self, delivery: TerminalDelivery) -> None:

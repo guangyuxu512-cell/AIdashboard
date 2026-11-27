@@ -53,6 +53,18 @@ def test_delivery_context_is_scoped_to_the_actual_worker_and_mapped_shop(context
         delivery_context(session, settings(), device_id, task_id)
 
 
+def test_merchant_delivery_uses_the_same_task_bound_context(context):
+    session, device_id, task_id = context
+    session.task.skill_id = 'douyin.merchant_products'
+    session.task.input_json['operation'] = 'list'
+    result = delivery_context(session, settings(), device_id, task_id)
+    assert result['skill_id'] == 'douyin.merchant_products'
+    assert result['operation'] == 'list' and result['platform_shop_id'] == '123'
+    session.task.input_json['operation'] = 'basic'
+    with pytest.raises(SelectionDeliveryNotFound):
+        delivery_context(session, settings(), device_id, task_id)
+
+
 @pytest.mark.parametrize('origin', [None, 'http://ops.example.test', 'https://ops.example.test/?x=1',
                                    'https://user@ops.example.test', 'https://ops.example.test/../bad'])
 def test_delivery_origin_must_be_a_configured_safe_https_location(context, origin):

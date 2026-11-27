@@ -132,8 +132,10 @@ class WorkerApiClient:
         self._raise_for_error(response)
         task = WorkerTask.model_validate(response.json())
         valid = (task.skill_id == 'douyin.category_schema' if kind == 'precheck' else
-                 task.skill_id == 'douyin.compass_selection' and task.input.get('operation') in
-                 ({'basic'} if kind == 'basic' or fallback_basic else {'categories', 'rank', 'basic'}))
+                 (task.skill_id == 'douyin.compass_selection' and task.input.get('operation') in
+                  ({'basic'} if kind == 'basic' or fallback_basic else {'categories', 'rank', 'basic'}))
+                 or (kind == 'selection' and not fallback_basic and task.skill_id == 'douyin.merchant_products'
+                     and task.input.get('operation') == 'list'))
         if not valid:
             raise WorkerApiError('WORKER_CLAIM_INVALID', '并行领取返回了其他任务', 0)
         return task
@@ -306,7 +308,7 @@ class WorkerApiClient:
 
     async def deliver_operations_selection(
         self, task_id: UUID, *, status: str, result: dict[str, Any] | None,
-        error_code: str | None, error_message: str | None,
+        error_code: str | None, error_message: str | None, skill_id: str = 'douyin.compass_selection',
     ) -> str:
         if self.settings.server_url.scheme != 'https':
             raise WorkerApiError('SELECTION_TLS_REQUIRED', '选品回传需要安全连接', 0)
@@ -316,7 +318,9 @@ class WorkerApiClient:
             context = context_response.json()
             origin = context['origin']
             parsed = urlsplit(origin)
-            if (context.get('task_id') != str(task_id) or context.get('device_id') != str(self.settings.device_id)
+            if (skill_id not in {'douyin.compass_selection', 'douyin.merchant_products'}
+                    or context.get('skill_id', 'douyin.compass_selection') != skill_id
+                    or context.get('task_id') != str(task_id) or context.get('device_id') != str(self.settings.device_id)
                     or parsed.scheme != 'https' or not parsed.hostname or parsed.username or parsed.password
                     or parsed.query or parsed.fragment or parsed.port not in (None, 443)
                     or re.fullmatch(r'(?:/[A-Za-z0-9_-]+)*/?', parsed.path) is None):
@@ -326,7 +330,8 @@ class WorkerApiClient:
         payload = _selection_terminal_payload(status=status, result=result, error_code=error_code,
                                               error_message=error_message)
         digest = hashlib.sha256(payload).hexdigest()
-        url = origin.rstrip('/') + f'/internal/worker/v1/selection-results/{task_id}'
+        path = 'selection-results' if skill_id == 'douyin.compass_selection' else 'store-product-results'
+        url = origin.rstrip('/') + f'/internal/worker/v1/{path}/{task_id}'
         headers = {'Content-Type': 'application/json',
                    'Authorization': f'Bearer {self.settings.device_token.get_secret_value()}',
                    'X-Device-ID': str(self.settings.device_id)}

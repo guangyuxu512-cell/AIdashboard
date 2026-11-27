@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from urllib.parse import parse_qsl, urlsplit
 from uuid import UUID
 
@@ -53,6 +54,65 @@ class CapabilityHost:
         # The retired Compass signer used these defaults for this endpoint.
         # Platform acceptance still requires a real Worker verification.
         return generate_compass_signature(query, user_agent, aid=6383, page_id=6241)
+
+    async def read_merchant_product_page(
+        self, session: LocalSession, *, state: str, page: int, page_size: int,
+    ) -> tuple[int, object]:
+        """Read one merchant page using only the supplied local shop session."""
+        if (state not in {'on_sale', 'offline', 'forbidden', 'draft'} or type(page) is not int or page < 0
+                or type(page_size) is not int or not 1 <= page_size <= 20):
+            raise ValueError('invalid merchant page')
+        target = 'https://fxg.jinritemai.com/product/tproduct/list'
+        cookies = httpx.Cookies()
+        for cookie in session.cookies:
+            cookies.set(cookie.name, cookie.value.get_secret_value(), domain=cookie.domain, path=cookie.path)
+        cookie_header = httpx.Request('GET', target, cookies=cookies).headers.get('cookie', '')
+        if not cookie_header:
+            raise ValueError('merchant session unavailable')
+        tab = {'on_sale': 'onSale', 'offline': 'offline', 'forbidden': 'forbidden', 'draft': 'draft'}[state]
+        query = [('_bid', 'ffa_goods'), ('appid', '1'), ('_', str(int(time.time() * 1000))),
+                 ('page', str(page)), ('pageSize', str(page_size)), ('tab', tab),
+                 ('not_for_sale_search_type', '1')]
+        if state == 'on_sale':
+            query.extend([('business_type', '4'), ('is_online', '1'), ('from_mng', '1'),
+                          ('check_status', '3'), ('status', '0')])
+        elif state == 'offline':
+            query.extend([('business_type', '4'), ('is_online', ''), ('is_offline', '1'), ('from_mng', '1')])
+        elif state == 'forbidden':
+            query.extend([('business_type', '4'), ('is_online', ''), ('is_forbidden', '1'), ('from_mng', '1')])
+        else:
+            query.extend([('is_drafting', '1'), ('draft_time_sort', 'desc'), ('order_field', 'draft_time')])
+        fp = {part.strip().partition('=')[2] for part in cookie_header.split(';')
+              if part.strip().partition('=')[0] == 's_v_web_id'}
+        if len(fp) == 1 and '' not in fp:
+            value = next(iter(fp))
+            query.extend([('fp', value), ('verifyFp', value)])
+        unsigned = httpx.URL(target, params=query)
+        signature = generate_compass_signature(unsigned.query.decode('ascii'), session.user_agent, aid=4272, page_id=6241)
+        signed = unsigned.copy_add_param('a_bogus', signature)
+        headers = {'accept': 'application/json, text/plain, */*', 'user-agent': session.user_agent,
+                   'accept-language': 'zh-CN,zh;q=0.9', 'cookie': cookie_header,
+                   'referer': 'https://fxg.jinritemai.com/ffa/g/draft' if state == 'draft'
+                              else 'https://fxg.jinritemai.com/ffa/g/list',
+                   'x-tt-from-appid': 'ffa-goods', 'x-tt-from-end': 'PC',
+                   'x-tt-from-page': 'https://fxg.jinritemai.com/ffa/g/list'}
+        try:
+            async with httpx.AsyncClient(timeout=20, follow_redirects=False, trust_env=False,
+                                         transport=self._transport) as client:
+                async with client.stream('GET', signed, headers=headers) as response:
+                    content = bytearray()
+                    async for chunk in response.aiter_bytes():
+                        content.extend(chunk)
+                        if len(content) > _MAX_PLATFORM_BYTES:
+                            raise ValueError('merchant response too large')
+                    try:
+                        payload = json.loads(content)
+                    except (ValueError, UnicodeError):
+                        payload = None
+                    return response.status_code, payload
+        except (ValueError, httpx.HTTPError, OSError):
+            # Never expose Cookie, signed query or platform payload in logs.
+            raise RuntimeError('MERCHANT_TRANSPORT_FAILED') from None
 
     @staticmethod
     def cookie_header(session: LocalSession) -> str:
