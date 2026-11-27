@@ -4,6 +4,7 @@ import { formatSkillName } from './display'
 
 describe('skill display names', () => {
   it.each([
+    ['douyin.merchant_products', '抖店商品管理'],
     ['douyin.compass_selection', '罗盘选品'],
     ['douyin.category_schema', '商品类目与预检'],
     ['system.rpa_inventory_diagnostic', 'RPA 店铺连接诊断'],

@@ -14,6 +14,46 @@ from app.result_outbox import TerminalDelivery
 from app.worker import Worker
 
 
+def test_merchant_results_are_durable_and_sent_only_to_the_matching_operations_endpoint(tmp_path):
+    task_id, device_id = uuid4(), uuid4()
+    settings = WorkerSettings(server_url='https://central.test', device_id=device_id,
+                              device_token='synthetic-device-token', runtime_root=tmp_path)
+    seen, online = [], False
+
+    def central(request):
+        if request.method == 'GET':
+            return httpx.Response(200, json={'task_id': str(task_id), 'device_id': str(device_id),
+                'skill_id': 'douyin.merchant_products', 'origin': 'https://operations.test'})
+        seen.append(request.url.path)
+        return httpx.Response(200, json={})
+
+    def operations(request):
+        seen.append(request.url.path)
+        if not online:
+            return httpx.Response(503)
+        return httpx.Response(200, json={'task_id': str(task_id), 'accepted': True,
+                                         'payload_sha256': hashlib.sha256(request.content).hexdigest()})
+
+    async def scenario():
+        nonlocal online
+        async with httpx.AsyncClient(base_url='https://central.test', transport=httpx.MockTransport(central)) as c, \
+                   httpx.AsyncClient(transport=httpx.MockTransport(operations)) as o:
+            api = WorkerApiClient(settings, client=c, operations_client=o)
+            worker = Worker(settings, api, executor=None)
+            worker.merchant_outbox.store(TerminalDelivery(task_id=task_id, skill_id='douyin.merchant_products',
+                result_delivery='operations', status='success', result={'data': {'items': []}}))
+            assert not await worker._deliver_pending_terminals()
+            assert worker.result_outbox.pending() == []  # 0.5.18 reads only this directory on rollback.
+            assert [item.task_id for item in worker.merchant_outbox.pending()] == [task_id]
+            online = True
+            restarted = Worker(settings, api, executor=None)
+            assert await restarted._deliver_pending_terminals()
+            assert restarted.merchant_outbox.pending() == []
+    asyncio.run(scenario())
+    assert seen.count(f'/internal/worker/v1/store-product-results/{task_id}') == 2
+    assert f'/api/v1/worker/tasks/{task_id}/selection-delivered' in seen
+
+
 def test_operations_disconnect_keeps_result_and_does_not_block_product_delivery(tmp_path):
     selection_id, product_id, device_id = UUID(int=1), UUID(int=2), uuid4()
     settings = WorkerSettings(server_url='https://central.test', device_id=device_id,

@@ -263,6 +263,8 @@ Backend Queue 中可以同时存在多个 PENDING Task；Queue 深度与 Worker 
 
 罗盘选品类目、榜单和基础信息使用并行领取，最多每设备 5 家店、每店 1 个，并可与商品预检共存。普通任务仍独占；较早的独占任务会阻止后续并行任务继续领取。同店不同选品任务间随机等待 30～60 秒，同次榜单翻页随机等待 3～6 秒。
 
+抖店商品管理 `douyin.merchant_products` 是只读分页能力，和选品共用上述店铺并行槽及同店互斥；同一次商品同步的翻页间隔使用 3～6 秒，不同店铺可并行。商品详情页结果直接可靠回传运营中心，中控只保留任务回执；本机会话不离开执行设备。
+
 Yingdao Provider V1 的 execution capacity 固定为 1。RPAExecutor 使用 Provider 级 Semaphore，
 ShadowBot Adapter 保留自身互斥作为防御层。Skill 内部不得通过 sleep/poll 等待槽。正常情况下，
 普通任务的单活动边界使后续影刀 Task 保持 Backend PENDING；前一 Task SUCCESS 或 FAILED 后释放

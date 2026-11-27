@@ -257,7 +257,7 @@ def task_to_read(task: Task) -> TaskRead:
         execution_display_name=task.execution_display_name,
         status=task.status,
         input=({key: value for key, value in task.input_json.items() if key != '_operations_request_hash'}
-               if task.skill_id == 'douyin.compass_selection' else task.input_json),
+               if task.skill_id in {'douyin.compass_selection', 'douyin.merchant_products'} else task.input_json),
         result=task.result_json,
         error_code=task.error_code,
         error_message=task.error_message,
