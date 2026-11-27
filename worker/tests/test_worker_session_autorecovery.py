@@ -42,6 +42,9 @@ class Bridge:
     async def session_revision(self, local_id, platform_id):
         return self.revisions[local_id]
 
+    async def session_identity(self, local_id, platform_id):
+        return str(self.inventory.installation_id), await self.session_revision(local_id, platform_id)
+
     async def read_session(self, local_id, platform_id):
         return LocalSession(localShopId=local_id, platformShopId=platform_id, platform="douyin",
                             userAgent="test", cookies=[LocalCookie(name="test", value="synthetic",
@@ -50,7 +53,7 @@ class Bridge:
     async def session_refresh_status(self, *args):
         return self.status
 
-    async def request_session_refresh(self, *args):
+    async def request_session_refresh(self, *args, **_kwargs):
         self.refreshes.append(args)
         if self.auto_finish:
             self.status = LocalRefreshStatus("retryable", datetime.now(UTC))
@@ -524,6 +527,81 @@ def test_snapshot_is_captured_after_refresh_wait(tmp_path):
     asyncio.run(scenario())
 
 
+@pytest.mark.parametrize('old_installation', [None, str(uuid4())])
+def test_unbound_recovery_does_not_mark_new_installation_invalid_or_log_in(tmp_path, old_installation):
+    shop = make_shop()
+    bridge = Bridge([shop])
+    worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+    result = {'local_shop_id': 'a', 'platform_shop_id': '123', 'kind': 'merchant',
+              'snapshot_revision': 'a' * 64, 'observed_at': datetime.now(UTC).isoformat()}
+    if old_installation is not None:
+        result['installation_id'] = old_installation
+    worker.session_recovery_outbox.store(TerminalDelivery(task_id=uuid4(),
+        skill_id='douyin.merchant_products', status='failed', result=result,
+        error_code='SHOP_SESSION_EXPIRED', error_message='synthetic'))
+    worker._restore_session_recoveries([shop])
+    assert worker.shop_session_health.report(shop)['sessionStatus'] is None
+    assert worker._pending_shop_refresh == {}
+    assert worker._session_rechecks == {('a', '123'): {'merchant'}}
+    assert bridge.refreshes == []
+    worker._session_rechecks.clear()
+    worker._restore_session_recoveries([shop])
+    assert worker._session_rechecks == {}  # One conservative recheck per process.
+    assert len(worker.session_recovery_outbox.pending()) == 1
+
+
+def test_expiry_from_old_installation_is_not_attached_to_new_installation(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        task = make_task('douyin.merchant_products', shop, input_data={'operation': 'list'})
+        async def execute(_task):
+            bridge.inventory = SimpleNamespace(installation_id=uuid4(), shops=[shop])
+            worker._last_rpa_inventory = bridge.inventory
+            return ExecutionResult(status='failed', error_code='SHOP_SESSION_EXPIRED')
+        worker._prepare_and_execute = execute
+        await worker._execute_with_snapshot_evidence(task)
+        assert task.task_id not in worker._task_expiry_revisions
+        assert task.task_id not in worker._task_expiry_installations
+    asyncio.run(scenario())
+
+
+def test_explicit_expiry_is_recorded_while_inventory_is_temporarily_unavailable(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        worker._last_rpa_inventory = None
+        task = make_task('douyin.merchant_products', shop, input_data={'operation': 'list'})
+        async def execute(_task):
+            return ExecutionResult(status='failed', error_code='SHOP_SESSION_EXPIRED')
+        worker._prepare_and_execute = execute
+        await worker._execute_with_snapshot_evidence(task)
+        assert worker._task_expiry_revisions[task.task_id] == shop.session_revision
+        assert worker._task_expiry_installations[task.task_id] == str(bridge.inventory.installation_id)
+    asyncio.run(scenario())
+
+
+def test_old_installation_inflight_refresh_does_not_block_new_installation(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        done = asyncio.Event()
+        worker._refresh_done['123'] = done
+        marker = TerminalDelivery(task_id=uuid4(), skill_id='system.rpa_session_refresh', status='failed',
+            result={'local_shop_id': 'a', 'platform_shop_id': '123', 'snapshot_revision': 'a' * 64,
+                    'started_at': datetime.now(UTC).isoformat(), 'installation_id': str(uuid4())},
+            error_code='RPA_REFRESH_PENDING', error_message='synthetic')
+        worker.session_refresh_outbox.store(marker)
+        await asyncio.wait_for(worker._monitor_refresh(marker, done), timeout=1)
+        assert done.is_set()
+        assert worker.session_refresh_outbox.pending() == [marker]
+        assert bridge.refreshes == []
+    asyncio.run(scenario())
+
+
 def test_inconsistent_success_is_never_treated_as_expired(tmp_path):
     async def scenario():
         shop = make_shop()
@@ -551,7 +629,7 @@ def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path,
         bridge = Bridge([shop])
         bridge.auto_finish = False
         if acknowledgement == "lost":
-            async def lost_ack(*args):
+            async def lost_ack(*args, **_kwargs):
                 bridge.refreshes.append(args)
                 bridge.refreshed.set()
                 raise OSError("ack lost after launch")
@@ -589,7 +667,52 @@ def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path,
     asyncio.run(scenario())
 
 
-def test_retry_budget_survives_restart_and_resets_for_new_snapshot(tmp_path, monkeypatch):
+def test_refresh_does_not_launch_into_a_different_installation(tmp_path):
+    async def scenario():
+        started, release = asyncio.Event(), asyncio.Event()
+        shop = make_shop()
+        class ChangingBridge(Bridge):
+            async def session_refresh_status(self, *args):
+                started.set()
+                await release.wait()
+                return None
+            async def request_session_refresh(self, *args, expected_installation_id=None):
+                if expected_installation_id != str(self.inventory.installation_id):
+                    raise RpaBridgeError('RPA_IDENTITY_MISMATCH')
+                self.refreshes.append(args)
+                return True
+        bridge = ChangingBridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        worker.shop_session_health.record_explicit_failure(shop, 'merchant')
+        refresh = asyncio.create_task(worker._run_shop_refresh(shop))
+        await started.wait()
+        bridge.inventory = SimpleNamespace(installation_id=uuid4(), shops=[shop])
+        worker._last_rpa_inventory = bridge.inventory
+        release.set()
+        await asyncio.wait_for(refresh, timeout=2)
+        assert bridge.refreshes == []
+        assert worker.session_refresh_outbox.pending() == []
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize('next_inventory', ['unavailable', 'other_installation'])
+def test_queued_refresh_cannot_rebind_when_inventory_changes(tmp_path, next_inventory):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        old_owner = str(bridge.inventory.installation_id)
+        queued = asyncio.create_task(worker._run_shop_refresh(shop, expected_installation_id=old_owner))
+        worker._last_rpa_inventory = (None if next_inventory == 'unavailable' else
+            SimpleNamespace(installation_id=uuid4(), shops=[shop]))
+        await queued
+        assert bridge.refreshes == []
+        assert worker.session_refresh_outbox.pending() == []
+        assert worker._force_inventory_read
+    asyncio.run(scenario())
+
+
+def test_retry_budget_survives_restart_and_resaved_snapshots(tmp_path, monkeypatch):
     async def scenario():
         shop = make_shop()
         bridge = Bridge([shop])
@@ -604,7 +727,7 @@ def test_retry_budget_survives_restart_and_resets_for_new_snapshot(tmp_path, mon
                 error_code="RPA_REFRESH_ATTEMPT", error_message="attempt"))
         restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
         assert not restarted._refresh_budget_available(shop)
-        assert restarted._refresh_budget_available(shop.model_copy(update={"session_revision": "b" * 64}))
+        assert not restarted._refresh_budget_available(shop.model_copy(update={"session_revision": "b" * 64}))
 
         class Later(datetime):
             @classmethod

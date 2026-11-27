@@ -174,6 +174,34 @@ def _stored_session_revisions(database_path: str) -> dict[tuple[str, str], str] 
     return revisions
 
 
+def _stored_session_identity(database_path: str, local_shop_id: str, platform_shop_id: str) -> tuple[str, str] | None:
+    """Read installation and snapshot together without opening a browser."""
+    try:
+        uri = Path(database_path).resolve(strict=True).as_uri() + '?mode=ro'
+        with closing(sqlite3.connect(uri, uri=True, timeout=1)) as connection:
+            connection.execute('PRAGMA query_only=ON')
+            connection.execute('BEGIN')
+            installation = connection.execute(
+                "SELECT value FROM app_settings WHERE key='observability.installation_id'"
+            ).fetchone()
+            row = connection.execute(
+                "SELECT w.captured_at,w.encrypted_payload FROM worker_shop_sessions w "
+                "JOIN shops s ON s.local_shop_id=w.local_shop_id "
+                "WHERE w.local_shop_id=? AND w.platform_shop_id=? AND s.platform='douyin' "
+                "AND s.platform_shop_id=w.platform_shop_id AND s.archived_at IS NULL",
+                (local_shop_id, platform_shop_id),
+            ).fetchone()
+            if not installation or not row or not all(isinstance(v, str) and v for v in row):
+                return None
+            identity = UUID(installation[0])
+            if identity.version != 4:
+                return None
+            revision = hashlib.sha256((row[0] + '\0' + row[1]).encode('utf-8')).hexdigest()
+            return str(identity), revision
+    except (OSError, sqlite3.Error, UnicodeError, ValueError, TypeError):
+        return None
+
+
 class LocalCookie(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True, frozen=True)
     name: str = Field(min_length=1, max_length=512)
@@ -420,8 +448,10 @@ class RpaAutoBridge:
                 self._cached_marker = self._cached_bridge = None
 
     async def request_session_refresh(self, local_shop_id: str, platform_shop_id: str, session_revision: str,
-                                      require_compass: bool) -> bool:
+                                      require_compass: bool, *, expected_installation_id: str | None = None) -> bool:
         bridge = await asyncio.to_thread(self._bridge)
+        if expected_installation_id is not None and str(bridge.discovery.installation_id) != expected_installation_id:
+            raise RpaBridgeError('RPA_IDENTITY_MISMATCH')
         try:
             return await bridge.request_session_refresh(local_shop_id, platform_shop_id, session_revision, require_compass)
         except RpaBridgeError as error:
@@ -439,6 +469,10 @@ class RpaAutoBridge:
             _stored_session_revisions, str(self.data_directory / "shop-manager.db"),
         )
         return revisions.get((local_shop_id, platform_shop_id)) if revisions is not None else None
+
+    async def session_identity(self, local_shop_id: str, platform_shop_id: str) -> tuple[str, str] | None:
+        return await asyncio.to_thread(_stored_session_identity,
+                                       str(self.data_directory / 'shop-manager.db'), local_shop_id, platform_shop_id)
 
 
 class _BridgeProcess:

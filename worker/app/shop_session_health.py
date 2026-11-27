@@ -19,6 +19,7 @@ from app.rpa_session_bridge import LocalShop, RpaBridgeError
 # gap while the inventory loop visits the other shops.
 _CONFIRMED_INTERVAL = 15 * 60
 _UNKNOWN_INTERVAL = 5 * 60
+_UNKNOWN_SHOP_INTERVAL = 30
 _VALID_AGE = timedelta(minutes=30)
 _MAX_BYTES = 256 * 1024
 _REFRESH_INTERVAL = 30 * 60
@@ -58,6 +59,28 @@ class ShopSessionHealth:
         self._last_served: dict[tuple[str, str], int] = {}
         self._served_sequence = 0
         self._changed_snapshots: set[tuple[str, str, str, str | None]] = set()
+        self._explicit_failures: set[tuple[tuple[str, str, str, str | None], str]] = set()
+        self._unknown_until: dict[tuple[str, str, str], float] = {}
+        self._inventory_installation = None
+        self._inventory_generation = 0
+
+    def set_installation(self, installation_id) -> bool:
+        """Never transfer observations across RPA installations."""
+        previous = self._inventory_installation
+        self._inventory_installation = installation_id
+        if previous is None or previous == installation_id:
+            return False
+        self._inventory_generation += 1
+        self._next_check.clear()
+        self._observations.clear()
+        self._pending.clear()
+        self._refresh_attempts.clear()
+        self._manual_blocked.clear()
+        self._changed_snapshots.clear()
+        self._explicit_failures.clear()
+        self._unknown_until.clear()
+        self._last_served.clear()
+        return True
 
     @staticmethod
     def _refresh_key(shop: LocalShop) -> tuple[str, str, str, str | None] | None:
@@ -87,7 +110,8 @@ class ShopSessionHealth:
     def prioritize(self, shop: LocalShop, kinds: set[str]) -> bool:
         """Reserve an immediate, revision-checked probe; do not infer validity."""
         key = self._key(shop)
-        requested = kinds & {'merchant', 'compass'}
+        requested = {kind for kind in kinds & {'merchant', 'compass'}
+                     if self._unknown_until.get((shop.local_shop_id, shop.platform_shop_id, kind), 0) <= self.clock()}
         if key is None or not requested:
             return False
         self._pending[key] = (self.clock() + _UNKNOWN_INTERVAL, requested)
@@ -98,6 +122,8 @@ class ShopSessionHealth:
         key = self._key(shop)
         if key is None or kind not in {"merchant", "compass"}:
             return False
+        self._explicit_failures.add((key, kind))
+        self._unknown_until.pop((shop.local_shop_id, shop.platform_shop_id, kind), None)
         when = observed_at or self.now()
         previous = self._observations.get((key, kind))
         if previous is None or previous.status != 'invalid' or previous.checked_at < when:
@@ -115,7 +141,7 @@ class ShopSessionHealth:
             self._refresh_attempts[key] = (0, retry_at)
         return self.clock() >= retry_at
 
-    async def request_refresh(self, shop: LocalShop) -> bool | None:
+    async def request_refresh(self, shop: LocalShop, *, expected_installation_id: str | None = None) -> bool | None:
         key = self._refresh_key(shop)
         if key is None or not self._refresh_available(shop):
             return False
@@ -149,7 +175,11 @@ class ShopSessionHealth:
                     if status.outcome in ("busy", "retryable") and age < delay:
                         self._refresh_attempts[key] = (attempts, self.clock() + delay - age)
                         return False
-            accepted = await self.bridge.request_session_refresh(shop.local_shop_id, shop.platform_shop_id, key[2], require_compass)
+            if expected_installation_id is None:
+                accepted = await self.bridge.request_session_refresh(shop.local_shop_id, shop.platform_shop_id, key[2], require_compass)
+            else:
+                accepted = await self.bridge.request_session_refresh(shop.local_shop_id, shop.platform_shop_id, key[2],
+                    require_compass, expected_installation_id=expected_installation_id)
             if accepted:
                 self._refresh_attempts[key] = (attempts + 1, self.clock() + _UNKNOWN_INTERVAL)
                 return True
@@ -182,12 +212,14 @@ class ShopSessionHealth:
         # A removed or replaced snapshot cannot keep its former status.
         self._next_check = {key: value for key, value in self._next_check.items() if key[0] in keys}
         self._observations = {key: value for key, value in self._observations.items() if key[0] in keys}
+        self._explicit_failures = {key for key in self._explicit_failures if key[0] in keys}
         self._pending = {key: value for key, value in self._pending.items() if key in keys}
         self._changed_snapshots.intersection_update(keys)
         self._refresh_attempts = {key: value for key, value in self._refresh_attempts.items() if key in refresh_keys}
         self._manual_blocked.intersection_update(refresh_keys)
         identities = {(shop.local_shop_id, shop.platform_shop_id) for shop in shops if shop.platform_shop_id}
         self._last_served = {key: value for key, value in self._last_served.items() if key in identities}
+        self._unknown_until = {key: value for key, value in self._unknown_until.items() if key[:2] in identities}
         now = self.clock()
         candidates = []
         for shop in shops:
@@ -196,7 +228,8 @@ class ShopSessionHealth:
             key = self._key(shop)
             if key is not None and (key not in self._pending or self._pending[key][0] <= now):
                 due = {kind for kind in ("merchant", "compass")
-                       if self._next_check.get((key, kind), 0) <= now}
+                       if max(self._next_check.get((key, kind), 0),
+                              self._unknown_until.get((shop.local_shop_id, shop.platform_shop_id, kind), 0)) <= now}
                 if not due:
                     continue
                 candidates.append((min(self._next_check.get((key, kind), 0) for kind in due),
@@ -222,9 +255,19 @@ class ShopSessionHealth:
                 continue
             key = self._key(shop)
             if key is not None and (key not in self._pending or self._pending[key][0] <= now):
-                if any(self._next_check.get((key, kind), 0) <= now for kind in ('merchant', 'compass')):
+                if any(max(self._next_check.get((key, kind), 0),
+                           self._unknown_until.get((shop.local_shop_id, shop.platform_shop_id, kind), 0)) <= now
+                       for kind in ('merchant', 'compass')):
                     return True
         return False
+
+    def unknown_retry_delay(self, shops: list[LocalShop], *, excluded_platform_ids: frozenset[str] = frozenset()) -> float | None:
+        now = self.clock()
+        identities = {(shop.local_shop_id, shop.platform_shop_id) for shop in shops
+                      if shop.platform_shop_id and shop.platform_shop_id not in excluded_platform_ids}
+        future = [until - now for key, until in self._unknown_until.items()
+                  if key[:2] in identities and until > now]
+        return max(0.01, min(future)) if future else None
 
     def report(self, shop: LocalShop) -> dict[str, str | None]:
         key = self._key(shop)
@@ -246,11 +289,16 @@ class ShopSessionHealth:
         key = self._key(shop)
         if key is None:
             return False
+        generation = self._inventory_generation
         reserved = self._pending.pop(key, None)
         kinds = reserved[1] if reserved else {"merchant", "compass"}
         results: dict[str, Literal["valid", "invalid"] | None] = {kind: None for kind in kinds}
+        cancelled = False
+        probed = False
         try:
             before = await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id)
+            if generation != self._inventory_generation:
+                return False
             if before is None:
                 self._changed_snapshots.add(key)
                 return False  # Unreadable is not proof that the snapshot changed.
@@ -260,6 +308,7 @@ class ShopSessionHealth:
                     self._observations.pop((key, kind), None)
                 return False
             session = await self.bridge.read_session(shop.local_shop_id, shop.platform_shop_id)
+            probed = True
             cookies = httpx.Cookies()
             for cookie in session.cookies:
                 cookies.set(cookie.name, cookie.value.get_secret_value(), domain=cookie.domain, path=cookie.path)
@@ -277,18 +326,24 @@ class ShopSessionHealth:
                         # One unavailable service must not hide the other service's status.
                         pass
             after = await self.bridge.session_revision(shop.local_shop_id, shop.platform_shop_id)
+            if generation != self._inventory_generation:
+                return False
             if after is None:
                 self._changed_snapshots.add(key)
                 results = {kind: None for kind in kinds}
+                probed = False
             elif after != shop.session_revision:
                 self._changed_snapshots.add(key)
                 for kind in ("merchant", "compass"):
                     self._observations.pop((key, kind), None)
                 results = {kind: None for kind in kinds}
+                probed = False
         except asyncio.CancelledError:
+            cancelled = True
             raise
         except RpaBridgeError as error:
-            if error.code in {'RPA_SHOP_IDENTITY_MISMATCH', 'RPA_NOT_READY', 'RPA_HELPER_UNTRUSTED'}:
+            if (generation == self._inventory_generation
+                    and error.code in {'RPA_SHOP_IDENTITY_MISMATCH', 'RPA_NOT_READY', 'RPA_HELPER_UNTRUSTED'}):
                 self._changed_snapshots.add(key)
             return False
         except Exception:
@@ -296,14 +351,22 @@ class ShopSessionHealth:
             # that the login expired. Never log a platform response or Session.
             return False
         finally:
-            for kind, result in results.items():
-                self._next_check[(key, kind)] = self.clock() + (
-                    _CONFIRMED_INTERVAL if result else _UNKNOWN_INTERVAL
-                )
+            if generation == self._inventory_generation:
+                for kind, result in results.items():
+                    self._next_check[(key, kind)] = (0 if cancelled else self.clock() + (
+                        _CONFIRMED_INTERVAL if result else _UNKNOWN_INTERVAL
+                    ))
+                    if probed and not cancelled:
+                        identity = (shop.local_shop_id, shop.platform_shop_id, kind)
+                        if result is None:
+                            self._unknown_until[identity] = self.clock() + _UNKNOWN_SHOP_INTERVAL
+                        else:
+                            self._unknown_until.pop(identity, None)
         for kind, result in results.items():
-            if result is not None:
+            if result is not None and not (result == 'valid' and (key, kind) in self._explicit_failures):
                 self._observations[(key, kind)] = SessionObservation(result, self.now())
-        confirmed_invalid = any(result == "invalid" for result in results.values())
+        confirmed_invalid = (any(result == "invalid" for result in results.values())
+                             or any((key, kind) in self._explicit_failures for kind in kinds))
         return confirmed_invalid and self._refresh_available(shop)
 
     def take_snapshot_changed(self, shop: LocalShop) -> bool:
