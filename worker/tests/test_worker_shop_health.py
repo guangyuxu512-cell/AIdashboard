@@ -33,6 +33,9 @@ def test_real_work_preempts_background_shop_verification(tmp_path):
             def missing_session_due(self, shops):
                 return None
 
+            def invalid_session_due(self, shops):
+                return None
+
             def due(self, shops, *, excluded_platform_ids=frozenset()):
                 return shops[0]
 
