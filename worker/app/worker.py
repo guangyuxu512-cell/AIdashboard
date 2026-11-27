@@ -126,6 +126,7 @@ class Worker:
         # recovery evidence. This outbox contains only shop IDs and revision.
         self.session_recovery_outbox = ResultOutbox(settings.runtime_root / "session-recovery-outbox")
         self.session_refresh_outbox = ResultOutbox(settings.runtime_root / "session-refresh-inflight")
+        self.session_refresh_attempts = ResultOutbox(settings.runtime_root / "session-refresh-attempts")
         self._resumable_refreshes: list[TerminalDelivery] = []
         try:
             for item in self.session_refresh_outbox.pending():
@@ -534,11 +535,13 @@ class Worker:
                         and (self._shop_health_probe is None or self._shop_health_probe.done())):
                     missing = None
                     eligible = [shop for shop in inventory.shops if shop.platform_shop_id
-                                and self._refresh_shop_available(shop.platform_shop_id)]
+                                and self._refresh_shop_available(shop.platform_shop_id)
+                                and self._refresh_budget_available(shop)]
                     if not self._refresh_done:
                         missing = self._take_pending_shop_refresh(
                             inventory.shops, excluded=frozenset(shop.platform_shop_id for shop in inventory.shops
-                                if shop.platform_shop_id and not self._refresh_shop_available(shop.platform_shop_id)))
+                                if shop.platform_shop_id and (not self._refresh_shop_available(shop.platform_shop_id)
+                                                              or not self._refresh_budget_available(shop))))
                         if missing is None:
                             missing = self.shop_session_health.missing_session_due(eligible)
                         if missing is None:
@@ -692,7 +695,8 @@ class Worker:
                     (item.local_shop_id, item.platform_shop_id, item.session_revision, item.rpa_helper_digest)
                     == (shop.local_shop_id, shop.platform_shop_id, shop.session_revision, shop.rpa_helper_digest)), None) if latest else None
                 if needs_refresh and current is not None:
-                    if not self._refresh_shop_available(current.platform_shop_id):
+                    if (not self._refresh_shop_available(current.platform_shop_id)
+                            or not self._refresh_budget_available(current)):
                         self._pending_shop_refresh[(current.local_shop_id, current.platform_shop_id)] = current
                     else:
                         self._shop_health_probe_is_refresh = True
@@ -727,6 +731,39 @@ class Worker:
         return all((scope := self._active_health_scopes.get(task_id)) is not None and scope[0] != shop_id
                    for task_id in self._active_task_ids)
 
+    def _refresh_budget_available(self, shop: LocalShop) -> bool:
+        """Keep the existing per-snapshot retry limits across Worker restarts."""
+        now = datetime.now(UTC)
+        attempts = []
+        try:
+            for item in self.session_refresh_attempts.pending():
+                data = item.result or {}
+                if item.skill_id != 'system.rpa_session_attempt' or item.error_code != 'RPA_REFRESH_ATTEMPT':
+                    continue
+                try:
+                    started = datetime.fromisoformat(data.get('started_at', ''))
+                    if started.tzinfo is None:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                if ((data.get('local_shop_id'), data.get('platform_shop_id'), data.get('snapshot_revision'),
+                     data.get('helper_digest')) == (shop.local_shop_id, shop.platform_shop_id,
+                                                    shop.session_revision or 'missing', shop.rpa_helper_digest)):
+                    attempts.append((started, item))
+                elif started < now - timedelta(hours=7):
+                    self.session_refresh_attempts.acknowledge(item)
+            if attempts and now >= max(value[0] for value in attempts) + timedelta(hours=6):
+                for _, item in attempts:
+                    self.session_refresh_attempts.acknowledge(item)
+                return True
+        except (OSError, OutboxError):
+            logger.error('Worker could not read session refresh retry history')
+            return False
+        if not attempts:
+            return True
+        last = max(value[0] for value in attempts)
+        return now >= last + (timedelta(hours=6) if len(attempts) >= 3 else timedelta(minutes=5))
+
     async def _wait_for_shop_refresh(self, task: WorkerTask) -> None:
         scope = _health_task_scope(task)
         while True:
@@ -743,6 +780,9 @@ class Worker:
         if not self._refresh_shop_available(shop_id):
             self._pending_shop_refresh[(shop.local_shop_id, shop_id)] = shop
             return
+        if not self._refresh_budget_available(shop):
+            self._pending_shop_refresh[(shop.local_shop_id, shop_id)] = shop
+            return
         done = asyncio.Event()
         self._refresh_done[shop_id] = done
         started = datetime.now(UTC)
@@ -750,12 +790,17 @@ class Worker:
             result={'local_shop_id': shop.local_shop_id, 'platform_shop_id': shop_id,
                     'snapshot_revision': shop.session_revision or 'missing', 'started_at': started.isoformat()},
             error_code='RPA_REFRESH_PENDING', error_message='设备正在刷新店铺会话')
+        attempt = TerminalDelivery(task_id=marker.task_id, skill_id='system.rpa_session_attempt', status='failed',
+            result={**marker.result, 'helper_digest': shop.rpa_helper_digest},
+            error_code='RPA_REFRESH_ATTEMPT', error_message='设备尝试刷新店铺会话')
         try:
             # Record before issuing the asynchronous launch so a crash at any
             # point cannot cause the next Worker to start a duplicate login.
+            self.session_refresh_attempts.store(attempt)
             self.session_refresh_outbox.store(marker)
-            if not await self.shop_session_health.request_refresh(shop):
+            if await self.shop_session_health.request_refresh(shop) is False:
                 self.session_refresh_outbox.acknowledge(marker)
+                self.session_refresh_attempts.acknowledge(attempt)
                 return
             await self._monitor_refresh(marker, done)
         finally:
@@ -775,10 +820,11 @@ class Worker:
             # existing retry interval when the prior Worker disappeared.
             while datetime.now(UTC) < started + timedelta(minutes=5):
                 try:
-                    revision = await self.rpa_bridge.session_revision(local, shop_id)
                     status = await self.rpa_bridge.session_refresh_status(local, shop_id, expected)
-                    if ((isinstance(revision, str) and revision != expected)
-                            or status is not None and status.outcome != 'busy'
+                    # A new snapshot is saved before RPA closes its owned
+                    # browser. Only the later terminal status marks the
+                    # refresh complete; `busy` may describe another attempt.
+                    if (status is not None and status.outcome != 'busy'
                             and status.observed_at >= started - timedelta(seconds=1)):
                         break
                 except Exception:

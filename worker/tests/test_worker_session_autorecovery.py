@@ -9,6 +9,7 @@ import pytest
 from app.config import WorkerSettings
 from app.contracts import ExecutionResult, LocalShopContext, WorkerTask
 from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop
+from app.result_outbox import TerminalDelivery
 from app.shop_session_health import ShopSessionHealth
 from app.worker import Worker
 
@@ -316,6 +317,7 @@ def test_other_shop_continues_while_same_shop_waits_for_asynchronous_rpa(tmp_pat
         await asyncio.wait_for(worker._wait_for_shop_refresh(other_task), timeout=1)
         assert not waiting.done()
         bridge.revisions["a"] = "c" * 64
+        bridge.status = LocalRefreshStatus("saved", datetime.now(UTC))
         await asyncio.wait_for(refresh, timeout=5)
         await asyncio.wait_for(waiting, timeout=1)
         assert len(bridge.refreshes) == 1
@@ -347,11 +349,18 @@ def test_snapshot_is_captured_after_refresh_wait(tmp_path):
     asyncio.run(scenario())
 
 
-def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path):
+@pytest.mark.parametrize("acknowledgement", ["accepted", "lost"])
+def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path, acknowledgement):
     async def scenario():
         shop = make_shop()
         bridge = Bridge([shop])
         bridge.auto_finish = False
+        if acknowledgement == "lost":
+            async def lost_ack(*args):
+                bridge.refreshes.append(args)
+                bridge.refreshed.set()
+                raise OSError("ack lost after launch")
+            bridge.request_session_refresh = lost_ack
         first = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
         first.shop_session_health.record_explicit_failure(shop, "merchant")
         running = asyncio.create_task(first._run_shop_refresh(shop))
@@ -364,6 +373,7 @@ def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path)
         bridge.status = LocalRefreshStatus("busy", datetime.now(UTC))
         restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
         assert "123" in restarted._refresh_done  # Restored before run/claim.
+        assert not restarted._refresh_budget_available(shop)
         marker = restarted._resumable_refreshes[0]
         monitor = asyncio.create_task(restarted._monitor_refresh(marker, restarted._refresh_done["123"]))
         same = make_task("douyin.merchant_products", shop, input_data={"operation": "list"})
@@ -372,8 +382,48 @@ def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path)
         assert not waiting.done()
         assert len(bridge.refreshes) == 1  # Restart did not relaunch RPA.
         bridge.revisions["a"] = "c" * 64
+        await asyncio.sleep(0.05)
+        assert not waiting.done()  # Saving precedes RPA closing its window.
+        bridge.status = LocalRefreshStatus("saved", datetime.now(UTC))
         await asyncio.wait_for(monitor, timeout=5)
         await asyncio.wait_for(waiting, timeout=1)
         assert restarted.session_refresh_outbox.pending() == []
+
+    asyncio.run(scenario())
+
+
+def test_retry_budget_survives_restart_and_resets_for_new_snapshot(tmp_path, monkeypatch):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        now = datetime.now(UTC)
+        for index in range(3):
+            started = now - timedelta(minutes=6 * (index + 1))
+            worker.session_refresh_attempts.store(TerminalDelivery(
+                task_id=uuid4(), skill_id="system.rpa_session_attempt", status="failed",
+                result={"local_shop_id": "a", "platform_shop_id": "123", "snapshot_revision": "a" * 64,
+                        "helper_digest": None, "started_at": started.isoformat()},
+                error_code="RPA_REFRESH_ATTEMPT", error_message="attempt"))
+        restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        assert not restarted._refresh_budget_available(shop)
+        assert restarted._refresh_budget_available(shop.model_copy(update={"session_revision": "b" * 64}))
+
+        class Later(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return now + timedelta(hours=6, minutes=1)
+
+        monkeypatch.setattr("app.worker.datetime", Later)
+        assert restarted._refresh_budget_available(shop)
+        assert restarted.session_refresh_attempts.pending() == []
+        for index in range(3):
+            started = Later.now(UTC) - timedelta(minutes=6 * (index + 1))
+            restarted.session_refresh_attempts.store(TerminalDelivery(
+                task_id=uuid4(), skill_id="system.rpa_session_attempt", status="failed",
+                result={"local_shop_id": "a", "platform_shop_id": "123", "snapshot_revision": "a" * 64,
+                        "helper_digest": None, "started_at": started.isoformat()},
+                error_code="RPA_REFRESH_ATTEMPT", error_message="attempt"))
+            assert restarted._refresh_budget_available(shop) is (index < 2)
 
     asyncio.run(scenario())

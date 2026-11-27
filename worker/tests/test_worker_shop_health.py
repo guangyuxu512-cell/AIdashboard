@@ -315,6 +315,7 @@ def test_refresh_discovered_during_other_work_is_deferred_until_idle(tmp_path):
 
             async def request_refresh(self, shop):
                 refreshed.append(shop.platform_shop_id)
+                return False
 
             def report(self, _shop):
                 return {}

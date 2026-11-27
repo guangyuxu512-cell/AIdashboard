@@ -11,7 +11,7 @@ from typing import Literal
 
 import httpx
 
-from app.rpa_session_bridge import LocalShop
+from app.rpa_session_bridge import LocalShop, RpaBridgeError
 
 
 # At most one store is checked per inventory cycle. Successful checks are
@@ -112,7 +112,7 @@ class ShopSessionHealth:
             self._refresh_attempts[key] = (0, retry_at)
         return self.clock() >= retry_at
 
-    async def request_refresh(self, shop: LocalShop) -> bool:
+    async def request_refresh(self, shop: LocalShop) -> bool | None:
         key = self._refresh_key(shop)
         if key is None or not self._refresh_available(shop):
             return False
@@ -149,11 +149,22 @@ class ShopSessionHealth:
             accepted = await self.bridge.request_session_refresh(shop.local_shop_id, shop.platform_shop_id, key[2], require_compass)
             if accepted:
                 self._refresh_attempts[key] = (attempts + 1, self.clock() + _UNKNOWN_INTERVAL)
-            return accepted
+                return True
+            # A malformed or missing acknowledgement does not prove that the
+            # local RPA failed to start the asynchronous refresh.
+            self._refresh_attempts[key] = (attempts + 1, self.clock() + _UNKNOWN_INTERVAL)
+            return None
         except asyncio.CancelledError:
             raise
+        except RpaBridgeError as error:
+            if error.code in {'RPA_HELPER_UNTRUSTED', 'RPA_NOT_READY', 'RPA_IDENTITY_MISMATCH',
+                              'RPA_SHOP_IDENTITY_MISMATCH', 'RPA_SESSION_UNAVAILABLE', 'INVALID_REQUEST'}:
+                return False  # Trusted bridge rejected before launching RPA.
+            self._refresh_attempts[key] = (attempts + 1, self.clock() + _UNKNOWN_INTERVAL)
+            return None
         except Exception:
-            return False
+            self._refresh_attempts[key] = (attempts + 1, self.clock() + _UNKNOWN_INTERVAL)
+            return None  # The RPA may have started before the bridge failed.
 
     @staticmethod
     def _key(shop: LocalShop) -> tuple[str, str, str, str | None] | None:

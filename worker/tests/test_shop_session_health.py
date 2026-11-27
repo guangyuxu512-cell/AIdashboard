@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop
+from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop, RpaBridgeError
 from app.shop_session_health import ShopSessionHealth
 
 
@@ -152,7 +152,7 @@ def test_unavailable_rpa_can_accept_refresh_after_it_is_updated():
 
         async def request_session_refresh(self, local_id, platform_id, revision, require_compass):
             if not self.ready:
-                raise RuntimeError("old helper")
+                raise RpaBridgeError("RPA_HELPER_UNTRUSTED")
             return await super().request_session_refresh(local_id, platform_id, revision, require_compass)
 
     bridge = UpdatingBridge()
