@@ -2,7 +2,7 @@ import asyncio
 import logging
 import random
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import httpx
 
@@ -115,6 +115,7 @@ class Worker:
         self._recent_session_rechecks: dict[tuple[str, str, str, str], tuple[str | None, float]] = {}
         self._rpa_inventory_wakeup = asyncio.Event()
         self._refresh_done: dict[str, asyncio.Event] = {}
+        self._task_expiry_revisions: dict[UUID, str] = {}
         self._last_rpa_inventory = None
         self._rpa_inventory_report_lock = asyncio.Lock()
         self._active_task_ids = set()
@@ -124,6 +125,20 @@ class Worker:
         # A task acknowledgement must not erase independently pending local
         # recovery evidence. This outbox contains only shop IDs and revision.
         self.session_recovery_outbox = ResultOutbox(settings.runtime_root / "session-recovery-outbox")
+        self.session_refresh_outbox = ResultOutbox(settings.runtime_root / "session-refresh-inflight")
+        self._resumable_refreshes: list[TerminalDelivery] = []
+        try:
+            for item in self.session_refresh_outbox.pending():
+                data = item.result or {}
+                if (item.skill_id == 'system.rpa_session_refresh' and item.error_code == 'RPA_REFRESH_PENDING'
+                        and isinstance(data.get('platform_shop_id'), str) and data['platform_shop_id']
+                        and isinstance(data.get('local_shop_id'), str) and data['local_shop_id']
+                        and isinstance(data.get('snapshot_revision'), str)
+                        and isinstance(data.get('started_at'), str)):
+                    self._resumable_refreshes.append(item)
+                    self._refresh_done.setdefault(data['platform_shop_id'], asyncio.Event())
+        except OutboxError:
+            logger.error('Worker in-flight session refresh record is unreadable')
         # 0.5.18 cannot deserialize merchant deliveries. Keep the new format
         # separate so rolling back never blocks existing Worker tasks.
         self.merchant_outbox = ResultOutbox(settings.runtime_root / "result-outbox-merchant-v1")
@@ -152,6 +167,8 @@ class Worker:
         )
         rpa_task = (asyncio.create_task(self._rpa_inventory_loop(stop_event))
                     if self.capability_runtime is not None else None)
+        resume_tasks = [asyncio.create_task(self._monitor_refresh(item, self._refresh_done[item.result['platform_shop_id']]))
+                        for item in self._resumable_refreshes]
         prechecks: set[asyncio.Task[None]] = set()
         selections: set[asyncio.Task[None]] = set()
         try:
@@ -231,8 +248,11 @@ class Worker:
                 reporter_task.cancel()
             if rpa_task is not None:
                 rpa_task.cancel()
+            for resume_task in resume_tasks:
+                resume_task.cancel()
             await self._cancel_shop_health_probe()
             await asyncio.gather(
+                *resume_tasks,
                 *[
                     task
                     for task in (
@@ -270,7 +290,7 @@ class Worker:
     async def _execute_with_selection_interval(self, task: WorkerTask) -> ExecutionResult:
         await self._wait_for_shop_refresh(task)
         if not _is_parallel_shop_task(task):
-            return await self._prepare_and_execute(task)
+            return await self._execute_with_snapshot_evidence(task)
         shop_id = task.local_shops[0].platform_shop_id or task.local_shops[0].local_shop_id
         lock = self._selection_shop_locks.setdefault(shop_id, asyncio.Lock())
         async with lock:
@@ -307,7 +327,7 @@ class Worker:
             await self._cancel_shop_probe_for(shop_id)
             logger.info('Shop task started shop=%s task=%s', shop_id, task.task_id)
             try:
-                return await self._prepare_and_execute(task)
+                return await self._execute_with_snapshot_evidence(task)
             finally:
                 self._selection_shop_last[shop_id] = (loop.time(), rank_scope, page)
                 logger.info('Shop task finished shop=%s task=%s', shop_id, task.task_id)
@@ -618,6 +638,12 @@ class Worker:
                 key = (data.get('local_shop_id'), data.get('platform_shop_id'))
                 revision = data.get('snapshot_revision')
                 kind = data.get('kind')
+                try:
+                    observed_at = datetime.fromisoformat(data.get('observed_at', ''))
+                    if observed_at.tzinfo is None:
+                        continue
+                except (TypeError, ValueError):
+                    continue
                 expected_kind = 'compass' if item.skill_id == _COMPASS_KIND else 'merchant'
                 if (item.skill_id not in {_PRECHECK_KIND, _MERCHANT_KIND, _COMPASS_KIND}
                         or item.error_code != 'SHOP_SESSION_EXPIRED' or kind != expected_kind
@@ -628,7 +654,7 @@ class Worker:
                     continue
                 if shop.session_revision != revision:
                     self.session_recovery_outbox.acknowledge(item)
-                elif self.shop_session_health.record_explicit_failure(shop, kind):
+                elif self.shop_session_health.record_explicit_failure(shop, kind, observed_at):
                     self._pending_shop_refresh[key] = shop
         except OutboxError:
             logger.error('Worker session recovery evidence requires local attention')
@@ -720,25 +746,53 @@ class Worker:
         done = asyncio.Event()
         self._refresh_done[shop_id] = done
         started = datetime.now(UTC)
+        marker = TerminalDelivery(task_id=uuid4(), skill_id='system.rpa_session_refresh', status='failed',
+            result={'local_shop_id': shop.local_shop_id, 'platform_shop_id': shop_id,
+                    'snapshot_revision': shop.session_revision or 'missing', 'started_at': started.isoformat()},
+            error_code='RPA_REFRESH_PENDING', error_message='设备正在刷新店铺会话')
         try:
+            # Record before issuing the asynchronous launch so a crash at any
+            # point cannot cause the next Worker to start a duplicate login.
+            self.session_refresh_outbox.store(marker)
             if not await self.shop_session_health.request_refresh(shop):
+                self.session_refresh_outbox.acknowledge(marker)
                 return
-            # RPA accepts asynchronously. Keep same-shop tasks waiting until
-            # its new snapshot or terminal result is observed, with a bound.
-            deadline = asyncio.get_running_loop().time() + 210
-            while asyncio.get_running_loop().time() < deadline:
+            await self._monitor_refresh(marker, done)
+        finally:
+            if self._refresh_done.get(shop_id) is done:
+                self._refresh_done.pop(shop_id, None)
+            done.set()
+            self._rpa_inventory_wakeup.set()
+
+    async def _monitor_refresh(self, marker: TerminalDelivery, done: asyncio.Event) -> None:
+        data = marker.result or {}
+        local, shop_id, expected = data['local_shop_id'], data['platform_shop_id'], data['snapshot_revision']
+        try:
+            started = datetime.fromisoformat(data['started_at'])
+            if started.tzinfo is None:
+                raise ValueError('invalid timestamp')
+            # RPA's login has a 180 s bound. Five minutes also preserves the
+            # existing retry interval when the prior Worker disappeared.
+            while datetime.now(UTC) < started + timedelta(minutes=5):
                 try:
-                    revision = await self.rpa_bridge.session_revision(shop.local_shop_id, shop_id)
-                    status = await self.rpa_bridge.session_refresh_status(shop.local_shop_id, shop_id,
-                                                                          shop.session_revision or 'missing')
-                    if ((revision or 'missing') != (shop.session_revision or 'missing')
-                            or status is not None and status.observed_at >= started - timedelta(seconds=1)):
+                    revision = await self.rpa_bridge.session_revision(local, shop_id)
+                    status = await self.rpa_bridge.session_refresh_status(local, shop_id, expected)
+                    if ((isinstance(revision, str) and revision != expected)
+                            or status is not None and status.outcome != 'busy'
+                            and status.observed_at >= started - timedelta(seconds=1)):
                         break
                 except Exception:
                     pass
                 await asyncio.sleep(3)
+            self.session_refresh_outbox.acknowledge(marker)
+        except asyncio.CancelledError:
+            # Keep the marker on disk for the next Worker process.
+            raise
+        except Exception:
+            logger.error('Worker could not reconcile in-flight session refresh')
         finally:
-            self._refresh_done.pop(shop_id, None)
+            if self._refresh_done.get(shop_id) is done:
+                self._refresh_done.pop(shop_id, None)
             done.set()
             self._rpa_inventory_wakeup.set()
 
@@ -753,6 +807,19 @@ class Worker:
             return await asyncio.wait_for(self.rpa_bridge.session_revision(scope[0], scope[1]), timeout=2)
         except Exception:
             return None
+
+    async def _execute_with_snapshot_evidence(self, task: WorkerTask) -> ExecutionResult:
+        # Take the initial revision after refresh and pacing waits, immediately
+        # before the skill can read the session it will actually use.
+        before = await self._task_snapshot_revision(task)
+        result = await self._prepare_and_execute(task)
+        real_precheck_failure = (task.skill_id != _PRECHECK_KIND or result.result
+                                 and result.result.get('http_status') in (200, 401))
+        if before and result.error_code == 'SHOP_SESSION_EXPIRED' and real_precheck_failure:
+            after = await self._task_snapshot_revision(task)
+            if before == after:
+                self._task_expiry_revisions[task.task_id] = before
+        return result
 
     def _health_shop_available(self, shop_id: str) -> bool:
         now = asyncio.get_running_loop().time()
@@ -899,7 +966,6 @@ class Worker:
                 ),
             },
         )
-        revision_before = await self._task_snapshot_revision(task)
         execution_task = asyncio.create_task(self._execute_with_selection_interval(task))
         lease_task = asyncio.create_task(self._renew_lease(task))
         try:
@@ -929,19 +995,15 @@ class Worker:
                 if result.status is ExecutionStatus.FAILED else None,
                 error_message=safe_message if result.status is ExecutionStatus.FAILED else None,
             )
-            real_precheck_failure = (task.skill_id != _PRECHECK_KIND or result.result
-                                     and result.result.get('http_status') in (200, 401))
-            revision_after = (await self._task_snapshot_revision(task)
-                              if revision_before and result.error_code == 'SHOP_SESSION_EXPIRED'
-                              and real_precheck_failure else None)
-            verified_revision = revision_before if revision_before == revision_after else None
+            verified_revision = self._task_expiry_revisions.pop(task.task_id, None)
             if verified_revision:
                 local, platform, kind = _session_task_scope(task)
                 try:
                     self.session_recovery_outbox.store(TerminalDelivery(
                         task_id=task.task_id, skill_id=task.skill_id, status='failed',
                         result={'local_shop_id': local, 'platform_shop_id': platform,
-                                'kind': kind, 'snapshot_revision': verified_revision},
+                                'kind': kind, 'snapshot_revision': verified_revision,
+                                'observed_at': datetime.now(UTC).isoformat()},
                         error_code='SHOP_SESSION_EXPIRED', error_message='店铺登录状态已失效'))
                 except (OSError, OutboxError):
                     # Never lose the task result because the separate recovery
@@ -985,6 +1047,7 @@ class Worker:
                 await self.event_reporter.flush_task(task.task_id)
             await self._deliver_pending_terminals()
         finally:
+            self._task_expiry_revisions.pop(task.task_id, None)
             if not execution_task.done():
                 execution_task.cancel()
             if not lease_task.done():

@@ -90,12 +90,15 @@ class ShopSessionHealth:
         self._pending[key] = (self.clock() + _UNKNOWN_INTERVAL, requested)
         return True
 
-    def record_explicit_failure(self, shop: LocalShop, kind: str) -> bool:
+    def record_explicit_failure(self, shop: LocalShop, kind: str, observed_at: datetime | None = None) -> bool:
         """Record a real task's login rejection for its verified local snapshot."""
         key = self._key(shop)
         if key is None or kind not in {"merchant", "compass"}:
             return False
-        self._observations[(key, kind)] = SessionObservation("invalid", self.now())
+        when = observed_at or self.now()
+        previous = self._observations.get((key, kind))
+        if previous is None or previous.status != 'invalid' or previous.checked_at < when:
+            self._observations[(key, kind)] = SessionObservation("invalid", when)
         return self._refresh_available(shop)
 
     def _refresh_available(self, shop: LocalShop) -> bool:

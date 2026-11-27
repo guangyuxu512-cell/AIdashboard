@@ -266,7 +266,7 @@ def test_real_task_expiry_is_bound_and_survives_restart(tmp_path, skill, kind, c
             return True
 
         worker._send_immediate_heartbeat = noop
-        worker._execute_with_selection_interval = execute
+        worker._prepare_and_execute = execute
         worker._renew_lease = lambda _task: asyncio.Event().wait()
         worker._deliver_pending_terminals = deliver
         await worker._execute_task(task)
@@ -278,9 +278,15 @@ def test_real_task_expiry_is_bound_and_survives_restart(tmp_path, skill, kind, c
             assert worker.shop_session_health.report(shop)["sessionStatus"] is None
             return
         restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        recorded_at = restarted.session_recovery_outbox.pending()[0].result["observed_at"]
         restarted._restore_session_recoveries([shop])
         status = restarted.shop_session_health.report(shop)
         assert status["compassSessionStatus" if kind == "compass" else "sessionStatus"] == "invalid"
+        time_field = "compassSessionCheckedAt" if kind == "compass" else "sessionCheckedAt"
+        assert status[time_field] == recorded_at
+        restarted.shop_session_health.now = lambda: datetime.now(UTC) + timedelta(hours=1)
+        restarted._restore_session_recoveries([shop])
+        assert restarted.shop_session_health.report(shop)[time_field] == recorded_at
         assert restarted._take_pending_shop_refresh([shop]) == shop
         await restarted.shop_session_health.request_refresh(shop)
         assert bridge.refreshes[0][-1] is (kind == "compass")
@@ -313,5 +319,61 @@ def test_other_shop_continues_while_same_shop_waits_for_asynchronous_rpa(tmp_pat
         await asyncio.wait_for(refresh, timeout=5)
         await asyncio.wait_for(waiting, timeout=1)
         assert len(bridge.refreshes) == 1
+
+    asyncio.run(scenario())
+
+
+def test_snapshot_is_captured_after_refresh_wait(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        ready = asyncio.Event()
+        worker._refresh_done["123"] = ready
+        task = make_task("douyin.merchant_products", shop, input_data={"operation": "list"})
+
+        async def fail(_task):
+            return ExecutionResult(status="failed", error_code="SHOP_SESSION_EXPIRED")
+
+        worker._prepare_and_execute = fail
+        execution = asyncio.create_task(worker._execute_with_selection_interval(task))
+        await asyncio.sleep(0.02)
+        bridge.revisions["a"] = "b" * 64
+        worker._refresh_done.pop("123")
+        ready.set()
+        await asyncio.wait_for(execution, timeout=1)
+        assert worker._task_expiry_revisions[task.task_id] == "b" * 64
+
+    asyncio.run(scenario())
+
+
+def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        bridge.auto_finish = False
+        first = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        first.shop_session_health.record_explicit_failure(shop, "merchant")
+        running = asyncio.create_task(first._run_shop_refresh(shop))
+        await asyncio.wait_for(bridge.refreshed.wait(), timeout=2)
+        running.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await running
+        assert len(first.session_refresh_outbox.pending()) == 1
+
+        bridge.status = LocalRefreshStatus("busy", datetime.now(UTC))
+        restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        assert "123" in restarted._refresh_done  # Restored before run/claim.
+        marker = restarted._resumable_refreshes[0]
+        monitor = asyncio.create_task(restarted._monitor_refresh(marker, restarted._refresh_done["123"]))
+        same = make_task("douyin.merchant_products", shop, input_data={"operation": "list"})
+        waiting = asyncio.create_task(restarted._wait_for_shop_refresh(same))
+        await asyncio.sleep(0.05)
+        assert not waiting.done()
+        assert len(bridge.refreshes) == 1  # Restart did not relaunch RPA.
+        bridge.revisions["a"] = "c" * 64
+        await asyncio.wait_for(monitor, timeout=5)
+        await asyncio.wait_for(waiting, timeout=1)
+        assert restarted.session_refresh_outbox.pending() == []
 
     asyncio.run(scenario())

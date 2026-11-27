@@ -7,7 +7,7 @@ import httpx
 
 from app.client import WorkerApiClient
 from app.config import WorkerSettings
-from app.contracts import LocalShopContext, WorkerTask
+from app.contracts import ExecutionResult, LocalShopContext, WorkerTask
 from app.rpa_session_bridge import LocalCookie, LocalSession, LocalShop
 from app.shop_session_health import ShopSessionHealth
 from app.worker import Worker
@@ -220,7 +220,7 @@ def test_selection_cancels_same_shop_probe_before_platform_request(tmp_path, mon
         async def execute(claimed):
             assert cancelled.is_set()
             assert asyncio.get_running_loop().time() - now >= 0.19
-            return SimpleNamespace()
+            return ExecutionResult(status="success")
 
         worker._prepare_and_execute = execute
         selection = asyncio.create_task(worker._execute_with_selection_interval(task))
@@ -285,7 +285,7 @@ def test_busy_selection_revalidates_same_shop_during_wait_without_overlapping(tm
             assert stopped.is_set()
             assert worker._shop_health_probe is None
             assert asyncio.get_running_loop().time() - now >= 0.29
-            return SimpleNamespace()
+            return ExecutionResult(status="success")
 
         worker._prepare_and_execute = execute
         selection = asyncio.create_task(worker._execute_with_selection_interval(task))
