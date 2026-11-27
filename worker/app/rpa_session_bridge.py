@@ -147,7 +147,7 @@ class LocalShopInventory(BaseModel):
     shops: list[LocalShop] = Field(max_length=500)
 
 
-def _stored_session_revisions(database_path: str) -> dict[tuple[str, str], str]:
+def _stored_session_revisions(database_path: str) -> dict[tuple[str, str], str] | None:
     """Identify saved snapshots without decrypting or exporting their contents."""
     revisions: dict[tuple[str, str], str] = {}
     try:
@@ -163,10 +163,14 @@ def _stored_session_revisions(database_path: str) -> dict[tuple[str, str], str]:
                     continue
                 revision = hashlib.sha256((captured_at + "\0" + encrypted).encode("utf-8")).hexdigest()
                 revisions[(local_id, platform_id)] = revision
+    except sqlite3.OperationalError as error:
+        # A legacy database with no snapshot table really has no stored
+        # snapshots. A locked or unreadable database is a different state.
+        if 'no such table: worker_shop_sessions' in str(error).lower():
+            return {}
+        return None
     except (OSError, sqlite3.Error, UnicodeError, ValueError):
-        # Older RPA databases and transient SQLite contention remain usable by
-        # the legacy path; do not claim that a snapshot has been refreshed.
-        return {}
+        return None
     return revisions
 
 
@@ -251,38 +255,68 @@ class RpaLocalBridge:
 
     async def list_shops(self) -> LocalShopInventory:
         async with self._connection() as bridge:
-            raw = await bridge.call({"type": "list_stored_shops"})
-            try:
-                inventory = LocalShopInventory.model_validate(raw)
-            except ValidationError:
-                raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID") from None
-            if inventory.installation_id != self.discovery.installation_id:
-                raise RpaBridgeError("RPA_IDENTITY_MISMATCH")
-            if len({shop.local_shop_id for shop in inventory.shops}) != len(inventory.shops):
-                raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
-            revisions = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
-            verified = {}
-            for shop in inventory.shops:
-                key = (shop.local_shop_id, shop.platform_shop_id)
-                if not shop.session_stored or not shop.platform_shop_id or key not in revisions:
-                    continue
+            for attempt in range(3):
+                raw = await bridge.call({"type": "list_stored_shops"})
                 try:
-                    status = await bridge.call({"type": "compass_status", "localShopId": shop.local_shop_id,
-                                                "expectedPlatformShopId": shop.platform_shop_id})
-                    if set(status) == {"verified"} and type(status["verified"]) is bool:
-                        verified[key] = status["verified"]
-                except RpaBridgeError as error:
-                    if error.code == "INVALID_REQUEST":
-                        break  # Older RPA helpers remain usable for merchant prechecks.
-            latest = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
-            shops = []
-            for shop in inventory.shops:
-                key = (shop.local_shop_id, shop.platform_shop_id)
-                revision = revisions.get(key)
-                shops.append(shop.model_copy(update={"session_revision": revision,
-                    "compass_session_verified": verified.get(key) if revision and latest.get(key) == revision else None,
-                    "rpa_helper_digest": self.trust.helper_tree_sha256}))
-            return inventory.model_copy(update={"shops": shops})
+                    inventory = LocalShopInventory.model_validate(raw)
+                except ValidationError:
+                    raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID") from None
+                if inventory.installation_id != self.discovery.installation_id:
+                    raise RpaBridgeError("RPA_IDENTITY_MISMATCH")
+                if len({shop.local_shop_id for shop in inventory.shops}) != len(inventory.shops):
+                    raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID")
+                revisions = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
+                verified = {}
+                mapping_changed = False
+                if revisions is not None:
+                    for shop in inventory.shops:
+                        key = (shop.local_shop_id, shop.platform_shop_id)
+                        if not shop.session_stored or not shop.platform_shop_id or key not in revisions:
+                            continue
+                        try:
+                            status = await bridge.call({"type": "compass_status", "localShopId": shop.local_shop_id,
+                                                        "expectedPlatformShopId": shop.platform_shop_id})
+                            if set(status) == {"verified"} and type(status["verified"]) is bool:
+                                verified[key] = status["verified"]
+                        except RpaBridgeError as error:
+                            if error.code == "INVALID_REQUEST":
+                                break  # Older RPA helpers remain usable for merchant prechecks.
+                            if error.code == "RPA_SHOP_IDENTITY_MISMATCH":
+                                mapping_changed = True
+                                break
+                try:
+                    final_inventory = LocalShopInventory.model_validate(await bridge.call({"type": "list_stored_shops"}))
+                except ValidationError:
+                    raise RpaBridgeError("RPA_BRIDGE_RESPONSE_INVALID") from None
+                if final_inventory.installation_id != self.discovery.installation_id:
+                    raise RpaBridgeError("RPA_IDENTITY_MISMATCH")
+                latest = await asyncio.to_thread(_stored_session_revisions, self.discovery.database_path)
+                def identities(value):
+                    return {(s.local_shop_id, s.platform_shop_id, s.platform, s.session_stored) for s in value.shops}
+                stable = (not mapping_changed and revisions is not None and latest is not None
+                          and len({shop.local_shop_id for shop in final_inventory.shops}) == len(final_inventory.shops)
+                          and identities(inventory) == identities(final_inventory))
+                if stable:
+                    for shop in inventory.shops:
+                        if not shop.platform_shop_id:
+                            continue
+                        key = (shop.local_shop_id, shop.platform_shop_id)
+                        before, after = revisions.get(key), latest.get(key)
+                        if before != after or (shop.session_stored != (before is not None)):
+                            stable = False
+                            break
+                if stable:
+                    shops = []
+                    for shop in inventory.shops:
+                        key = (shop.local_shop_id, shop.platform_shop_id)
+                        revision = revisions.get(key)
+                        shops.append(shop.model_copy(update={"session_revision": revision,
+                            "compass_session_verified": verified.get(key) if revision else None,
+                            "rpa_helper_digest": self.trust.helper_tree_sha256}))
+                    return inventory.model_copy(update={"shops": shops})
+                if attempt < 2:
+                    await asyncio.sleep(0.15)
+            raise RpaBridgeError("RPA_INVENTORY_UNAVAILABLE")
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
         async with self._connection() as bridge:
@@ -333,12 +367,18 @@ class RpaAutoBridge:
     def __init__(self, data_directory: Path, trusted_digests) -> None:
         self.data_directory = data_directory
         self.trusted_digests = trusted_digests
+        self._cached_marker: bytes | None = None
+        self._cached_bridge: RpaLocalBridge | None = None
 
     def _bridge(self) -> RpaLocalBridge:
         try:
             raw = (self.data_directory / "worker-session-bridge.json").read_bytes()
             if len(raw) > 16 * 1024:
                 raise ValueError("marker too large")
+            allowed = self.trusted_digests()
+            if (raw == self._cached_marker and self._cached_bridge is not None
+                    and self._cached_bridge.trust.helper_tree_sha256 in allowed):
+                return self._cached_bridge
             info = BridgeDiscovery.model_validate_json(raw)
             helper = Path(info.helper_path)
             if (not helper.is_absolute() or info.helper_path.startswith(("\\\\", "//"))
@@ -349,40 +389,56 @@ class RpaAutoBridge:
             if not (root / "店群自动化软件.exe").is_file():
                 raise ValueError("RPA installation missing")
             digest = helper_tree_digest(root / "resources/listing-worker")
-            if digest not in self.trusted_digests():
+            if digest not in allowed:
                 raise ValueError("unapproved helper release")
             trust = TrustedRpaInstallation(root, digest)
             verify_discovery(info, self.data_directory, trust)
-            return RpaLocalBridge(info, self.data_directory, trust)
+            bridge = RpaLocalBridge(info, self.data_directory, trust)
+            self._cached_marker, self._cached_bridge = raw, bridge
+            return bridge
         except RpaBridgeError:
             raise
         except (OSError, ValueError, ValidationError, IndexError):
             raise RpaBridgeError("RPA_HELPER_UNTRUSTED") from None
 
     async def list_shops(self) -> LocalShopInventory:
-        bridge = await asyncio.to_thread(self._bridge)
-        return await bridge.list_shops()
+        return await self._read_only('list_shops')
 
     async def read_session(self, local_shop_id: str, platform_shop_id: str) -> LocalSession:
-        bridge = await asyncio.to_thread(self._bridge)
-        return await bridge.read_session(local_shop_id, platform_shop_id)
+        return await self._read_only('read_session', local_shop_id, platform_shop_id)
+
+    async def _read_only(self, method: str, *args):
+        for attempt in range(2):
+            bridge = await asyncio.to_thread(self._bridge)
+            try:
+                return await getattr(bridge, method)(*args)
+            except RpaBridgeError as error:
+                if error.code != 'RPA_HELPER_UNTRUSTED' or attempt:
+                    raise
+                # A trusted installation may have been updated in place.
+                # Re-discover once; _connection still hashes before launch.
+                self._cached_marker = self._cached_bridge = None
 
     async def request_session_refresh(self, local_shop_id: str, platform_shop_id: str, session_revision: str,
                                       require_compass: bool) -> bool:
         bridge = await asyncio.to_thread(self._bridge)
-        return await bridge.request_session_refresh(local_shop_id, platform_shop_id, session_revision, require_compass)
+        try:
+            return await bridge.request_session_refresh(local_shop_id, platform_shop_id, session_revision, require_compass)
+        except RpaBridgeError as error:
+            if error.code == 'RPA_HELPER_UNTRUSTED':
+                self._cached_marker = self._cached_bridge = None
+            raise  # Never repeat a potentially accepted launch here.
 
     async def session_refresh_status(self, local_shop_id: str, platform_shop_id: str,
                                      session_revision: str) -> LocalRefreshStatus | None:
-        bridge = await asyncio.to_thread(self._bridge)
-        return await bridge.session_refresh_status(local_shop_id, platform_shop_id, session_revision)
+        return await self._read_only('session_refresh_status', local_shop_id, platform_shop_id, session_revision)
 
     async def session_revision(self, local_shop_id: str, platform_shop_id: str) -> str | None:
         """Read the saved snapshot identity without decrypting or exporting it."""
         revisions = await asyncio.to_thread(
             _stored_session_revisions, str(self.data_directory / "shop-manager.db"),
         )
-        return revisions.get((local_shop_id, platform_shop_id))
+        return revisions.get((local_shop_id, platform_shop_id)) if revisions is not None else None
 
 
 class _BridgeProcess:

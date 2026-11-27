@@ -8,7 +8,7 @@ import pytest
 
 from app.config import WorkerSettings
 from app.contracts import ExecutionResult, LocalShopContext, WorkerTask
-from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop
+from app.rpa_session_bridge import LocalCookie, LocalRefreshStatus, LocalSession, LocalShop, RpaBridgeError
 from app.result_outbox import TerminalDelivery
 from app.shop_session_health import ShopSessionHealth
 from app.worker import Worker
@@ -200,6 +200,137 @@ def test_cancelled_priority_probe_is_requeued(tmp_path):
     asyncio.run(scenario())
 
 
+def test_changed_snapshot_forces_fresh_inventory_without_reporting_old_status(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        worker._force_inventory_read = False
+        bridge.revisions["a"] = "b" * 64
+        assert worker.shop_session_health.prioritize(shop, {"merchant"})
+        await worker._verify_local_shop(bridge.inventory, shop)
+        assert worker._force_inventory_read is True
+        assert worker._rpa_inventory_wakeup.is_set()
+        assert worker.shop_session_health.report(shop)["sessionStatus"] is None
+        assert bridge.refreshes == []
+
+    asyncio.run(scenario())
+
+
+def test_changed_mapping_forces_inventory_without_triggering_login(tmp_path):
+    async def scenario():
+        shop = make_shop()
+        bridge = Bridge([shop])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        worker._force_inventory_read = False
+
+        async def mismatch(*args):
+            raise RpaBridgeError('RPA_SHOP_IDENTITY_MISMATCH')
+
+        bridge.read_session = mismatch
+        assert worker.shop_session_health.prioritize(shop, {'merchant'})
+        await worker._verify_local_shop(bridge.inventory, shop)
+        assert worker._force_inventory_read
+        assert not bridge.refreshes
+        worker._force_inventory_read = False
+        worker._queue_session_recheck(make_task('douyin.merchant_products', shop),
+                                      ExecutionResult(status='failed', error_code='RPA_SHOP_IDENTITY_MISMATCH'))
+        assert worker._force_inventory_read
+        assert not worker._pending_shop_refresh
+
+    asyncio.run(scenario())
+
+
+def test_force_requested_during_inventory_read_is_not_lost(tmp_path):
+    async def scenario():
+        inventory = SimpleNamespace(installation_id=uuid4(), shops=[])
+        started, release, stop = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        class BlockingBridge:
+            calls = 0
+            async def list_shops(self):
+                self.calls += 1
+                if self.calls == 1:
+                    started.set()
+                    await release.wait()
+                else:
+                    stop.set()
+                return inventory
+        bridge = BlockingBridge()
+        bridge.inventory = inventory
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        loop = asyncio.create_task(worker._rpa_inventory_loop(stop))
+        await started.wait()
+        worker._force_inventory_read = True
+        worker._rpa_inventory_wakeup.set()
+        release.set()
+        await asyncio.wait_for(loop, timeout=2)
+        assert bridge.calls == 2
+
+    asyncio.run(scenario())
+
+
+def test_unavailable_report_is_ordered_after_inflight_available_report(tmp_path):
+    async def scenario():
+        bridge = Bridge([make_shop()])
+        worker = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
+        started, release = asyncio.Event(), asyncio.Event()
+        order = []
+        class Client:
+            async def report_rpa_inventory(self, payload):
+                if payload['available']:
+                    started.set()
+                    await release.wait()
+                order.append(payload['available'])
+        worker.client = Client()
+        first = asyncio.create_task(worker._report_rpa_inventory(bridge.inventory))
+        await started.wait()
+        worker._last_rpa_inventory = None
+        second = asyncio.create_task(worker._report_inventory_unavailable())
+        await asyncio.sleep(0.01)
+        assert order == []
+        release.set()
+        await asyncio.gather(first, second)
+        assert order == [True, False]
+
+    asyncio.run(scenario())
+
+
+def test_worker_update_waits_even_when_refresh_task_has_not_started(tmp_path):
+    async def scenario():
+        worker = make_worker(tmp_path, Bridge([]), lambda request: httpx.Response(503))
+        worker.base_updater = object()
+        worker._shop_refresh_task = asyncio.create_task(asyncio.Event().wait())
+        assert not await worker._update_base_if_idle()
+        worker._shop_refresh_task.cancel()
+        await asyncio.gather(worker._shop_refresh_task, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_worker_update_rechecks_refresh_after_download(tmp_path, monkeypatch):
+    async def scenario():
+        worker = make_worker(tmp_path, Bridge([]), lambda request: httpx.Response(503))
+        started, release = asyncio.Event(), asyncio.Event()
+        class Updater:
+            async def stage_when_idle(self, *args, **kwargs):
+                started.set()
+                await release.wait()
+                return object()
+        worker.base_updater = Updater()
+        called = []
+        monkeypatch.setattr('app.base_update_handoff.start_handoff', lambda *args: called.append(True))
+        update = asyncio.create_task(worker._update_base_if_idle())
+        await started.wait()
+        worker._shop_refresh_task = asyncio.create_task(asyncio.Event().wait())
+        release.set()
+        assert not await update
+        assert not called
+        worker._shop_refresh_task.cancel()
+        await asyncio.gather(worker._shop_refresh_task, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
 def test_saved_replacement_is_verified_again_before_status_becomes_valid(tmp_path):
     async def scenario():
         shop = make_shop()
@@ -216,6 +347,8 @@ def test_saved_replacement_is_verified_again_before_status_becomes_valid(tmp_pat
         worker = make_worker(tmp_path, bridge, response)
         assert worker.shop_session_health.prioritize(shop, {"merchant"})
         await worker._verify_local_shop(bridge.inventory, shop)
+        if worker._shop_refresh_task is not None:
+            await worker._shop_refresh_task
         assert worker.shop_session_health.report(shop)["sessionStatus"] == "invalid"
         assert len(bridge.refreshes) == 1
         replacement = shop.model_copy(update={"session_revision": "b" * 64})
@@ -228,6 +361,48 @@ def test_saved_replacement_is_verified_again_before_status_becomes_valid(tmp_pat
         await worker._verify_local_shop(bridge.inventory, replacement)
         assert worker.shop_session_health.report(replacement)["sessionStatus"] == "valid"
         assert len(bridge.refreshes) == 1
+
+    asyncio.run(scenario())
+
+
+def test_one_shops_slow_refresh_does_not_block_other_shop_health(tmp_path, monkeypatch):
+    async def scenario():
+        monkeypatch.setattr("app.worker._HEALTH_BETWEEN_SHOPS_SECONDS", 0.01)
+        first, second = make_shop(), make_shop("b", "456", "b" * 64)
+        bridge = Bridge([first, second])
+        bridge.auto_finish = False
+        stop = asyncio.Event()
+        checked = asyncio.Event()
+
+        async def read(local, platform):
+            return LocalSession(localShopId=local, platformShopId=platform, platform="douyin", userAgent=platform,
+                cookies=[LocalCookie(name="test", value="synthetic", domain="jinritemai.com", path="/")])
+
+        bridge.read_session = read
+        def identity(request):
+            shop_id = request.headers["user-agent"]
+            return (httpx.Response(200, json={"st": 0, "data": {"shop_id": shop_id}})
+                    if request.url.host == "compass.jinritemai.com" else
+                    httpx.Response(200, json={"code": 0, "data": {"id": shop_id}}))
+
+        worker = make_worker(tmp_path, bridge, identity)
+        worker.shop_session_health.record_explicit_failure(first, "merchant")
+        class Client:
+            async def report_rpa_inventory(self, payload):
+                row = next(item for item in payload["shops"] if item["localShopId"] == "b")
+                if row.get("sessionStatus") == "valid" and row.get("compassSessionStatus") == "valid":
+                    checked.set()
+                    stop.set()
+
+        worker.client = Client()
+        loop = asyncio.create_task(worker._rpa_inventory_loop(stop))
+        await asyncio.wait_for(bridge.refreshed.wait(), timeout=2)
+        await asyncio.wait_for(checked.wait(), timeout=2)
+        assert not worker._shop_refresh_task.done()
+        assert bridge.refreshes[0][0] == "a"
+        await asyncio.wait_for(loop, timeout=2)
+        worker._shop_refresh_task.cancel()
+        await asyncio.gather(worker._shop_refresh_task, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -394,6 +569,7 @@ def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path,
         restarted = make_worker(tmp_path, bridge, lambda request: httpx.Response(503))
         assert "123" in restarted._refresh_done  # Restored before run/claim.
         assert not restarted._refresh_budget_available(shop)
+        restarted._force_inventory_read = False
         marker = restarted._resumable_refreshes[0]
         monitor = asyncio.create_task(restarted._monitor_refresh(marker, restarted._refresh_done["123"]))
         same = make_task("douyin.merchant_products", shop, input_data={"operation": "list"})
@@ -408,6 +584,7 @@ def test_restart_keeps_inflight_refresh_and_busy_does_not_release_shop(tmp_path,
         await asyncio.wait_for(monitor, timeout=5)
         await asyncio.wait_for(waiting, timeout=1)
         assert restarted.session_refresh_outbox.pending() == []
+        assert restarted._force_inventory_read
 
     asyncio.run(scenario())
 
