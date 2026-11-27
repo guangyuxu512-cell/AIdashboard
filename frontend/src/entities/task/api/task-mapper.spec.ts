@@ -58,7 +58,7 @@ describe('Task list mapper', () => {
     })).executionName).toBe('罗盘选品')
     expect(mapTaskListItemDto(dto({
       skill_id: 'douyin.compass_selection',
-      execution_display_name: 'douyin.compass_selection',
+      execution_display_name: ' ',
       skill_display_name: '自定义选品',
     })).executionName).toBe('自定义选品')
     expect(mapTaskListItemDto(dto({

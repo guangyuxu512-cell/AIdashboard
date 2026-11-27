@@ -8,10 +8,7 @@ import type { TaskListItemReadDto } from './contracts'
 export function mapTaskListItemDto(
   dto: TaskListItemReadDto,
 ): TaskListItemViewModel {
-  const snapshotName = dto.execution_display_name.trim()
-  const displayName = snapshotName && snapshotName !== dto.skill_id
-    ? snapshotName
-    : dto.skill_display_name?.trim() || snapshotName
+  const displayName = dto.execution_display_name.trim() || dto.skill_display_name?.trim()
   const executionName = formatSkillName(dto.skill_id, displayName)
   return {
     taskId: dto.task_id,
