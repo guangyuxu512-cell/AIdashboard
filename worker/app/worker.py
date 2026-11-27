@@ -39,6 +39,7 @@ _COMPASS_KIND = "douyin.compass_selection"
 _MERCHANT_KIND = "douyin.merchant_products"
 # Do not start a background check near the end of a selection interval.
 _HEALTH_MIN_SELECTION_GAP = 25.0
+_HEALTH_BETWEEN_SHOPS_SECONDS = 5.0
 
 
 def _is_compass_selection(task: WorkerTask) -> bool:
@@ -106,17 +107,22 @@ class Worker:
         self.base_updater = base_updater
         self._next_base_check = 0.0
         self._base_update_pending = False
+        self._base_handoff_in_progress = False
         self.shop_session_health = ShopSessionHealth(rpa_bridge) if rpa_bridge is not None else None
         self._shop_health_probe: asyncio.Task[None] | None = None
         self._shop_health_probe_shop: str | None = None
         self._shop_health_probe_is_refresh = False
+        self._shop_refresh_task: asyncio.Task[None] | None = None
         self._pending_shop_refresh: dict[tuple[str, str | None], LocalShop] = {}
         self._session_rechecks: dict[tuple[str, str], set[str]] = {}
         self._recent_session_rechecks: dict[tuple[str, str, str, str], tuple[str | None, float]] = {}
         self._rpa_inventory_wakeup = asyncio.Event()
+        self._health_wakeup_handle: asyncio.TimerHandle | None = None
         self._refresh_done: dict[str, asyncio.Event] = {}
         self._task_expiry_revisions: dict[UUID, str] = {}
         self._last_rpa_inventory = None
+        self._next_inventory_read = 0.0
+        self._force_inventory_read = True
         self._rpa_inventory_report_lock = asyncio.Lock()
         self._active_task_ids = set()
         self._active_health_scopes: dict[UUID, tuple[str, bool] | None] = {}
@@ -249,11 +255,16 @@ class Worker:
                 reporter_task.cancel()
             if rpa_task is not None:
                 rpa_task.cancel()
+            if self._health_wakeup_handle is not None:
+                self._health_wakeup_handle.cancel()
+            if self._shop_refresh_task is not None:
+                self._shop_refresh_task.cancel()
             for resume_task in resume_tasks:
                 resume_task.cancel()
             await self._cancel_shop_health_probe()
             await asyncio.gather(
                 *resume_tasks,
+                *([self._shop_refresh_task] if self._shop_refresh_task is not None else []),
                 *[
                     task
                     for task in (
@@ -523,21 +534,31 @@ class Worker:
     async def _rpa_inventory_loop(self, stop_event: asyncio.Event) -> None:
         while not stop_event.is_set():
             try:
-                inventory = await self.rpa_bridge.list_shops()
-                self._last_rpa_inventory = inventory
-                self._restore_session_recoveries(inventory.shops)
-                try:
-                    await self._report_rpa_inventory(inventory)
-                except Exception:
-                    # A temporary center outage must not suppress local recovery.
-                    pass
+                now = asyncio.get_running_loop().time()
+                if (self._last_rpa_inventory is None or self._force_inventory_read
+                        or now >= self._next_inventory_read):
+                    # Consume before awaiting: a concurrent task may request
+                    # another refresh while the bridge is still reading.
+                    self._force_inventory_read = False
+                    inventory = await self.rpa_bridge.list_shops()
+                    self._last_rpa_inventory = inventory
+                    self._next_inventory_read = now + self.settings.provider_inventory_interval_seconds
+                    self._restore_session_recoveries(inventory.shops)
+                    try:
+                        await self._report_rpa_inventory(inventory)
+                    except Exception:
+                        # A temporary center outage must not suppress local recovery.
+                        pass
+                else:
+                    inventory = self._last_rpa_inventory
                 if (self.shop_session_health is not None
                         and (self._shop_health_probe is None or self._shop_health_probe.done())):
                     missing = None
                     eligible = [shop for shop in inventory.shops if shop.platform_shop_id
                                 and self._refresh_shop_available(shop.platform_shop_id)
                                 and self._refresh_budget_available(shop)]
-                    if not self._refresh_done:
+                    if (not self._base_handoff_in_progress and not self._refresh_done and
+                            (self._shop_refresh_task is None or self._shop_refresh_task.done())):
                         missing = self._take_pending_shop_refresh(
                             inventory.shops, excluded=frozenset(shop.platform_shop_id for shop in inventory.shops
                                 if shop.platform_shop_id and (not self._refresh_shop_available(shop.platform_shop_id)
@@ -547,7 +568,8 @@ class Worker:
                         if missing is None:
                             missing = self.shop_session_health.invalid_session_due(eligible)
                     excluded = frozenset(shop.platform_shop_id for shop in inventory.shops
-                                         if shop.platform_shop_id and not self._health_shop_available(shop.platform_shop_id))
+                                         if shop.platform_shop_id and (shop.platform_shop_id in self._refresh_done
+                                             or not self._health_shop_available(shop.platform_shop_id)))
                     urgent = self._take_session_recheck(inventory.shops, excluded) if missing is None else None
                     shop = (urgent[0] if urgent is not None else
                             self.shop_session_health.due(inventory.shops, excluded_platform_ids=excluded)
@@ -555,9 +577,9 @@ class Worker:
                     if urgent is not None and not self.shop_session_health.prioritize(*urgent):
                         shop = None
                     if missing is not None:
-                        self._shop_health_probe_shop = missing.platform_shop_id
-                        self._shop_health_probe_is_refresh = True
-                        self._shop_health_probe = asyncio.create_task(self._run_shop_refresh(missing))
+                        self._shop_refresh_task = asyncio.create_task(self._run_shop_refresh(missing))
+                        # Refresh runs separately; other shops can still be verified.
+                        self._rpa_inventory_wakeup.set()
                     elif shop is not None:
                         self._shop_health_probe_shop = shop.platform_shop_id
                         self._shop_health_probe_is_refresh = False
@@ -568,7 +590,7 @@ class Worker:
             except Exception:
                 self._last_rpa_inventory = None
                 try:
-                    await self.client.report_rpa_inventory({"available": False})
+                    await self._report_inventory_unavailable()
                 except Exception:
                     pass
             await self._wait_for_inventory(stop_event)
@@ -590,6 +612,10 @@ class Worker:
     def _queue_session_recheck(self, task: WorkerTask, result: ExecutionResult, verified_revision: str | None = None) -> None:
         if self.shop_session_health is None or result.status is not ExecutionStatus.FAILED:
             return
+        if result.error_code in {'RPA_SHOP_IDENTITY_MISMATCH', 'RPA_NOT_READY', 'RPA_HELPER_UNTRUSTED'}:
+            self._force_inventory_read = True
+            self._rpa_inventory_wakeup.set()
+            return
         explicit = result.error_code == 'SHOP_SESSION_EXPIRED'
         # The merchant endpoint may use a new login message. Probe the local
         # identity after a business rejection, but never label it expired from
@@ -606,6 +632,7 @@ class Worker:
                 and current.session_revision == verified_revision):
             if self.shop_session_health.record_explicit_failure(current, kind):
                 self._pending_shop_refresh[(local, platform)] = current
+                self._force_inventory_read = True
                 self._rpa_inventory_wakeup.set()
             return
         revision = current.session_revision if current else None
@@ -616,6 +643,7 @@ class Worker:
             return
         self._recent_session_rechecks[key] = (revision, now)
         self._session_rechecks.setdefault((local, platform), set()).add(kind)
+        self._force_inventory_read = True
         self._rpa_inventory_wakeup.set()
 
     def _take_session_recheck(self, shops: list[LocalShop], excluded: frozenset[str]):
@@ -675,9 +703,20 @@ class Worker:
             await self.client.report_rpa_inventory({"available": True,
                 "installation_id": str(inventory.installation_id), "shops": shops})
 
+    async def _report_inventory_unavailable(self) -> None:
+        async with self._rpa_inventory_report_lock:
+            if self._last_rpa_inventory is None:
+                await self.client.report_rpa_inventory({"available": False})
+
     async def _verify_local_shop(self, inventory, shop, *, priority_kinds: set[str] | None = None) -> None:
+        cancelled = False
         try:
             needs_refresh = await self.shop_session_health.check(shop)
+            changed = getattr(self.shop_session_health, 'take_snapshot_changed', None)
+            if changed is not None and changed(shop):
+                self._force_inventory_read = True
+                self._rpa_inventory_wakeup.set()
+                return
             # A newer inventory object may still contain the exact same snapshot.
             latest = self._last_rpa_inventory
             current = next((item for item in latest.shops if
@@ -695,13 +734,15 @@ class Worker:
                     (item.local_shop_id, item.platform_shop_id, item.session_revision, item.rpa_helper_digest)
                     == (shop.local_shop_id, shop.platform_shop_id, shop.session_revision, shop.rpa_helper_digest)), None) if latest else None
                 if needs_refresh and current is not None:
-                    if (not self._refresh_shop_available(current.platform_shop_id)
+                    if (self._base_handoff_in_progress or self._refresh_done
+                            or (self._shop_refresh_task is not None and not self._shop_refresh_task.done())
+                            or not self._refresh_shop_available(current.platform_shop_id)
                             or not self._refresh_budget_available(current)):
                         self._pending_shop_refresh[(current.local_shop_id, current.platform_shop_id)] = current
                     else:
-                        self._shop_health_probe_is_refresh = True
-                        await self._run_shop_refresh(current)
+                        self._shop_refresh_task = asyncio.create_task(self._run_shop_refresh(current))
         except asyncio.CancelledError:
+            cancelled = True
             if priority_kinds:
                 self._session_rechecks.setdefault((shop.local_shop_id, shop.platform_shop_id), set()).update(priority_kinds)
             raise
@@ -711,6 +752,24 @@ class Worker:
         finally:
             if self._session_rechecks:
                 self._rpa_inventory_wakeup.set()
+            elif not cancelled and self._last_rpa_inventory is not None:
+                has_due = getattr(self.shop_session_health, 'has_due', None)
+                shops = self._last_rpa_inventory.shops
+                excluded = frozenset(item.platform_shop_id for item in shops if item.platform_shop_id
+                                     and (item.platform_shop_id in self._refresh_done
+                                          or not self._health_shop_available(item.platform_shop_id)))
+                if has_due is not None and has_due(shops, excluded_platform_ids=excluded):
+                    self._schedule_health_wakeup()
+
+    def _schedule_health_wakeup(self) -> None:
+        if self._health_wakeup_handle is not None:
+            return
+
+        def wake() -> None:
+            self._health_wakeup_handle = None
+            self._rpa_inventory_wakeup.set()
+
+        self._health_wakeup_handle = asyncio.get_running_loop().call_later(_HEALTH_BETWEEN_SHOPS_SECONDS, wake)
 
     def _take_pending_shop_refresh(self, shops: list[LocalShop], *, excluded: frozenset[str] = frozenset()) -> LocalShop | None:
         current = {(shop.local_shop_id, shop.platform_shop_id): shop for shop in shops}
@@ -777,7 +836,7 @@ class Worker:
         shop_id = shop.platform_shop_id
         if not shop_id:
             return
-        if not self._refresh_shop_available(shop_id):
+        if self._base_handoff_in_progress or not self._refresh_shop_available(shop_id):
             self._pending_shop_refresh[(shop.local_shop_id, shop_id)] = shop
             return
         if not self._refresh_budget_available(shop):
@@ -807,6 +866,7 @@ class Worker:
             if self._refresh_done.get(shop_id) is done:
                 self._refresh_done.pop(shop_id, None)
             done.set()
+            self._force_inventory_read = True
             self._rpa_inventory_wakeup.set()
 
     async def _monitor_refresh(self, marker: TerminalDelivery, done: asyncio.Event) -> None:
@@ -840,6 +900,7 @@ class Worker:
             if self._refresh_done.get(shop_id) is done:
                 self._refresh_done.pop(shop_id, None)
             done.set()
+            self._force_inventory_read = True
             self._rpa_inventory_wakeup.set()
 
     async def _task_snapshot_revision(self, task: WorkerTask) -> str | None:
@@ -942,7 +1003,8 @@ class Worker:
             logger.warning("Capability update unavailable; retaining verified release when possible")
 
     async def _update_base_if_idle(self) -> bool:
-        if self.base_updater is None or self._active_task_ids or self._refresh_done:
+        if (self.base_updater is None or self._active_task_ids or self._refresh_done
+                or (self._shop_refresh_task is not None and not self._shop_refresh_task.done())):
             return False
         now = asyncio.get_running_loop().time()
         if now < self._next_base_check:
@@ -956,8 +1018,17 @@ class Worker:
             release = await self.base_updater.stage_when_idle(self.client, idle=True)
             if release is None:
                 return False
+            if (self._active_task_ids or self._refresh_done or
+                    (self._shop_refresh_task is not None and not self._shop_refresh_task.done())):
+                return False
             from app.base_update_handoff import start_handoff
-            return await asyncio.to_thread(start_handoff, self.base_updater, release)
+            self._base_handoff_in_progress = True
+            try:
+                return await asyncio.to_thread(start_handoff, self.base_updater, release)
+            finally:
+                self._base_handoff_in_progress = False
+                if self._pending_shop_refresh:
+                    self._rpa_inventory_wakeup.set()
         except asyncio.CancelledError:
             raise
         except WorkerApiError as error:
