@@ -38,7 +38,7 @@ describe('Task list mapper', () => {
     expect(item.startedAtDisplay).toBe('—')
   })
 
-  it('uses execution, Skill display name and Skill id in priority order', () => {
+  it('uses execution, Skill display name and the shared Chinese mapping in priority order', () => {
     expect(mapTaskListItemDto(dto()).executionName).toBe('安全等待')
     expect(
       mapTaskListItemDto(dto({ execution_display_name: ' ' })).executionName,
@@ -47,6 +47,24 @@ describe('Task list mapper', () => {
       mapTaskListItemDto(
         dto({ execution_display_name: '', skill_display_name: null }),
       ).executionName,
-    ).toBe('system.sleep')
+    ).toBe('等待（测试）')
+  })
+
+  it('translates raw worker names and preserves explicit names', () => {
+    expect(mapTaskListItemDto(dto({
+      skill_id: 'douyin.compass_selection',
+      execution_display_name: 'douyin.compass_selection',
+      skill_display_name: 'douyin.compass_selection',
+    })).executionName).toBe('罗盘选品')
+    expect(mapTaskListItemDto(dto({
+      skill_id: 'douyin.compass_selection',
+      execution_display_name: 'douyin.compass_selection',
+      skill_display_name: '自定义选品',
+    })).executionName).toBe('自定义选品')
+    expect(mapTaskListItemDto(dto({
+      skill_id: 'vendor.custom',
+      execution_display_name: 'vendor.custom',
+      skill_display_name: null,
+    })).executionName).toBe('vendor.custom')
   })
 })
