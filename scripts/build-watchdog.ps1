@@ -13,7 +13,7 @@ if ($OutputRoot -ne $distBoundary -and -not $OutputRoot.StartsWith($distBoundary
 }
 if (-not $Python) { $Python = Join-Path $root '.venv\Scripts\python.exe' }
 if (-not (Test-Path -LiteralPath $Python -PathType Leaf)) { throw 'Watchdog build Python is missing.' }
-& $Python -c 'import PyInstaller, psutil, httpx, pydantic, tkinter'
+& $Python -c 'import PyInstaller, psutil, httpx, pydantic, tkinter, cryptography'
 if ($LASTEXITCODE -ne 0) { throw 'Watchdog build dependencies are missing.' }
 $version = '0.1.0'
 $build = Join-Path $OutputRoot '.watchdog-build'

@@ -1,4 +1,6 @@
 import json
+import base64
+import hashlib
 import os
 import subprocess
 import sys
@@ -10,6 +12,8 @@ from pathlib import Path
 import httpx
 import psutil
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 from siyu_guard import guard, probes
 from siyu_guard.storage import load_config, write_json
@@ -167,12 +171,41 @@ def test_task_application_is_not_restarted_without_idle_proof(tmp_path, monkeypa
     assert not calls
 
 
+def signed_sourcing_fixture(tmp_path, monkeypatch):
+    install = tmp_path / "installed"
+    install.mkdir()
+    executable = install / "1688-Sourcing-Preview.exe"
+    executable.write_bytes(b"bootstrap")
+    update_root = install / ".1688-updates"
+    archive_bytes, exe_bytes, asar_bytes = b"archive", b"executable", b"asar"
+    sha = lambda value: hashlib.sha256(value).hexdigest()
+    digest = sha(archive_bytes)
+    release = update_root / "releases" / f"4-0.1.11-{digest}"
+    resources = release / "app" / "resources"
+    resources.mkdir(parents=True)
+    actual = resources.parent / executable.name
+    actual.write_bytes(exe_bytes)
+    (resources / "app.asar").write_bytes(asar_bytes)
+    (release / "package.zip").write_bytes(archive_bytes)
+    manifest = {"schema_version":1, "sequence":4, "version":"0.1.11", "sha256":digest,
+                "size":len(archive_bytes), "platform":"windows-x86_64", "exe_sha256":sha(exe_bytes),
+                "asar_sha256":sha(asar_bytes)}
+    raw = json.dumps(manifest, separators=(",", ":"), sort_keys=True).encode()
+    private = Ed25519PrivateKey.generate()
+    der = private.public_key().public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
+    monkeypatch.setattr(probes, "SOURCING_PUBLIC_KEY", base64.b64encode(der).decode())
+    write_json(tmp_path / "data" / "update-state.json", {"schema":1, "root":str(update_root),
+        "acceptedSequence":4, "active":{"manifest":base64.b64encode(raw).decode(),
+                                      "signature":base64.b64encode(private.sign(raw)).decode()}})
+    return str(executable), str(actual), release
+
+
 def test_sourcing_checkpoint_distinguishes_idle_active_and_old_versions(tmp_path, monkeypatch):
-    executable = str(tmp_path / "installed" / "1688-Sourcing-Preview.exe")
+    executable, actual, release = signed_sourcing_fixture(tmp_path, monkeypatch)
     marker = tmp_path / "watchdog-activity.json"
     assert probes.sourcing_presence(executable, tmp_path) == ("unknown", "任务状态未确认", False)
     state = {"version":1, "processId":12345, "processStartedAt":1700000000,
-             "executablePath":executable, "activeCount":0, "uncertain":False}
+             "executablePath":actual, "activeCount":0, "uncertain":False}
     write_json(marker, state)
     monkeypatch.setattr(probes.psutil, "Process", lambda pid: (_ for _ in ()).throw(psutil.NoSuchProcess(pid)))
     monkeypatch.setattr(probes, "process_presence", lambda _: "absent")
@@ -186,6 +219,31 @@ def test_sourcing_checkpoint_distinguishes_idle_active_and_old_versions(tmp_path
     state.update(uncertain=False, executablePath=str(tmp_path / "unrelated" / "1688-Sourcing-Preview.exe"))
     write_json(marker, state)
     assert probes.sourcing_presence(executable, tmp_path) == ("unknown", "程序路径未确认", False)
+
+
+def test_sourcing_rejects_stale_or_tampered_signed_release(tmp_path, monkeypatch):
+    executable, actual, release = signed_sourcing_fixture(tmp_path, monkeypatch)
+    marker = tmp_path / "watchdog-activity.json"
+    write_json(marker, {"version":1, "processId":12345, "processStartedAt":1700000000,
+                        "executablePath":actual, "activeCount":0, "uncertain":False})
+    monkeypatch.setattr(probes.psutil, "Process", lambda pid: (_ for _ in ()).throw(psutil.NoSuchProcess(pid)))
+    monkeypatch.setattr(probes, "process_presence", lambda _: "absent")
+    assert probes.sourcing_presence(executable, tmp_path) == ("absent", "已退出", True)
+    state_path = tmp_path / "data" / "update-state.json"
+    state = json.loads(state_path.read_text(encoding="utf8"))
+    state["acceptedSequence"] = 3  # updater rolled back to the previous version
+    write_json(state_path, state)
+    assert probes.sourcing_presence(executable, tmp_path) == ("absent", "版本待核查", False)
+    state["acceptedSequence"] = 4
+    write_json(state_path, state)
+    original_signature = state["active"]["signature"]
+    state["active"]["signature"] = base64.b64encode(bytes(64)).decode()
+    write_json(state_path, state)
+    assert probes.sourcing_presence(executable, tmp_path) == ("absent", "版本待核查", False)
+    state["active"]["signature"] = original_signature
+    write_json(state_path, state)
+    (release / "app" / "resources" / "app.asar").write_bytes(b"tampered")
+    assert probes.sourcing_presence(executable, tmp_path) == ("absent", "版本待核查", False)
 
 
 def test_sourcing_checkpoint_recognizes_signed_update_process(tmp_path, monkeypatch):
