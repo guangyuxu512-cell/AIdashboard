@@ -40,6 +40,8 @@ if __name__ == "__main__":
     os.environ["BACKEND_RUNTIME_ENVIRONMENT"] = "test"
     sys.path.insert(0, str(ROOT / "scripts" / "verify"))
     sys.path.insert(0, str(ROOT / ("backend" if args.suite == "probe" else args.suite)))
+    if args.suite == "worker":
+        sys.path.insert(0, str(ROOT / "watchdog"))
     previous = Path.cwd()
     with tempfile.TemporaryDirectory(prefix="control-center-verify-python-") as temporary:
         try:
@@ -50,6 +52,8 @@ if __name__ == "__main__":
                 import pytest
                 suite = ROOT / args.suite
                 params = [str(suite / "tests"), "-c", str(suite / "pyproject.toml"), "--rootdir", str(suite)]
+                if args.suite == "worker":
+                    params.append(str(ROOT / "watchdog" / "tests"))
                 if args.suite == "backend":
                     params += ["--ignore=" + str(suite / "tests/test_douyin_signer_runtime.py"),
                                "--ignore=" + str(suite / "tests/test_notification_webhook_e2e.py"),

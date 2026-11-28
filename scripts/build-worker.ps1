@@ -1,7 +1,8 @@
 param(
     [switch]$SkipTests,
     [Parameter(Mandatory = $true)]
-    [string]$CapabilityPublicKeyFile
+    [string]$CapabilityPublicKeyFile,
+    [string]$OutputRoot
 )
 
 Set-StrictMode -Version Latest
@@ -9,13 +10,29 @@ $ErrorActionPreference = 'Stop'
 
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $workerRoot = Join-Path $projectRoot 'worker'
+$customOutputRoot = -not [string]::IsNullOrWhiteSpace($OutputRoot)
 $workerPython = if ($env:WORKER_BUILD_PYTHON) {
     [System.IO.Path]::GetFullPath($env:WORKER_BUILD_PYTHON)
 }
 else {
     Join-Path $workerRoot '.venv\Scripts\python.exe'
 }
-$distRoot = Join-Path $projectRoot 'dist'
+$distBoundary = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'dist')).TrimEnd('\')
+if (-not $OutputRoot) { $OutputRoot = $distBoundary }
+$distRoot = [System.IO.Path]::GetFullPath($OutputRoot)
+if ($distRoot -ne $distBoundary -and -not $distRoot.StartsWith($distBoundary + '\', [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Worker build output must be inside this worktree dist directory.'
+}
+if ($customOutputRoot) {
+    $cursor = $distRoot
+    while ($cursor -and $cursor.StartsWith($distBoundary, [StringComparison]::OrdinalIgnoreCase)) {
+        if ((Test-Path -LiteralPath $cursor) -and ((Get-Item -LiteralPath $cursor -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Worker build output cannot traverse a reparse point.'
+        }
+        if ($cursor -eq $distBoundary) { break }
+        $cursor = Split-Path -Parent $cursor
+    }
+}
 $buildRoot = Join-Path $distRoot '.worker-build'
 $pyInstallerDist = Join-Path $buildRoot 'pyinstaller-dist'
 $pyInstallerWork = Join-Path $buildRoot 'pyinstaller-work'
@@ -100,6 +117,10 @@ if ($version -notmatch '^\d+\.\d+\.\d+$') {
 $packageName = "ecommerce-worker-$version-win-x64"
 $packageRoot = Join-Path $distRoot $packageName
 $zipPath = Join-Path $distRoot "$packageName.zip"
+
+if ($customOutputRoot -and ((Test-Path -LiteralPath $buildRoot) -or (Test-Path -LiteralPath $packageRoot) -or (Test-Path -LiteralPath $zipPath))) {
+    throw 'Worker output already exists in this custom build directory.'
+}
 
 Remove-VerifiedProjectChild $buildRoot
 Remove-VerifiedProjectChild $packageRoot
