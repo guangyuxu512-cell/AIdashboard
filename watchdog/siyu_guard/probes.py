@@ -4,14 +4,23 @@ from __future__ import annotations
 
 import os
 import math
+import base64
+import hashlib
+import json
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlsplit
 
 import httpx
 import psutil
+from cryptography.hazmat.primitives import serialization
 
 from siyu_guard.storage import read_json
+
+SOURCING_PUBLIC_KEY = "MCowBQYDK2VwAyEAGkqn8hzBtdopcs1sWsttfddoVwQt/fbpBzw1b6kSXf0="
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
+_VERSION = re.compile(r"(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\Z")
 
 
 def _norm(path: str) -> str:
@@ -84,6 +93,65 @@ def worker_presence(executable: str, root: Path) -> str:
     return "absent"
 
 
+def _verified_sourcing_release(root: Path, executable: str, actual: str) -> bool:
+    """Verify the active release before trusting an exited app's old checkpoint."""
+    try:
+        path = root / "data" / "update-state.json"
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 131072:
+            return False
+        state = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(state, dict) or type(state.get("schema")) is not int or state["schema"] != 1
+                or not isinstance(state.get("active"), dict)):
+            return False
+        update_root = Path(state["root"])
+        if not update_root.is_absolute() or str(update_root).startswith("\\\\"):
+            return False
+        bootstrap = update_root.parent / Path(executable).name
+        if _norm(str(bootstrap)) != _norm(sourcing_bootstrap(executable)):
+            return False
+        envelope = state["active"]
+        raw = base64.b64decode(envelope["manifest"], validate=True)
+        signature = base64.b64decode(envelope["signature"], validate=True)
+        if len(raw) > 65536 or len(signature) != 64:
+            return False
+        public = serialization.load_der_public_key(base64.b64decode(SOURCING_PUBLIC_KEY, validate=True))
+        public.verify(signature, raw)
+        manifest = json.loads(raw)
+        seq, version, digest, size = (manifest.get(k) for k in ("sequence", "version", "sha256", "size"))
+        exe_digest, asar_digest = manifest.get("exe_sha256"), manifest.get("asar_sha256")
+        if (type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1
+                or manifest.get("platform") != "windows-x86_64" or type(state.get("acceptedSequence")) is not int
+                or type(seq) is not int or seq < 1 or state["acceptedSequence"] != seq
+                or not isinstance(version, str) or not _VERSION.fullmatch(version)
+                or not isinstance(digest, str) or not _SHA256.fullmatch(digest)
+                or not isinstance(exe_digest, str) or not _SHA256.fullmatch(exe_digest)
+                or not isinstance(asar_digest, str) or not _SHA256.fullmatch(asar_digest)
+                or type(size) is not int or not 0 < size <= 512 * 1024 * 1024):
+            return False
+        releases = update_root / "releases"
+        release = releases / f"{seq}-{version}-{digest}"
+        app = release / "app"
+        exe = app / Path(executable).name
+        resources = app / "resources"
+        asar = resources / "app.asar"
+        archive = release / "package.zip"
+        if _norm(str(exe)) != _norm(actual):
+            return False
+        for part in (update_root, releases, release, app, resources, exe, asar, archive):
+            if part.is_symlink() or (hasattr(part, "is_junction") and part.is_junction()):
+                return False
+        if archive.stat().st_size != size:
+            return False
+        for file, expected in ((archive, digest), (exe, exe_digest), (asar, asar_digest)):
+            with file.open("rb") as stream:
+                if hashlib.file_digest(stream, "sha256").hexdigest() != expected:
+                    return False
+        return True
+    except Exception:
+        # Corrupt, missing or unverifiable state is not proof of safe recovery.
+        return False
+
+
 def sourcing_presence(executable: str, root: Path) -> tuple[str, str, bool]:
     """Identify the 1688 app using its task checkpoint and real process identity."""
     state = read_json(root / "watchdog-activity.json", None)
@@ -113,7 +181,11 @@ def sourcing_presence(executable: str, root: Path) -> tuple[str, str, bool]:
     remaining = process_presence(executable)
     if remaining != "absent":
         return "unknown", "进程状态未确认", False
-    return "absent", ("任务状态待核查" if count or uncertain else "已退出"), count == 0 and not uncertain
+    if count or uncertain:
+        return "absent", "任务状态待核查", False
+    if not _verified_sourcing_release(root, executable, actual):
+        return "absent", "版本待核查", False
+    return "absent", "已退出", True
 
 
 def worker_snapshot(root: Path, now: datetime | None = None) -> tuple[str, bool]:
