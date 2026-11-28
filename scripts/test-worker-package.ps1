@@ -1,4 +1,4 @@
-param([string]$ZipPath)
+param([string]$ZipPath, [string]$PackageRoot)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -26,7 +26,9 @@ try {
     if ($forbiddenCount -gt 0) { throw 'Worker ZIP contains retired or secret-bearing files.' }
 }
 finally { $archive.Dispose() }
-$packageRoot = Join-Path $projectRoot "dist\ecommerce-worker-$workerVersion-win-x64"
+if ([string]::IsNullOrWhiteSpace($PackageRoot)) {
+    $PackageRoot = Join-Path $projectRoot "dist\ecommerce-worker-$workerVersion-win-x64"
+}
 if (-not (Test-Path -LiteralPath $packageRoot -PathType Container)) {
     throw 'Unpacked build output is needed for the executable self-check.'
 }

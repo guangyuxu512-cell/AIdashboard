@@ -186,6 +186,7 @@ class LocalRuntimeState:
         self._finished_task_id_set: set[UUID] = set()
         self._active_tasks: dict[UUID, dict[str, Any]] = {}
         self._snapshot_write_failed = False
+        self._task_checkpoint_failed = False
         self._state: dict[str, Any] = {
             "device_id": str(device_id),
             "device_display_name": device_display_name,
@@ -203,6 +204,11 @@ class LocalRuntimeState:
             "provider_application_count": None,
             "provider_refreshed_at": None,
             "worker_status": "running",
+            # A watchdog may only treat an idle snapshot as safe when it was
+            # written by this process using the durable pre-execution barrier.
+            "watchdog_checkpoint_version": 1,
+            "watchdog_process_id": os.getpid(),
+            "watchdog_uncertain": False,
             "current_task_id": None,
             "active_task_count": 0,
             "skill_display_name": None,
@@ -214,9 +220,9 @@ class LocalRuntimeState:
             "updated_at": datetime.now(UTC).isoformat(),
             "recent_events": [],
         }
-        self._write()
+        self._task_checkpoint_failed = not self._write(durable=True)
 
-    def begin_task(self, task: WorkerTask, *, skill_display_name: str) -> None:
+    def begin_task(self, task: WorkerTask, *, skill_display_name: str) -> bool:
         current = {
                 "current_task_id": str(task.task_id),
                 "skill_display_name": skill_display_name,
@@ -229,7 +235,17 @@ class LocalRuntimeState:
         self._active_tasks[task.task_id] = current
         self._state.update(current)
         self._state["active_task_count"] = len(self._active_tasks)
-        self._write()
+        # Persist the busy state before a task can touch an external system.
+        saved = self._write(durable=True)
+        self._task_checkpoint_failed = not saved
+        return saved
+
+    def ready_for_task(self) -> bool:
+        if not self._task_checkpoint_failed:
+            return True
+        saved = self._write(durable=True)
+        self._task_checkpoint_failed = not saved
+        return saved
 
     def set_connection(
         self,
@@ -315,7 +331,9 @@ class LocalRuntimeState:
         self._state["worker_status"] = "stopped"
         self._write()
 
-    def finish_task(self, task_id: UUID) -> None:
+    def finish_task(self, task_id: UUID, *, uncertain: bool = False) -> None:
+        if uncertain:
+            self._state["watchdog_uncertain"] = True
         if len(self._finished_task_ids) == self._finished_task_ids.maxlen:
             expired = self._finished_task_ids.popleft()
             self._finished_task_id_set.discard(expired)
@@ -338,25 +356,28 @@ class LocalRuntimeState:
             })
         self._write()
 
-    def _write(self) -> None:
+    def _write(self, *, durable: bool = False) -> bool:
         self._state["updated_at"] = datetime.now(UTC).isoformat()
         self._state["recent_events"] = list(self._recent_events)
         temporary = self.path.with_name(f".{self.path.name}.{os.getpid()}.tmp")
         try:
             self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary.write_text(
-                json.dumps(self._state, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            with temporary.open("w", encoding="utf-8") as output:
+                json.dump(self._state, output, ensure_ascii=False)
+                if durable:
+                    output.flush()
+                    os.fsync(output.fileno())
             os.replace(temporary, self.path)
         except OSError as error:
             if not self._snapshot_write_failed:
                 logger.warning("Local runtime status snapshot write failed: %s", error)
             self._snapshot_write_failed = True
+            return False
         else:
             if self._snapshot_write_failed:
                 logger.info("Local runtime status snapshot writes recovered")
             self._snapshot_write_failed = False
+            return True
         finally:
             try:
                 temporary.unlink(missing_ok=True)

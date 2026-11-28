@@ -222,7 +222,9 @@ class Worker:
                         self._base_update_pending = False
                     else:
                         await self._check_base_update_for_drain()
-                    if not self.executor.can_claim():
+                    if (not self.executor.can_claim() or
+                            (self.local_runtime_state is not None and
+                             not self.local_runtime_state.ready_for_task())):
                         task = None
                     elif prechecks or selections:
                         task = (None if self._base_update_pending else
@@ -1171,12 +1173,17 @@ class Worker:
         await self._send_immediate_heartbeat()
         definition = self.skill_registry.get(task.skill_id)
         if self.local_runtime_state is not None:
-            self.local_runtime_state.begin_task(
+            recorded = self.local_runtime_state.begin_task(
                 task,
                 skill_display_name=(
                     definition.display_name if definition is not None else task.skill_id
                 ),
             )
+            if not recorded:
+                # Do not perform a business action if its active marker could
+                # not be persisted; otherwise a watchdog could see stale idle.
+                self.local_runtime_state.finish_task(task.task_id)
+                raise RuntimeError("Worker could not persist task activity")
         self.event_bus.emit(
             task.task_id,
             RuntimeEventType.STATUS,
@@ -1197,6 +1204,7 @@ class Worker:
         )
         execution_task = asyncio.create_task(self._execute_with_selection_interval(task))
         lease_task = asyncio.create_task(self._renew_lease(task))
+        terminal_persisted = False
         try:
             done, _ = await asyncio.wait(
                 {execution_task, lease_task},
@@ -1244,6 +1252,7 @@ class Worker:
             # event flush, inventory report or completion network operation.
             outbox = self.merchant_outbox if delivery.skill_id == _MERCHANT_KIND else self.result_outbox
             outbox.store(delivery)
+            terminal_persisted = True
             self._queue_session_recheck(task, result, verified_revision, verified_installation)
             terminal_metadata = {
                 "phase": (
@@ -1290,7 +1299,7 @@ class Worker:
                 return_exceptions=True,
             )
             if self.local_runtime_state is not None:
-                self.local_runtime_state.finish_task(task.task_id)
+                self.local_runtime_state.finish_task(task.task_id, uncertain=not terminal_persisted)
             await self._send_immediate_heartbeat()
 
     async def _deliver_pending_terminals(self) -> bool:
