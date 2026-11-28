@@ -19,6 +19,7 @@ dependencies = [
 dev = [
     "pyinstaller>=6.11,<7",
     "pytest>=8.3,<9",
+    "psutil>=6,<8",
 ]
 
 [tool.setuptools.dynamic]
